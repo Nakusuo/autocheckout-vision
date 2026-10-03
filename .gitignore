@@ -1,0 +1,27 @@
+# Secretos
+.env
+.env.*
+!.env.example
+keys/
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+
+# ML: datos y pesos pesados no van a git
+ml/data/raw/
+ml/runs/
+*.pt
+*.onnx
+
+# Base local
+*.sqlite3
+*.db
