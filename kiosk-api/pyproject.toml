@@ -6,10 +6,10 @@ build-backend = "setuptools.build_meta"
 name = "kiosk"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["fastapi>=0.115", "uvicorn[standard]>=0.30"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6", "bandit>=1.7"]
+dev = ["pytest>=8", "ruff>=0.6", "bandit>=1.7", "httpx>=0.27"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
