@@ -49,8 +49,8 @@ cd ml
 python -m venv .venv && source .venv/Scripts/activate
 pip install -e ".[dev,bench]"
 
-python -m mltools.dataset_check                 # revisa ml/data/raw/ contra el catálogo
-python -m mltools.frames VIDEO.mp4 --out ml/data/raw/SKU   # fotos desde un video
+python -m mltools.dataset_check                 # revisa data/raw/ contra el catálogo
+python -m mltools.frames VIDEO.mp4 --out data/raw/SKU   # fotos desde un video
 python -m mltools.labelstudio                   # configuración para Label Studio
 python -m mltools.bench --model modelo.onnx     # latencia vs RNF-01 (p95 ≤ 150 ms)
 ```

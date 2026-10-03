@@ -54,12 +54,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--min-diff", type=float, default=12.0, help="Diferencia mínima (0-255)")
     args = parser.parse_args(argv)
     total = 0
+    failed = False
     for video in args.videos:
-        saved = extract_frames(video, args.out, args.every, args.min_diff)
-        print(f"{video.name}: {saved} fotos")
-        total += saved
+        try:
+            saved = extract_frames(video, args.out, args.every, args.min_diff, prefix=video.stem)
+            print(f"{video.name}: {saved} fotos")
+            total += saved
+        except ValueError as e:
+            print(f"{video.name}: {e}")
+            failed = True
     print(f"Total: {total} fotos en {args.out}")
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
