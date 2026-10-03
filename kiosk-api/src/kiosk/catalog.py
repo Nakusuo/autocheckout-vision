@@ -27,3 +27,6 @@ class Catalog:
 
     def get(self, sku: str) -> Product | None:
         return self._by_sku.get(sku)
+
+    def all(self) -> list[Product]:
+        return list(self._by_sku.values())
