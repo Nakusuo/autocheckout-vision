@@ -18,7 +18,7 @@ node_modules/
 dist/
 
 # ML: datos y pesos pesados no van a git
-ml/data/raw/
+ml/data/
 ml/runs/
 *.pt
 *.onnx
