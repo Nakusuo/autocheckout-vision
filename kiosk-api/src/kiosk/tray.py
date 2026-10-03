@@ -29,3 +29,19 @@ class SimulatedTray:
 
     def detect(self) -> list[str]:
         return list(self._skus)
+
+
+class ScaleFollowingDetector:
+    """Modo cámara sin balanza física: la balanza simulada pesa lo que la cámara ve."""
+
+    def __init__(self, detector: Detector, catalog: Catalog, scale: SimulatedScale):
+        self._detector = detector
+        self._catalog = catalog
+        self._scale = scale
+
+    def detect(self) -> list[str]:
+        skus = self._detector.detect()
+        self._scale.set_load(
+            sum(p.weight_g for sku in skus if (p := self._catalog.get(sku)) is not None)
+        )
+        return skus
