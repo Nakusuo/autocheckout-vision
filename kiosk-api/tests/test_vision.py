@@ -1,6 +1,18 @@
-import numpy as np
+from pathlib import Path
+from types import SimpleNamespace
 
-from kiosk.vision import decode_yolov8, letterbox
+import cv2
+import numpy as np
+import pytest
+
+from kiosk.tray import Detector
+from kiosk.vision import (
+    ImageFolderSource,
+    YoloOnnxDetector,
+    class_names_from_metadata,
+    decode_yolov8,
+    letterbox,
+)
 
 
 def yolo_output(rows: list[list[float]]) -> np.ndarray:
@@ -43,3 +55,54 @@ def test_letterbox_shape_and_padding():
     assert out.dtype == np.float32
     assert abs(float(out[0, 0, 0, 208]) - 114 / 255) < 1e-6
     assert float(out[0, 0, 208, 208]) == 0.0
+
+
+def test_class_names_from_ultralytics_metadata():
+    assert class_names_from_metadata({"names": "{0: 'AGUA', 1: 'COLA'}"}) == ["AGUA", "COLA"]
+
+
+def test_class_names_missing_raises():
+    with pytest.raises(ValueError, match="names"):
+        class_names_from_metadata({})
+
+
+def test_image_folder_source_cycles(tmp_path: Path):
+    for i, value in enumerate([0, 255]):
+        cv2.imwrite(str(tmp_path / f"{i}.png"), np.full((8, 8, 3), value, dtype=np.uint8))
+    source = ImageFolderSource.from_folder(tmp_path)
+    firsts = [int(source.read()[0, 0, 0]) for _ in range(3)]
+    assert firsts == [0, 255, 0]
+
+
+def test_image_folder_source_empty_raises(tmp_path: Path):
+    with pytest.raises(ValueError):
+        ImageFolderSource.from_folder(tmp_path)
+
+
+class FakeSession:
+    def __init__(self, output: np.ndarray):
+        self.output = output
+        self.shapes: list[tuple] = []
+
+    def get_inputs(self):
+        return [SimpleNamespace(name="images")]
+
+    def run(self, _outputs, feed):
+        self.shapes.append(feed["images"].shape)
+        return [self.output]
+
+
+def test_detector_maps_classes_to_skus():
+    out = yolo_output(
+        [
+            [100, 100, 50, 50, 0.9, 0.0, 0.0],
+            [300, 300, 40, 40, 0.0, 0.0, 0.7],
+        ]
+    )
+    session = FakeSession(out)
+    source = ImageFolderSource([np.zeros((480, 640, 3), dtype=np.uint8)])
+    detector = YoloOnnxDetector(session, ["AGUA", "COLA", "TAKIS"], source)
+
+    assert detector.detect() == ["AGUA", "TAKIS"]
+    assert session.shapes == [(1, 3, 416, 416)]
+    assert isinstance(detector, Detector)
