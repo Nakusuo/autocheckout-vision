@@ -2,7 +2,7 @@ import pytest
 
 from kiosk.catalog import Catalog, Product
 from kiosk.scale import SimulatedScale
-from kiosk.tray import Detector, SimulatedTray
+from kiosk.tray import Detector, ScaleFollowingDetector, SimulatedTray
 
 CATALOG = Catalog([Product("AGUA", "Agua", 250, 651.0), Product("CHOCO", "Chocolate", 280, 33.0)])
 
@@ -36,3 +36,25 @@ def test_empty_tray():
 def test_satisfies_detector_protocol():
     tray, _ = make()
     assert isinstance(tray, Detector)
+
+
+class FixedDetector:
+    def __init__(self, skus: list[str]):
+        self.skus = skus
+
+    def detect(self) -> list[str]:
+        return list(self.skus)
+
+
+def test_scale_follows_detections():
+    scale = SimulatedScale(noise_g=0)
+    detector = ScaleFollowingDetector(FixedDetector(["AGUA", "CHOCO"]), CATALOG, scale)
+    assert detector.detect() == ["AGUA", "CHOCO"]
+    assert scale.read() == 684.0
+
+
+def test_unknown_detection_weighs_nothing():
+    scale = SimulatedScale(noise_g=0)
+    detector = ScaleFollowingDetector(FixedDetector(["AGUA", "OTRA"]), CATALOG, scale)
+    detector.detect()
+    assert scale.read() == 651.0
