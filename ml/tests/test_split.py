@@ -70,3 +70,21 @@ def test_output_folder_is_protected(tmp_path: Path):
     build_dataset(export, out, SKUS)
     build_dataset(export, out, SKUS)  # una segunda vez la reemplaza sin error
     assert (out / "data.yaml").exists()
+    assert (out / ".mltools-split").exists()
+
+
+def test_export_inside_output_is_rejected(tmp_path: Path):
+    out = tmp_path / "dataset"
+    out.mkdir()
+    export = make_export(out / "export")
+    with pytest.raises(ValueError, match="La exportación no puede estar dentro de la salida"):
+        build_dataset(export, out, SKUS)
+
+
+def test_empty_export_is_rejected(tmp_path: Path):
+    export = tmp_path / "export"
+    (export / "images").mkdir(parents=True)
+    (export / "labels").mkdir()
+    (export / "classes.txt").write_text("AGUA\nCOLA\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="La exportación no tiene fotos"):
+        build_dataset(export, tmp_path / "dataset", SKUS)

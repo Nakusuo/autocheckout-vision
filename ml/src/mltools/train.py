@@ -9,6 +9,7 @@ import shutil
 from pathlib import Path
 
 from mltools.catalog import REPO
+from mltools.console import utf8_output
 
 MAP50_TARGET = 0.90
 IMGSZ = 416
@@ -58,6 +59,7 @@ def train_and_export(
 
 
 def main(argv: list[str] | None = None) -> int:
+    utf8_output()
     parser = argparse.ArgumentParser(description="Entrena y exporta el reconocedor de productos.")
     parser.add_argument("--data", type=Path, default=REPO / "ml" / "data" / "dataset" / "data.yaml")
     parser.add_argument("--out", type=Path, default=MODELS_DIR)
