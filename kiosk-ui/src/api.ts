@@ -11,6 +11,7 @@ export type Snapshot = {
   alert: string | null;
   seconds_in_state: number;
   help_pending: boolean;
+  qr_payload: string | null;
 };
 
 export async function post(path: string, body?: unknown): Promise<Snapshot> {

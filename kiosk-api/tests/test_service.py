@@ -1,7 +1,9 @@
 import pytest
+from payment_helpers import PUBLIC_PEM, FakeGateway
 
 from kiosk.catalog import Catalog, Product
 from kiosk.checkout import TransitionError
+from kiosk.payments import JwtVerifier
 from kiosk.scale import SimulatedScale
 from kiosk.service import KioskService
 from kiosk.tray import SimulatedTray
@@ -21,7 +23,9 @@ def make():
     clock = FakeClock()
     scale = SimulatedScale(noise_g=0)
     tray = SimulatedTray(CATALOG, scale)
-    return KioskService(CATALOG, tray, scale, clock), tray, scale, clock
+    gateway = FakeGateway()
+    svc = KioskService(CATALOG, tray, scale, gateway, JwtVerifier(PUBLIC_PEM), clock)
+    return svc, tray, scale, clock, gateway
 
 
 def ticks(svc: KioskService, n: int = 3) -> None:
@@ -30,7 +34,7 @@ def ticks(svc: KioskService, n: int = 3) -> None:
 
 
 def test_happy_path_w1_to_w4_and_auto_reset():
-    svc, tray, _, clock = make()
+    svc, tray, _, clock, gateway = make()
     svc.start()
     tray.place(["AGUA"])
     ticks(svc)
@@ -45,7 +49,10 @@ def test_happy_path_w1_to_w4_and_auto_reset():
     assert svc.snapshot()["can_pay"] is True
     svc.pay()
     assert svc.snapshot()["screen"] == "QR"
-    svc.simulate_payment()
+    assert svc.snapshot()["qr_payload"] == "https://localhost:8443/pay/ch_1"
+    assert gateway.amounts == [250]
+    gateway.paid = True
+    svc.tick()
     assert svc.snapshot()["screen"] == "W4"
 
     clock.t = 9.9
@@ -57,7 +64,7 @@ def test_happy_path_w1_to_w4_and_auto_reset():
 
 
 def test_not_stable_before_three_frames():
-    svc, tray, _, _ = make()
+    svc, tray, _, _, _ = make()
     svc.start()
     tray.place(["AGUA"])
     ticks(svc, 2)
@@ -65,7 +72,7 @@ def test_not_stable_before_three_frames():
 
 
 def test_weight_mismatch_blocks_payment():
-    svc, tray, scale, _ = make()
+    svc, tray, scale, _, _ = make()
     svc.start()
     tray.place(["AGUA"])
     scale.set_trap(40.0)
@@ -77,7 +84,7 @@ def test_weight_mismatch_blocks_payment():
 
 
 def test_more_than_three_items():
-    svc, tray, _, _ = make()
+    svc, tray, _, _, _ = make()
     svc.start()
     tray.place(["CHOCO"] * 4)
     ticks(svc)
@@ -87,7 +94,7 @@ def test_more_than_three_items():
 
 
 def test_payment_timeout_returns_to_w3():
-    svc, tray, _, clock = make()
+    svc, tray, _, clock, _ = make()
     svc.start()
     tray.place(["AGUA"])
     ticks(svc)
@@ -99,7 +106,7 @@ def test_payment_timeout_returns_to_w3():
 
 
 def test_tray_change_in_w3_returns_to_w2():
-    svc, tray, _, _ = make()
+    svc, tray, _, _, _ = make()
     svc.start()
     tray.place(["AGUA"])
     ticks(svc)
@@ -118,7 +125,7 @@ class BrokenCamera:
 
 def test_sensor_failure_goes_out_of_service_and_recovers():
     scale = SimulatedScale(noise_g=0)
-    svc = KioskService(CATALOG, BrokenCamera(), scale, FakeClock())
+    svc = KioskService(CATALOG, BrokenCamera(), scale, FakeGateway(), JwtVerifier(PUBLIC_PEM), FakeClock())
     svc.start()
     svc.tick()
     assert svc.snapshot()["screen"] == "FUERA_DE_SERVICIO"
@@ -127,10 +134,62 @@ def test_sensor_failure_goes_out_of_service_and_recovers():
 
 
 def test_help_requests_lifecycle():
-    svc, _, _, _ = make()
+    svc, _, _, _, _ = make()
     req = svc.request_help()
     assert req == {"id": 1, "screen": "W1", "at": 0.0}
     assert svc.snapshot()["help_pending"] is True
     svc.resolve_help(1)
     assert svc.help_requests == []
     assert svc.snapshot()["help_pending"] is False
+
+
+def paying(amount_skus=("AGUA",)):
+    svc, tray, _, clock, gateway = make()
+    svc.start()
+    tray.place(list(amount_skus))
+    ticks(svc)
+    svc.confirm()
+    svc.pay()
+    return svc, clock, gateway
+
+
+def test_wrong_amount_does_not_complete_sale():
+    svc, _, gateway = paying()
+    gateway.paid = True
+    gateway.paid_amount = 1
+    svc.tick()
+    assert svc.snapshot()["screen"] == "QR"
+
+
+def test_gateway_down_on_pay_stays_in_w3_with_message():
+    svc, tray, _, _, gateway = make()
+    svc.start()
+    tray.place(["AGUA"])
+    ticks(svc)
+    svc.confirm()
+    gateway.fail_create = True
+    with pytest.raises(TransitionError, match="código QR"):
+        svc.pay()
+    assert svc.snapshot()["screen"] == "W3"
+
+
+def test_poll_errors_keep_waiting():
+    svc, _, gateway = paying()
+    gateway.fail_poll = True
+    svc.tick()
+    assert svc.snapshot()["screen"] == "QR"
+
+
+def test_polls_at_most_once_per_second():
+    svc, clock, gateway = paying()
+    svc.tick()
+    svc.tick()
+    assert gateway.polls == 1
+    clock.t = 1.0
+    svc.tick()
+    assert gateway.polls == 2
+
+
+def test_qr_payload_only_while_paying():
+    svc, _, _, _, _ = make()
+    assert svc.snapshot()["qr_payload"] is None

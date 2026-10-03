@@ -13,6 +13,7 @@ const base: Snapshot = {
   alert: null,
   seconds_in_state: 0,
   help_pending: false,
+  qr_payload: null,
 };
 const agua = { sku: "AGUA", name: "Agua", quantity: 1, unit_price_cents: 250 };
 
@@ -116,5 +117,17 @@ describe("Kiosk", () => {
     render(<Kiosk snapshot={{ ...base, screen: "FUERA_DE_SERVICIO" }} />);
     expect(screen.getByText("Fuera de servicio")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "SOLICITAR AYUDA" })).toBeInTheDocument();
+  });
+
+  it("QR con payload muestra la imagen y la indicación", async () => {
+    render(<Kiosk snapshot={{ ...base, screen: "QR", qr_payload: "https://localhost:8443/pay/ch_1" }} />);
+    expect(await screen.findByRole("img", { name: "Código QR de pago" })).toBeInTheDocument();
+    expect(screen.getByText("Escanea con Yape o Plin")).toBeInTheDocument();
+  });
+
+  it("QR sin payload muestra Generando y ninguna imagen", () => {
+    render(<Kiosk snapshot={{ ...base, screen: "QR", qr_payload: null }} />);
+    expect(screen.getByText("Generando código QR…")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 });

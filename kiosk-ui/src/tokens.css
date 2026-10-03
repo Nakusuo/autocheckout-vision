@@ -68,3 +68,4 @@ body { margin: 0; background: #dfe3e0; }
   width: 60cqw; aspect-ratio: 1; display: grid; place-items: center; text-align: center; padding: 4cqw;
   border: 0.5cqw dashed var(--muted); border-radius: var(--radius); background: var(--surface); color: var(--muted);
 }
+.qr-img { width: 60cqw; aspect-ratio: 1; background: #fff; padding: 2cqw; border-radius: var(--radius); }

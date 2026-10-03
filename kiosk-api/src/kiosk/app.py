@@ -141,8 +141,4 @@ def create_app(
             scale.set_trap(body.offset_g)
             return service.snapshot()
 
-        @app.post("/sim/pay")
-        async def sim_pay() -> dict:
-            return act(service.simulate_payment)
-
     return app
