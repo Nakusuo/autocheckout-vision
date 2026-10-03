@@ -38,7 +38,7 @@ def create_app(private_key_pem: bytes, api_key: str, public_url: str) -> FastAPI
     app = FastAPI(title="mock-gateway")
 
     def require_key(given: str | None) -> None:
-        if given is None or not hmac.compare_digest(given, api_key):
+        if given is None or not hmac.compare_digest(given.encode(), api_key.encode()):
             raise HTTPException(status_code=401, detail="API key inválida")
 
     def find(charge_id: str) -> Charge:

@@ -37,6 +37,11 @@ def test_create_requires_api_key(client):
     assert client.post("/charges", json=body, headers={"X-API-Key": "mala"}).status_code == 401
 
 
+def test_non_ascii_api_key_is_401(client):
+    r = client.post("/charges", json={"amount_cents": 1, "reference": "x"}, headers=[(b"x-api-key", "clavé".encode("latin-1"))])
+    assert r.status_code == 401
+
+
 def test_create_returns_qr_payload(client):
     charge = new_charge(client)
     assert charge["status"] == "PENDING"

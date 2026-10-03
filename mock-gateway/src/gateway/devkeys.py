@@ -2,6 +2,7 @@
 
 import datetime as dt
 import ipaddress
+import sys
 from pathlib import Path
 
 from cryptography import x509
@@ -102,6 +103,10 @@ def write_tls_certs(out: Path) -> None:
 def main() -> None:
     out = REPO / "keys"
     out.mkdir(exist_ok=True)
+    private_key_path = out / "gateway_jwt_private.pem"
+    if private_key_path.exists() and "--force" not in sys.argv:
+        print(f"Ya existen claves en {out}; usa --force para regenerarlas")
+        return
     write_signing_keys(out)
     write_tls_certs(out)
     print(f"Claves y certificados de desarrollo creados en {out}")
