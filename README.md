@@ -42,6 +42,29 @@ Para pagar: en la pantalla del QR, abre en `/sim` el enlace «Abrir el celular s
 
 La API escucha en 127.0.0.1:8000 y solo acepta peticiones desde http://localhost:5173 (Vite usa ese puerto fijo; si está ocupado, libéralo).
 
+## Modo cámara
+
+Requiere el extra de visión: `pip install -e ".[dev,vision]"` en `kiosk-api`.
+
+**Probar la webcam** con cualquier modelo YOLOv8 ONNX (por ejemplo, el preentrenado de `ml/data/models/`, que reconoce objetos genéricos como `bottle`):
+
+```bash
+cd kiosk-api
+python -m kiosk.vision --model ../ml/data/models/yolov8n-416.onnx --camera 0
+```
+
+**Quiosco con cámara** (cuando exista el modelo entrenado con los productos del catálogo):
+
+```bash
+export KIOSK_MODE=camera
+export KIOSK_MODEL=../ml/data/models/autocaja-416.onnx   # modelo entrenado (M1)
+export KIOSK_CAMERA=0      # índice de la webcam
+export KIOSK_IMGSZ=416     # tamaño con el que se exportó
+python -m kiosk
+```
+
+En modo cámara no existen las rutas `/sim` ni el panel de simulación. Mientras no haya balanza física, la balanza simulada pesa lo que la cámara detecta, así que la validación de peso solo es real con una celda de carga (pendiente).
+
 ## Herramientas del dataset (`ml/`)
 
 ```bash
