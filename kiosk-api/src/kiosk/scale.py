@@ -11,7 +11,8 @@ class SimulatedScale:
     """Balanza falsa: peso cargado ± ruido, más un desvío opcional («modo trampa»)."""
 
     def __init__(self, noise_g: float = 2.0, seed: int | None = None):
-        self._rng = random.Random(seed)  # nosec B311 — simulación, no criptografía
+        # Simulación, no criptografía.
+        self._rng = random.Random(seed)  # nosec B311
         self._noise = noise_g
         self._load = 0.0
         self._offset = 0.0
