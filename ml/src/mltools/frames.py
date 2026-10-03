@@ -6,6 +6,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from mltools.console import utf8_output
+
 
 def _signature(frame: np.ndarray) -> np.ndarray:
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -47,6 +49,7 @@ def extract_frames(
 
 
 def main(argv: list[str] | None = None) -> int:
+    utf8_output()
     parser = argparse.ArgumentParser(description="Extrae fotos de videos del dataset.")
     parser.add_argument("videos", type=Path, nargs="+")
     parser.add_argument("--out", type=Path, required=True, help="Carpeta del producto destino")
