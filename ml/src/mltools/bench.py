@@ -10,6 +10,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from mltools.console import utf8_output
+
 TARGET_MS = 150.0
 
 
@@ -59,6 +61,7 @@ def letterbox(image: np.ndarray, size: int = 640) -> np.ndarray:
 
 
 def main(argv: list[str] | None = None) -> int:
+    utf8_output()
     parser = argparse.ArgumentParser(description="Benchmark de latencia del modelo (RNF-01).")
     parser.add_argument("--model", type=Path, required=True, help="Modelo .onnx")
     parser.add_argument("--image", type=Path, help="Foto de prueba (si no, una imagen sintética)")
