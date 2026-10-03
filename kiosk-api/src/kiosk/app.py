@@ -1,16 +1,21 @@
 import asyncio
+import logging
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field
+from starlette.responses import JSONResponse
 
 from kiosk.checkout import TransitionError
 from kiosk.scale import SimulatedScale
 from kiosk.service import KioskService
 from kiosk.tray import SimulatedTray
 
+log = logging.getLogger(__name__)
+
 TICK_S = 0.2
+ALLOWED_ORIGINS = {"http://localhost:5173", "http://127.0.0.1:5173"}
 
 
 class TrayIn(BaseModel):
@@ -18,7 +23,14 @@ class TrayIn(BaseModel):
 
 
 class TrapIn(BaseModel):
-    offset_g: float
+    offset_g: float = Field(ge=-5000, le=5000)
+
+
+def safe_tick(service: KioskService) -> None:
+    try:
+        service.tick()
+    except Exception:
+        log.exception("Error en tick; el bucle sigue")
 
 
 def create_app(
@@ -29,7 +41,7 @@ def create_app(
 ) -> FastAPI:
     async def tick_loop() -> None:
         while True:
-            service.tick()
+            safe_tick(service)
             await asyncio.sleep(TICK_S)
 
     @asynccontextmanager
@@ -40,6 +52,13 @@ def create_app(
             task.cancel()
 
     app = FastAPI(title="kiosk-api", lifespan=lifespan)
+
+    @app.middleware("http")
+    async def check_origin(request: Request, call_next):
+        origin = request.headers.get("origin")
+        if origin is not None and origin not in ALLOWED_ORIGINS:
+            return JSONResponse({"detail": "Origen no permitido"}, status_code=403)
+        return await call_next(request)
 
     def act(action: Callable[[], None]) -> dict:
         try:
@@ -88,6 +107,10 @@ def create_app(
 
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
+        origin = websocket.headers.get("origin")
+        if origin is not None and origin not in ALLOWED_ORIGINS:
+            await websocket.close(code=1008)
+            return
         await websocket.accept()
         try:
             while True:

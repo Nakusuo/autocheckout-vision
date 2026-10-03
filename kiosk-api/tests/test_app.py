@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
-from kiosk.app import create_app
+from kiosk.app import create_app, safe_tick
 from kiosk.catalog import Catalog, Product
 from kiosk.scale import SimulatedScale
 from kiosk.service import KioskService
@@ -72,3 +73,40 @@ def test_websocket_sends_snapshot():
 def test_sim_routes_absent_without_simulators():
     _, client = make(with_sims=False)
     assert client.post("/sim/pay").status_code == 404
+
+
+class ExplodingService:
+    def tick(self) -> None:
+        raise RuntimeError("boom")
+
+
+def test_safe_tick_swallows_and_logs(caplog):
+    safe_tick(ExplodingService())
+    assert "Error en tick" in caplog.text
+
+
+def test_foreign_origin_is_rejected():
+    _, client = make()
+    r = client.post("/api/start", headers={"Origin": "https://evil.example"})
+    assert r.status_code == 403
+
+
+def test_kiosk_ui_origin_is_allowed():
+    _, client = make()
+    r = client.post("/api/start", headers={"Origin": "http://localhost:5173"})
+    assert r.status_code == 200
+
+
+def test_ws_foreign_origin_is_closed():
+    _, client = make()
+    try:
+        with client.websocket_connect("/ws", headers={"origin": "https://evil.example"}) as ws:
+            ws.receive_json()
+        assert False, "Expected WebSocketDisconnect"
+    except WebSocketDisconnect:
+        pass
+
+
+def test_trap_offset_out_of_bounds():
+    _, client = make()
+    assert client.post("/sim/trap", json={"offset_g": 10000}).status_code == 422
