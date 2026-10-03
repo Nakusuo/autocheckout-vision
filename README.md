@@ -41,3 +41,18 @@ npm run dev
 Para pagar: en la pantalla del QR, abre en `/sim` el enlace «Abrir el celular simulado» y pulsa «Pagar con Yape/Plin (simulado)». El quiosco consulta la pasarela por HTTPS (TLS 1.3), verifica la firma RS256 y muestra el ticket.
 
 La API escucha en 127.0.0.1:8000 y solo acepta peticiones desde http://localhost:5173 (Vite usa ese puerto fijo; si está ocupado, libéralo).
+
+## Herramientas del dataset (`ml/`)
+
+```bash
+cd ml
+python -m venv .venv && source .venv/Scripts/activate
+pip install -e ".[dev,bench]"
+
+python -m mltools.dataset_check                 # revisa ml/data/raw/ contra el catálogo
+python -m mltools.frames VIDEO.mp4 --out ml/data/raw/SKU   # fotos desde un video
+python -m mltools.labelstudio                   # configuración para Label Studio
+python -m mltools.bench --model modelo.onnx     # latencia vs RNF-01 (p95 ≤ 150 ms)
+```
+
+Guía de etiquetado: [`docs/ml/etiquetado.md`](docs/ml/etiquetado.md). Los datos (`ml/data/`) nunca van a git.
