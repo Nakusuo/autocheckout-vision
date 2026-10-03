@@ -15,6 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6", "bandit>=1.7", "httpx>=0.27"]
+vision = ["numpy>=1.26", "opencv-python-headless>=4.9", "onnxruntime>=1.18"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
