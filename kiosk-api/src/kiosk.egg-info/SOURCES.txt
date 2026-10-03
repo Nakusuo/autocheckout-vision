@@ -1,0 +1,8 @@
+pyproject.toml
+src/kiosk/__init__.py
+src/kiosk.egg-info/PKG-INFO
+src/kiosk.egg-info/SOURCES.txt
+src/kiosk.egg-info/dependency_links.txt
+src/kiosk.egg-info/requires.txt
+src/kiosk.egg-info/top_level.txt
+tests/test_catalog.py

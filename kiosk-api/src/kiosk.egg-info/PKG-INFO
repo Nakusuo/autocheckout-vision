@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: kiosk
+Version: 0.1.0
+Requires-Python: >=3.12
+Provides-Extra: dev
+Requires-Dist: pytest>=8; extra == "dev"
+Requires-Dist: ruff>=0.6; extra == "dev"
+Requires-Dist: bandit>=1.7; extra == "dev"
