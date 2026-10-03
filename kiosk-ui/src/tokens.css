@@ -63,3 +63,8 @@ body { margin: 0; background: #dfe3e0; }
 .actions { display: flex; flex-direction: column; gap: 2cqw; }
 .help { padding: 0 4cqw 4cqw; display: flex; flex-direction: column; gap: 1.5cqw; align-items: stretch; }
 .help-note { text-align: center; color: var(--ok); font-weight: 700; font-size: 4cqw; margin: 0; }
+.amount { font-size: 12cqw; font-weight: 800; margin: 0; }
+.qr-box {
+  width: 60cqw; aspect-ratio: 1; display: grid; place-items: center; text-align: center; padding: 4cqw;
+  border: 0.5cqw dashed var(--muted); border-radius: var(--radius); background: var(--surface); color: var(--muted);
+}

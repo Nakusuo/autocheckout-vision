@@ -2,7 +2,10 @@ import type { Snapshot } from "../api";
 import { HelpButton } from "./HelpButton";
 import { Confirmar } from "./screens/Confirmar";
 import { Escaneo } from "./screens/Escaneo";
+import { FueraDeServicio } from "./screens/FueraDeServicio";
 import { Inicio } from "./screens/Inicio";
+import { Pago } from "./screens/Pago";
+import { Ticket } from "./screens/Ticket";
 
 function Screen({ snapshot, offline }: { snapshot: Snapshot; offline: boolean }) {
   switch (snapshot.screen) {
@@ -12,8 +15,12 @@ function Screen({ snapshot, offline }: { snapshot: Snapshot; offline: boolean })
       return <Escaneo snapshot={snapshot} offline={offline} />;
     case "W3":
       return <Confirmar snapshot={snapshot} offline={offline} />;
-    default:
-      return <p>{snapshot.screen}</p>;
+    case "QR":
+      return <Pago snapshot={snapshot} />;
+    case "W4":
+      return <Ticket snapshot={snapshot} />;
+    case "FUERA_DE_SERVICIO":
+      return <FueraDeServicio />;
   }
 }
 
