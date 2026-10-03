@@ -55,7 +55,17 @@ export function SimPanel() {
       </label>{" "}
       <button type="button" onClick={() => call("POST", "/sim/trap", { offset_g: Number(trap) || 0 })}>Aplicar</button>
       <h2>Pago</h2>
-      <button type="button" onClick={() => call("POST", "/sim/pay")}>Simular pago Yape/Plin</button>
+      {snapshot?.screen === "QR" && snapshot.qr_payload ? (
+        <p>
+          <a href={snapshot.qr_payload} target="_blank" rel="noopener noreferrer">
+            Abrir el celular simulado (página de pago)
+          </a>
+          <br />
+          La primera vez el navegador avisará del certificado de desarrollo: acéptalo
+        </p>
+      ) : (
+        <p>El enlace de pago aparece cuando el quiosco está en la pantalla de pago</p>
+      )}
       <h2>Estado</h2>
       <p>screen: {snapshot?.screen ?? "-"}</p>
       <p>weight: {snapshot?.weight ? `${snapshot.weight.ok ? "ok" : "no coincide"} (${snapshot.weight.diff_g} g)` : "-"}</p>
