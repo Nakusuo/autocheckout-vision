@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 from mltools.catalog import REPO, load_skus
+from mltools.console import utf8_output
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png"}
 RATIOS = (0.7, 0.2, 0.1)
@@ -46,15 +47,28 @@ def _check_label(path: Path, n_classes: int) -> None:
 
 def _prepare_output(out_dir: Path) -> None:
     if out_dir.exists() and any(out_dir.iterdir()):
-        if not (out_dir / "data.yaml").exists():
+        if not (out_dir / ".mltools-split").exists():
             raise ValueError(f"La carpeta {out_dir} no fue generada por split; elige otra salida")
-        shutil.rmtree(out_dir)
+        # Borrar solo lo que generó split
+        for kind in ("images", "labels"):
+            path = out_dir / kind
+            if path.exists():
+                shutil.rmtree(path)
+        yaml_path = out_dir / "data.yaml"
+        if yaml_path.exists():
+            yaml_path.unlink()
     for kind in ("images", "labels"):
         for split in SPLITS:
             (out_dir / kind / split).mkdir(parents=True, exist_ok=True)
 
 
 def build_dataset(export_dir: Path, out_dir: Path, skus: set[str], seed: int = 42) -> Path:
+    # Validar que export_dir no esté dentro de out_dir
+    export_resolved = export_dir.resolve()
+    out_resolved = out_dir.resolve()
+    if export_resolved.is_relative_to(out_resolved):
+        raise ValueError("La exportación no puede estar dentro de la salida")
+
     classes = read_classes(export_dir)
     unknown = sorted(set(classes) - skus)
     if unknown:
@@ -62,6 +76,8 @@ def build_dataset(export_dir: Path, out_dir: Path, skus: set[str], seed: int = 4
     images = {
         p.stem: p for p in (export_dir / "images").iterdir() if p.suffix.lower() in IMAGE_EXT
     }
+    if not images:
+        raise ValueError("La exportación no tiene fotos")
     labels_dir = export_dir / "labels"
     missing = sorted(stem for stem in images if not (labels_dir / f"{stem}.txt").exists())
     if missing:
@@ -78,15 +94,18 @@ def build_dataset(export_dir: Path, out_dir: Path, skus: set[str], seed: int = 4
     names = "\n".join(f"  {i}: {name}" for i, name in enumerate(classes))
     yaml = out_dir / "data.yaml"
     yaml.write_text(
-        f"path: {out_dir.resolve().as_posix()}\n"
+        f'path: "{out_dir.resolve().as_posix()}"\n'
         "train: images/train\nval: images/val\ntest: images/test\n"
         f"names:\n{names}\n",
         encoding="utf-8",
     )
+    # Escribir marcador para siguiente ejecución
+    (out_dir / ".mltools-split").write_text("", encoding="utf-8")
     return yaml
 
 
 def main(argv: list[str] | None = None) -> int:
+    utf8_output()
     parser = argparse.ArgumentParser(description="Arma el dataset YOLO desde Label Studio.")
     parser.add_argument("export_dir", type=Path, nargs="?", default=REPO / "ml" / "data" / "labeled")
     parser.add_argument("--out", type=Path, default=REPO / "ml" / "data" / "dataset")
