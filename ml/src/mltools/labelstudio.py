@@ -8,6 +8,7 @@ from pathlib import Path
 from xml.sax.saxutils import quoteattr  # nosec B406
 
 from mltools.catalog import REPO, load_skus
+from mltools.console import utf8_output
 
 
 def label_config(skus: Iterable[str]) -> str:
@@ -23,6 +24,7 @@ def label_config(skus: Iterable[str]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    utf8_output()
     parser = argparse.ArgumentParser(description="Configuración de Label Studio.")
     parser.add_argument("--catalog", type=Path, default=REPO / "catalog" / "products.csv")
     parser.add_argument("--out", type=Path, help="Archivo donde guardarla (si no, se imprime)")
