@@ -14,10 +14,14 @@ export type Snapshot = {
 };
 
 export async function post(path: string, body?: unknown): Promise<Snapshot> {
+  return request<Snapshot>("POST", path, body);
+}
+
+export async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
-      method: "POST",
+      method,
       headers: { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -58,8 +62,9 @@ export function useKioskState(): { snapshot: Snapshot | null; connected: boolean
         }
       };
       ws.onclose = () => {
+        if (closed) return;
         setConnected(false);
-        if (!closed) timer = setTimeout(connect, 1000);
+        timer = setTimeout(connect, 1000);
       };
     };
     connect();

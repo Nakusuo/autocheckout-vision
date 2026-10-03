@@ -95,4 +95,26 @@ describe("Kiosk", () => {
     expect(await screen.findByText("No se pudo conectar. Intente de nuevo")).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
+
+  it("QR muestra monto, espera y segundos restantes", () => {
+    render(<Kiosk snapshot={{ ...base, screen: "QR", total_cents: 530, seconds_in_state: 20 }} />);
+    expect(screen.getByText("S/ 5.30")).toBeInTheDocument();
+    expect(screen.getByText("Esperando confirmación del pago")).toBeInTheDocument();
+    expect(screen.getByText("100 s")).toBeInTheDocument();
+  });
+
+  it("W4 muestra agradecimiento, total y cuenta atrás", () => {
+    const snap = { ...base, screen: "W4" as const, lines: [agua], item_count: 1, total_cents: 250, seconds_in_state: 3 };
+    render(<Kiosk snapshot={snap} />);
+    expect(screen.getByText("Gracias por su compra")).toBeInTheDocument();
+    expect(screen.getByText("Agua")).toBeInTheDocument();
+    expect(screen.getAllByText("S/ 2.50").length).toBeGreaterThan(0);
+    expect(screen.getByText("Volviendo al inicio en 7 s")).toBeInTheDocument();
+  });
+
+  it("FUERA_DE_SERVICIO avisa y mantiene la ayuda", () => {
+    render(<Kiosk snapshot={{ ...base, screen: "FUERA_DE_SERVICIO" }} />);
+    expect(screen.getByText("Fuera de servicio")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "SOLICITAR AYUDA" })).toBeInTheDocument();
+  });
 });

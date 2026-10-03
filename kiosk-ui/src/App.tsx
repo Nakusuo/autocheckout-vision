@@ -1,5 +1,7 @@
 import { useKioskState } from "./api";
 import { Kiosk } from "./kiosk/Kiosk";
+import { CajaPanel } from "./panels/CajaPanel";
+import { SimPanel } from "./panels/SimPanel";
 
 function KioskLive() {
   const { snapshot, connected } = useKioskState();
@@ -7,14 +9,6 @@ function KioskLive() {
     return <main className="kiosk"><p className="screen screen-center">Conectando...</p></main>;
   }
   return <Kiosk snapshot={snapshot} connected={connected} />;
-}
-
-function SimPanel() {
-  return <p>Simulador (Task 6)</p>;
-}
-
-function CajaPanel() {
-  return <p>Caja (Task 6)</p>;
 }
 
 export default function App() {
