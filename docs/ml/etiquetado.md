@@ -17,7 +17,7 @@ Descarga la carpeta del Drive **AutoCaja-dataset** dentro de `ml/data/raw/` y ej
 
 ```bash
 python -m mltools.dataset_check          # corrige lo que marque ❌ antes de seguir
-python -m mltools.frames ml/data/raw/videos/JP_cocacola.mp4 --out ml/data/raw/COCACOLA-500
+python -m mltools.frames data/raw/videos/JP_cocacola.mp4 --out data/raw/COCACOLA-500
 ```
 
 ## 3. Crear el proyecto

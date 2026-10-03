@@ -3,6 +3,8 @@
 import argparse
 from collections.abc import Iterable
 from pathlib import Path
+
+# Solo se usa quoteattr para escapar; no se parsea XML.
 from xml.sax.saxutils import quoteattr  # nosec B406
 
 from mltools.catalog import REPO, load_skus

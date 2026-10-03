@@ -14,6 +14,14 @@ IGNORED = {"desktop.ini", "thumbs.db", ".ds_store"}
 MIN_PER_PRODUCT = 100
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 @dataclass
 class Report:
     counts: dict[str, int] = field(default_factory=dict)
@@ -45,7 +53,7 @@ def check_dataset(root: Path, skus: set[str], min_per_product: int = MIN_PER_PRO
             if path.suffix.lower() not in allowed:
                 report.bad_files.append(rel)
                 continue
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            digest = _sha256(path)
             if digest in seen:
                 report.duplicates.append((seen[digest], rel))
                 continue
