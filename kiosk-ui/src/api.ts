@@ -14,11 +14,16 @@ export type Snapshot = {
 };
 
 export async function post(path: string, body?: unknown): Promise<Snapshot> {
-  const res = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw new Error("No se pudo conectar. Intente de nuevo");
+  }
   if (!res.ok) {
     let detail = `Error ${res.status}`;
     try {
@@ -32,8 +37,9 @@ export async function post(path: string, body?: unknown): Promise<Snapshot> {
   return res.json();
 }
 
-export function useKioskState(): Snapshot | null {
+export function useKioskState(): { snapshot: Snapshot | null; connected: boolean } {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -43,8 +49,16 @@ export function useKioskState(): Snapshot | null {
     const connect = () => {
       const proto = location.protocol === "https:" ? "wss" : "ws";
       ws = new WebSocket(`${proto}://${location.host}/ws`);
-      ws.onmessage = (ev) => setSnapshot(JSON.parse(ev.data) as Snapshot);
+      ws.onopen = () => setConnected(true);
+      ws.onmessage = (ev) => {
+        try {
+          setSnapshot(JSON.parse(ev.data) as Snapshot);
+        } catch {
+          /* mensaje malformado: se ignora */
+        }
+      };
       ws.onclose = () => {
+        setConnected(false);
         if (!closed) timer = setTimeout(connect, 1000);
       };
     };
@@ -57,5 +71,5 @@ export function useKioskState(): Snapshot | null {
     };
   }, []);
 
-  return snapshot;
+  return { snapshot, connected };
 }

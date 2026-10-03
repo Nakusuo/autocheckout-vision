@@ -2,11 +2,11 @@ import { useKioskState } from "./api";
 import { Kiosk } from "./kiosk/Kiosk";
 
 function KioskLive() {
-  const snapshot = useKioskState();
+  const { snapshot, connected } = useKioskState();
   if (!snapshot) {
     return <main className="kiosk"><p className="screen screen-center">Conectando...</p></main>;
   }
-  return <Kiosk snapshot={snapshot} />;
+  return <Kiosk snapshot={snapshot} connected={connected} />;
 }
 
 function SimPanel() {

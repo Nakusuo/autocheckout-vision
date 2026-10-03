@@ -2,8 +2,8 @@ import type { Snapshot } from "../../api";
 import { useAction } from "../useAction";
 import { Lines } from "./Lines";
 
-export function Escaneo({ snapshot }: { snapshot: Snapshot }) {
-  const { error, run } = useAction();
+export function Escaneo({ snapshot, offline }: { snapshot: Snapshot; offline: boolean }) {
+  const { error, pending, run } = useAction();
   const w = snapshot.weight;
   return (
     <section className="screen">
@@ -19,7 +19,7 @@ export function Escaneo({ snapshot }: { snapshot: Snapshot }) {
       <button
         type="button"
         className="btn"
-        disabled={snapshot.item_count === 0 || snapshot.alert !== null}
+        disabled={offline || pending || snapshot.item_count === 0 || snapshot.alert !== null}
         onClick={() => run("/api/confirm")}
       >
         CONFIRMAR

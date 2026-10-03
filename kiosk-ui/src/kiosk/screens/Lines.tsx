@@ -8,7 +8,7 @@ export function Lines({ snapshot }: { snapshot: Snapshot }) {
         {snapshot.lines.map((l) => (
           <li className="line" key={l.sku}>
             <span>{l.name}</span>
-            <span className="line-qty">{l.quantity}</span>
+            <span className="line-qty" aria-label="Cantidad">{l.quantity}</span>
             <span>{formatPEN(l.unit_price_cents)}</span>
           </li>
         ))}
