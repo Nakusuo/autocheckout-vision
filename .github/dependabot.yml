@@ -1,0 +1,30 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /kiosk-api
+    schedule:
+      interval: weekly
+    target-branch: develop
+  - package-ecosystem: pip
+    directory: /mock-gateway
+    schedule:
+      interval: weekly
+    target-branch: develop
+  - package-ecosystem: pip
+    directory: /ml
+    schedule:
+      interval: weekly
+    target-branch: develop
+  - package-ecosystem: npm
+    directory: /kiosk-ui
+    schedule:
+      interval: weekly
+    target-branch: develop
+    groups:
+      dependencias-de-desarrollo:
+        dependency-type: development
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    target-branch: develop
