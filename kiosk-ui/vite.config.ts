@@ -15,5 +15,7 @@ export default defineConfig({
       "/ws": { target: "ws://127.0.0.1:8000", ws: true },
     },
   },
-  test: { environment: "jsdom", globals: true, setupFiles: ["./src/setupTests.ts"] },
+  // Hilos en vez de procesos: en Windows el primer proceso hijo puede tardar tanto en
+  // arrancar que vitest se rinde ("Timeout waiting for worker to respond").
+  test: { environment: "jsdom", globals: true, setupFiles: ["./src/setupTests.ts"], pool: "threads" },
 });
