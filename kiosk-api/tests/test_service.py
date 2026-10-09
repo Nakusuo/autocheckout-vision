@@ -63,6 +63,27 @@ def test_happy_path_w1_to_w4_and_auto_reset():
     assert svc.snapshot()["screen"] == "W1"
 
 
+def test_paid_sale_issues_one_simulated_receipt():
+    svc, tray, _, _, gateway = make()
+    svc.start()
+    tray.place(["AGUA", "AGUA"])
+    ticks(svc)
+    svc.confirm()
+    svc.pay()
+    gateway.paid = True
+    svc.tick()
+    svc.tick()
+    assert svc.snapshot()["screen"] == "W4"
+    assert len(svc.pos.receipts) == 1
+    receipt = svc.pos.receipts[0]
+    assert receipt["charge_id"] == "ch_1"
+    assert receipt["reference"] == "venta-1"
+    assert receipt["total_cents"] == 500
+    assert receipt["lines"] == [
+        {"sku": "AGUA", "name": "Agua", "quantity": 2, "unit_price_cents": 250}
+    ]
+
+
 def test_not_stable_before_three_frames():
     svc, tray, _, _, _ = make()
     svc.start()

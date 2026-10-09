@@ -23,6 +23,7 @@ ml/runs/
 *.pt
 *.onnx
 
-# Base local
+# Base local y boletas simuladas
 *.sqlite3
 *.db
+boletas.jsonl
