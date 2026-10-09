@@ -31,3 +31,7 @@ boletas.jsonl
 # Playwright
 test-results/
 playwright-report/
+
+# Capturas de revisión de diseño
+.impeccable/review/
+.impeccable/build/

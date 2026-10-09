@@ -11,7 +11,7 @@ export function Pago({ snapshot }: { snapshot: Snapshot }) {
   useEffect(() => {
     if (!payload) return;
     let cancelled = false;
-    QRCode.toDataURL(payload, { margin: 1, width: 640, errorCorrectionLevel: "M" })
+    QRCode.toDataURL(payload, { margin: 1, width: 640, errorCorrectionLevel: "M", color: { dark: "#141414", light: "#ffffff" } })
       .then((url) => {
         if (!cancelled) setQr({ payload, url });
       })
@@ -26,16 +26,23 @@ export function Pago({ snapshot }: { snapshot: Snapshot }) {
   const dataUrl = qr && qr.payload === payload ? qr.url : null;
 
   return (
-    <section className="screen screen-center">
-      <p className="amount">{formatPEN(snapshot.total_cents)}</p>
-      {dataUrl ? (
-        <img className="qr-img" src={dataUrl} alt="Código QR de pago" />
-      ) : (
-        <div className="qr-box">Generando código QR…</div>
-      )}
-      <p>Escanea con Yape o Plin</p>
-      <p>Esperando confirmación del pago</p>
-      <p className="muted">{left} s</p>
+    <section className="screen screen-pay">
+      <div className="pay-head">
+        <p className="pay-label">Total a pagar</p>
+        <p className="amount">{formatPEN(snapshot.total_cents)}</p>
+      </div>
+      <div className="qr-plate">
+        {dataUrl ? (
+          <img className="qr-img" src={dataUrl} alt="Código QR de pago" />
+        ) : (
+          <div className="qr-box">Generando código QR…</div>
+        )}
+      </div>
+      <p className="pay-hint">Escanea con Yape o Plin</p>
+      <div className="countdown">
+        <p className="speed-sign">{left} s</p>
+        <p className="muted waiting">Esperando confirmación del pago</p>
+      </div>
     </section>
   );
 }
