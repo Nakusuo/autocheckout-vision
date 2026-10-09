@@ -20,7 +20,7 @@ const agua = { sku: "AGUA", name: "Agua", quantity: 1, unit_price_cents: 250 };
 describe("Kiosk", () => {
   it("W1 muestra el texto y el botón INICIAR", () => {
     render(<Kiosk snapshot={base} />);
-    expect(screen.getByText("[AUTO-CHECKOUT] Coloca tus productos")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "[AUTO-CHECKOUT] Coloca tus productos" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "INICIAR" })).toBeInTheDocument();
   });
 
