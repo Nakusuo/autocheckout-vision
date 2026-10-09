@@ -27,3 +27,7 @@ ml/runs/
 *.sqlite3
 *.db
 boletas.jsonl
+
+# Playwright
+test-results/
+playwright-report/
