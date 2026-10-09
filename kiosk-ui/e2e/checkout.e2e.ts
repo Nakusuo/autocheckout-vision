@@ -39,6 +39,11 @@ test.beforeEach(async ({ request }) => {
     .toBe("W1");
   await placeOnTray(request, []);
   await setTrap(request, 0);
+  // Solicitudes de ayuda que hayan quedado de corridas anteriores
+  const pending: { id: number }[] = await (await request.get("/api/help")).json();
+  for (const { id } of pending) {
+    expect((await request.delete(`/api/help/${id}`)).ok()).toBeTruthy();
+  }
 });
 
 test("compra de W1 a W4 con trampa de peso, CORREGIR y pago por QR", async ({ page, context, request }) => {
@@ -104,12 +109,9 @@ test("SOLICITAR AYUDA llega al panel de caja y se atiende", async ({ page, conte
 
   const caja = await context.newPage();
   await caja.goto("/caja");
-  const item = caja.getByRole("listitem").filter({ hasText: "W1" });
-  await expect(item).toBeVisible();
-  // Atiende todas las solicitudes pendientes (pueden quedar de corridas anteriores)
-  while ((await caja.getByRole("button", { name: "Atendido" }).count()) > 0) {
-    await caja.getByRole("button", { name: "Atendido" }).first().click();
-  }
+  await expect(caja.getByRole("listitem")).toHaveCount(1);
+  await expect(caja.getByRole("listitem")).toContainText("W1");
+  await caja.getByRole("button", { name: "Atendido" }).click();
   await expect(caja.getByText("Sin solicitudes")).toBeVisible();
   await expect(page.getByText("Ayuda en camino")).toBeHidden();
 });
