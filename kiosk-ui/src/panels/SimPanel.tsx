@@ -13,7 +13,7 @@ const KIOSK_ACTIONS: Partial<Record<Snapshot["screen"], { label: string; path: s
   W1: [{ label: "Iniciar compra", path: "/api/start" }],
   W2: [
     { label: "Confirmar", path: "/api/confirm" },
-    { label: "Volver a escanear", path: "/api/rescan" },
+    { label: "Escanear de nuevo", path: "/api/rescan" },
   ],
   W3: [
     { label: "Pagar", path: "/api/pay" },

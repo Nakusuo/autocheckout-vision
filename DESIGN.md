@@ -159,7 +159,8 @@ Plano: la profundidad la dan los bordes de tinta, no las sombras. La única somb
 - **Señal de velocidad**: disco blanco con aro rojo y la cifra en negro para los 120 s del pago y los 10 s del ticket.
 - **Fuera de servicio**: octógono rojo de PARE sobre el título.
 
-- **Volver a escanear** (W2): placa blanca más baja, debajo de CONFIRMAR; borra lo detectado y la cámara lee la bandeja de nuevo. En W3, una pista indica que CORREGIR sirve para lo mismo.
+- **Escaneo en vivo** (W2): una píldora «En vivo» junto al título (punto rojo que late). Cada producto nuevo se marca «+ Agregado» (fila amarilla clara y etiqueta roja) unos 2,4 s. Una pista invita a pulsar CONFIRMAR cuando estén todos: el cliente decide cuándo termina.
+- **Escanear de nuevo** (W2): placa blanca más baja, debajo de CONFIRMAR. Abre una ventana visible de 4 s: la píldora pasa a roja con la cuenta («De nuevo… 3 s»), una barra roja avanza por el borde superior del tablero, las líneas reaparecen una tras otra y CONFIRMAR queda bloqueado hasta el final. En W3, una pista indica que CORREGIR permite seguir escaneando.
 - **Aviso de cámara** (W1 y W2): una línea pequeña con el ícono de cámara y la Ley 29733.
 
 **Paneles del equipo (`/sim`, `/caja`)**: misma paleta, tipografía y placas, pero a escala de escritorio (`rem`) y en dos columnas: tarjetas blancas con borde de tinta sobre fondo `#f3f1ec`, botones `pbtn` (rojo = acción principal) y el estado del quiosco como disco rojo con el código de pantalla. Estilos en `kiosk-ui/src/panels/panels.css`.

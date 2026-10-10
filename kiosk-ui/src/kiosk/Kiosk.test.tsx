@@ -14,6 +14,7 @@ const base: Snapshot = {
   seconds_in_state: 0,
   help_pending: false,
   qr_payload: null,
+  rescan_left: 0,
 };
 const agua = { sku: "AGUA", name: "Agua", quantity: 1, unit_price_cents: 250 };
 
@@ -45,9 +46,21 @@ describe("Kiosk", () => {
 
   it("W2 permite volver a escanear; W3 explica cómo", () => {
     const { rerender } = render(<Kiosk snapshot={{ ...base, screen: "W2" }} />);
-    expect(screen.getByRole("button", { name: "VOLVER A ESCANEAR" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "ESCANEAR DE NUEVO" })).toBeEnabled();
     rerender(<Kiosk snapshot={{ ...base, screen: "W3", lines: [agua], item_count: 1 }} />);
     expect(screen.getByText(/¿Falta un producto\? Pulsa CORREGIR/)).toBeInTheDocument();
+  });
+
+  it("al escanear de nuevo bloquea CONFIRMAR y muestra la cuenta", () => {
+    render(<Kiosk snapshot={{ ...base, screen: "W2", lines: [agua], item_count: 1, total_cents: 250, rescan_left: 2.4 }} />);
+    expect(screen.getByText("De nuevo… 3 s")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CONFIRMAR" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "ESCANEAR DE NUEVO" })).toBeDisabled();
+  });
+
+  it("W2 avisa cómo terminar de escanear", () => {
+    render(<Kiosk snapshot={{ ...base, screen: "W2", lines: [agua], item_count: 1, total_cents: 250 }} />);
+    expect(screen.getByText(/Pulsa CONFIRMAR para terminar de escanear/)).toBeInTheDocument();
   });
 
   it("W3 con can_pay habilita PAGAR", () => {
