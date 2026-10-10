@@ -84,6 +84,44 @@ def test_paid_sale_issues_one_simulated_receipt():
     ]
 
 
+def test_session_metrics_from_start_to_paid():
+    svc, tray, scale, clock, gateway = make()
+    clock.t = 5.0
+    svc.start()
+    tray.place(["AGUA"])
+    scale.set_trap(40.0)
+    ticks(svc)
+    ticks(svc)  # la alerta de peso sigue: cuenta una sola vez
+    scale.set_trap(0.0)
+    ticks(svc)
+    svc.confirm()
+    svc.correct()
+    ticks(svc)
+    svc.confirm()
+    svc.request_help()
+    svc.pay()
+    clock.t = 35.0
+    gateway.paid = True
+    svc.tick()
+
+    [session] = svc.sessions.sessions
+    assert session["outcome"] == "paid"
+    assert session["duration_s"] == 30.0
+    assert session["weight_alerts"] == 1
+    assert session["corrections"] == 1
+    assert session["help_requested"] is True
+    assert session["items"] == 1
+    assert session["total_cents"] == 250
+
+
+def test_session_ends_as_fault_when_sensor_fails():
+    scale = SimulatedScale(noise_g=0)
+    svc = KioskService(CATALOG, BrokenCamera(), scale, FakeGateway(), JwtVerifier(PUBLIC_PEM), FakeClock())
+    svc.start()
+    svc.tick()
+    assert [s["outcome"] for s in svc.sessions.sessions] == ["fault"]
+
+
 def test_not_stable_before_three_frames():
     svc, tray, _, _, _ = make()
     svc.start()
