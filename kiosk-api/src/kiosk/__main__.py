@@ -17,6 +17,7 @@ from kiosk.store import init_db, load_catalog
 from kiosk.tray import Detector, SimulatedTray
 
 REPO = Path(__file__).resolve().parents[3]
+log = logging.getLogger("kiosk")
 
 
 def build_detector(
@@ -59,8 +60,15 @@ def main() -> None:
     verifier = JwtVerifier((keys / "gateway_jwt_public.pem").read_bytes())
     pos = SimulatedPos(REPO / "kiosk-api" / "boletas.jsonl")
     sessions = SessionRecorder(REPO / "kiosk-api" / "sesiones.jsonl")
-    # Sin balanza física, en modo cámara la balanza simulada pesa lo que se va escaneando.
-    follow = (lambda cart: scale.set_load(cart.theoretical_weight_g)) if tray is None else None
+    # Sin balanza física, en modo cámara la balanza simulada pesa lo que se va escaneando:
+    # la validación de peso (ON-02) NO protege nada en ese modo. Solo para demostrar la visión.
+    follow = None
+    if tray is None:
+        log.warning(
+            "Modo cámara con balanza simulada: el peso sigue a la lista y no valida nada. "
+            "Conecta una balanza real antes de usarlo con clientes."
+        )
+        follow = lambda cart: scale.set_load(cart.theoretical_weight_g)
     service = KioskService(
         catalog, detector, scale, gateway, verifier, pos=pos, sessions=sessions, on_cart=follow
     )

@@ -164,19 +164,42 @@ def test_payment_timeout_returns_to_w3():
     assert svc.snapshot()["screen"] == "W3"
 
 
-def test_w3_closes_the_list_and_keeps_watching_the_weight():
+def test_new_product_in_view_during_w3_reopens_scanning():
     svc, tray, _, _, _ = make()
     svc.start()
     tray.place(["AGUA"])
     ticks(svc)
     svc.confirm()
-    tray.place(["AGUA", "CHOCO"])  # alguien agrega algo después de confirmar
+    tray.place(["AGUA", "CHOCO"])  # alguien pasa algo después de confirmar
+    ticks(svc)
+    snap = svc.snapshot()
+    assert snap["screen"] == "W2"
+    assert snap["item_count"] == 2
+
+
+def test_w3_keeps_watching_the_weight():
+    svc, tray, scale, _, _ = make()
+    svc.start()
+    tray.place(["AGUA"])
+    ticks(svc)
+    svc.confirm()
+    scale.set_trap(40.0)  # algo cambia en la bandeja sin pasar por la cámara
     ticks(svc)
     snap = svc.snapshot()
     assert snap["screen"] == "W3"
-    assert snap["item_count"] == 1
     assert snap["alert"] == "Revise su bandeja"
     assert snap["can_pay"] is False
+
+
+def test_product_still_in_view_when_confirming_does_not_reopen():
+    svc, tray, _, _, _ = make()
+    svc.start()
+    tray.place(["AGUA"])
+    ticks(svc)
+    svc.confirm()
+    ticks(svc, 6)
+    assert svc.snapshot()["screen"] == "W3"
+    assert svc.snapshot()["item_count"] == 1
 
 
 def test_products_add_up_one_by_one_as_they_enter_the_camera():
