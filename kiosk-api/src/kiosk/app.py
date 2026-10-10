@@ -154,11 +154,11 @@ def create_app(
                 action(sku)
             except ValueError as e:
                 raise HTTPException(status_code=422, detail=str(e)) from e
-            return {"tray": tray.contents()}
+            return {"tray": tray.contents(), "camera": tray.in_view()}
 
         @app.get("/sim/tray")
         async def sim_tray_contents() -> dict:
-            return {"tray": tray.contents()}
+            return {"tray": tray.contents(), "camera": tray.in_view()}
 
         @app.post("/sim/scan")
         async def sim_scan(body: SkuIn) -> dict:

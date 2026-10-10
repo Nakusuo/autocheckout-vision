@@ -33,6 +33,12 @@ def ticks(svc: KioskService, n: int = 3) -> None:
         svc.tick()
 
 
+def settle(svc: KioskService, clock: FakeClock) -> None:
+    """Deja pasar el margen de la balanza (WEIGHT_GRACE_S) y lee de nuevo."""
+    clock.t += 2.1
+    svc.tick()
+
+
 def test_happy_path_w1_to_w4_and_auto_reset():
     svc, tray, _, clock, gateway = make()
     svc.start()
@@ -91,7 +97,8 @@ def test_session_metrics_from_start_to_paid():
     tray.place(["AGUA"])
     scale.set_trap(40.0)
     ticks(svc)
-    ticks(svc)  # la alerta de peso sigue: cuenta una sola vez
+    settle(svc, clock)
+    settle(svc, clock)  # la alerta de peso sigue: cuenta una sola vez
     scale.set_trap(0.0)
     ticks(svc)
     svc.confirm()
@@ -100,13 +107,13 @@ def test_session_metrics_from_start_to_paid():
     svc.confirm()
     svc.request_help()
     svc.pay()
-    clock.t = 35.0
+    clock.t = 39.2
     gateway.paid = True
     svc.tick()
 
     [session] = svc.sessions.sessions
     assert session["outcome"] == "paid"
-    assert session["duration_s"] == 30.0
+    assert session["duration_s"] == 34.2
     assert session["weight_alerts"] == 1
     assert session["corrections"] == 1
     assert session["help_requested"] is True
@@ -131,11 +138,14 @@ def test_not_stable_before_three_frames():
 
 
 def test_weight_mismatch_blocks_payment():
-    svc, tray, scale, _, _ = make()
+    svc, tray, scale, clock, _ = make()
     svc.start()
     tray.place(["AGUA"])
     scale.set_trap(40.0)
     ticks(svc)
+    assert svc.snapshot()["alert"] is None  # margen: el producto puede estar llegando a la bandeja
+    assert svc.snapshot()["weight"]["ok"] is False
+    settle(svc, clock)
     assert svc.snapshot()["alert"] == "Revise su bandeja"
     svc.confirm()
     with pytest.raises(TransitionError):
@@ -178,13 +188,14 @@ def test_new_product_in_view_during_w3_reopens_scanning():
 
 
 def test_w3_keeps_watching_the_weight():
-    svc, tray, scale, _, _ = make()
+    svc, tray, scale, clock, _ = make()
     svc.start()
     tray.place(["AGUA"])
     ticks(svc)
     svc.confirm()
     scale.set_trap(40.0)  # algo cambia en la bandeja sin pasar por la cámara
     ticks(svc)
+    settle(svc, clock)
     snap = svc.snapshot()
     assert snap["screen"] == "W3"
     assert snap["alert"] == "Revise su bandeja"
@@ -306,11 +317,12 @@ def test_qr_payload_only_while_paying():
 
 
 def test_remove_takes_one_unit_off_the_list():
-    svc, tray, _, _, _ = make()
+    svc, tray, _, clock, _ = make()
     svc.start()
     tray.place(["CHOCO", "CHOCO"])
     ticks(svc)
     svc.remove("CHOCO")
+    settle(svc, clock)
     snap = svc.snapshot()
     assert snap["item_count"] == 1
     assert snap["alert"] == "Revise su bandeja"  # sigue pesando dos en la bandeja
@@ -360,3 +372,17 @@ def test_new_purchase_starts_with_an_empty_list():
     svc.start()
     ticks(svc)
     assert svc.snapshot()["lines"] == []
+
+
+def test_brief_weight_gap_while_placing_raises_no_alarm():
+    svc, tray, _, clock, _ = make()
+    svc.start()
+    tray.place([], hidden=["AGUA"])  # ya pesa, la cámara aún no lo confirma
+    ticks(svc)
+    clock.t = 1.0
+    tray.place(["AGUA"])
+    ticks(svc)
+    snap = svc.snapshot()
+    assert snap["alert"] is None
+    assert snap["weight"]["ok"] is True
+    assert svc.sessions._current["weight_alerts"] == 0

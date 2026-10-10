@@ -12,7 +12,6 @@ export type Snapshot = {
   seconds_in_state: number;
   help_pending: boolean;
   qr_payload: string | null;
-  rescan_left: number;
 };
 
 export async function post(path: string, body?: unknown): Promise<Snapshot> {

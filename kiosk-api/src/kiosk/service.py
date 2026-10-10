@@ -19,6 +19,9 @@ log = logging.getLogger(__name__)
 RESET_AFTER_S = 10.0
 PAYMENT_TIMEOUT_S = 120.0
 POLL_EVERY_S = 1.0
+# Margen antes de alertar por peso: el cliente pasa el producto y lo deja en la bandeja
+# un instante después. PAGAR sigue bloqueado mientras el peso no coincida.
+WEIGHT_GRACE_S = 2.0
 
 SCREEN = {
     State.IDLE: "W1",
@@ -57,6 +60,7 @@ class KioskService:
         self._scanned: Counter[str] = Counter()
         self._view: Counter[str] = Counter()
         self._last_grams = 0.0
+        self._mismatch_since: float | None = None
         self._on_cart = on_cart
         self.checkout = Checkout()
         self._stability = StabilityFilter()
@@ -182,10 +186,19 @@ class KioskService:
         cart = self._cart()
         weight = check_weight(cart.theoretical_weight_g, grams)
         self.checkout.update(cart, weight)
+        if weight.ok:
+            self._mismatch_since = None
+        elif self._mismatch_since is None:
+            self._mismatch_since = self._clock()
         # Cuenta cada vez que la balanza detiene la compra, no cada cuadro con el peso mal.
-        if not weight.ok and not self._weight_alerted:
+        alarm = self._weight_alarm()
+        if alarm and not self._weight_alerted:
             self.sessions.note("weight_alerts")
-        self._weight_alerted = not weight.ok
+        self._weight_alerted = alarm
+
+    def _weight_alarm(self) -> bool:
+        since = self._mismatch_since
+        return since is not None and self._clock() - since >= WEIGHT_GRACE_S
 
     def _poll_payment(self) -> None:
         now = self._clock()
@@ -231,7 +244,7 @@ class KioskService:
             return "Para más de 3 productos use la caja"
         if cart.unknown_skus:
             return "Hay un producto que no reconocemos"
-        if weight is not None and not weight.ok:
+        if weight is not None and not weight.ok and self._weight_alarm():
             return "Revise su bandeja"
         return None
 

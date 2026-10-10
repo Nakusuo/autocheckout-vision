@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import type { Snapshot } from "../../api";
-import { ArrowRight, CautionDiamond, CheckDisc, RescanGlyph, TraySign } from "../signs";
+import { CancelButton } from "../CancelButton";
+import { ArrowRight, CheckDisc, TraySign } from "../signs";
 import { useAction } from "../useAction";
 import { Alert } from "./Alert";
 import { Lines } from "./Lines";
 
-const RESCAN_S = 4;
 const TICK_MS = 300;
 const ADDED_TICKS = 8; // ≈ 2,4 s con la marca «+ Agregado»
 
@@ -46,53 +46,51 @@ export function Escaneo({ snapshot, offline }: { snapshot: Snapshot; offline: bo
   const { error, pending, run } = useAction();
   const w = snapshot.weight;
   const empty = snapshot.lines.length === 0;
-  const rescanning = snapshot.rescan_left > 0;
   const added = useRecentlyAdded(snapshot.lines);
-  const progress = rescanning ? 1 - snapshot.rescan_left / RESCAN_S : 1;
 
   return (
     <section className="screen">
       <div className="scan-head">
         <h1 className="title">Escaneando</h1>
-        <span className={`live ${rescanning ? "again" : ""}`}>
+        <span className="live">
           <span className="live-dot" aria-hidden="true" />
-          {rescanning ? `De nuevo… ${Math.ceil(snapshot.rescan_left)} s` : "En vivo"}
+          En vivo
         </span>
       </div>
       {empty ? (
         <div className="empty">
           <TraySign className="empty-sign" scanning />
-          <p className="lead">
-            {rescanning ? "Leyendo la bandeja otra vez…" : "Deja tus productos en la bandeja, sin apilarlos. Van apareciendo aquí."}
-          </p>
+          <p className="lead">Pasa tus productos uno por uno frente a la cámara. Cada uno se suma aquí.</p>
         </div>
       ) : (
-        <Lines snapshot={snapshot} added={added} stagger={rescanning} progress={rescanning ? progress : undefined} />
+        <Lines
+          snapshot={snapshot}
+          added={added}
+          onRemove={(sku) => run("/api/remove", { sku })}
+          removeDisabled={offline || pending}
+        />
       )}
       {w && !empty && !snapshot.alert && (
-        <p className={`weight ${w.ok ? "ok" : "bad"}`}>
-          {w.ok ? <CheckDisc className="weight-icon" /> : <CautionDiamond className="weight-icon" />}
-          <span>{w.ok ? "Peso correcto" : `Peso no coincide (${w.diff_g > 0 ? "+" : ""}${w.diff_g} g)`}</span>
+        <p className={`weight ${w.ok ? "ok" : "pending"}`}>
+          {w.ok ? <CheckDisc className="weight-icon" /> : <span className="weight-pending" aria-hidden="true" />}
+          <span>{w.ok ? "Peso correcto" : "Pesando la bandeja…"}</span>
         </p>
       )}
       {snapshot.alert && <Alert>{snapshot.alert}</Alert>}
       {error && <Alert>{error}</Alert>}
-      {!empty && !snapshot.alert && !rescanning && (
-        <p className="hint">¿Ya están todos? Pulsa CONFIRMAR para terminar de escanear.</p>
+      {!empty && !snapshot.alert && (
+        <p className="hint">Pasa el siguiente producto o pulsa CONFIRMAR si ya están todos.</p>
       )}
       <button
         type="button"
         className="btn btn-go"
-        disabled={offline || pending || rescanning || snapshot.item_count === 0 || snapshot.alert !== null}
+        disabled={offline || pending || snapshot.item_count === 0 || snapshot.alert !== null || !w?.ok}
         onClick={() => run("/api/confirm")}
       >
         CONFIRMAR
         <ArrowRight className="btn-icon" />
       </button>
-      <button type="button" className="btn btn-plain btn-small" disabled={offline || pending || rescanning} onClick={() => run("/api/rescan")}>
-        <RescanGlyph className="btn-icon" />
-        ESCANEAR DE NUEVO
-      </button>
+      <CancelButton disabled={offline || pending} onCancel={() => run("/api/cancel")} />
     </section>
   );
 }

@@ -2,8 +2,12 @@ import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import type { Snapshot } from "../../api";
 import { formatPEN } from "../../format";
+import { CancelButton } from "../CancelButton";
+import { useAction } from "../useAction";
+import { Alert } from "./Alert";
 
-export function Pago({ snapshot }: { snapshot: Snapshot }) {
+export function Pago({ snapshot, offline }: { snapshot: Snapshot; offline: boolean }) {
+  const { error, pending, run } = useAction();
   const left = Math.max(0, Math.ceil(120 - snapshot.seconds_in_state));
   const payload = snapshot.qr_payload;
   const [qr, setQr] = useState<{ payload: string; url: string } | null>(null);
@@ -43,6 +47,8 @@ export function Pago({ snapshot }: { snapshot: Snapshot }) {
         <p className="speed-sign">{left} s</p>
         <p className="muted waiting">Esperando confirmación del pago</p>
       </div>
+      {error && <Alert>{error}</Alert>}
+      <CancelButton disabled={offline || pending} onCancel={() => run("/api/cancel")} />
     </section>
   );
 }
