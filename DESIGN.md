@@ -159,6 +159,11 @@ Plano: la profundidad la dan los bordes de tinta, no las sombras. La única somb
 - **Señal de velocidad**: disco blanco con aro rojo y la cifra en negro para los 120 s del pago y los 10 s del ticket.
 - **Fuera de servicio**: octógono rojo de PARE sobre el título.
 
+- **Volver a escanear** (W2): placa blanca más baja, debajo de CONFIRMAR; borra lo detectado y la cámara lee la bandeja de nuevo. En W3, una pista indica que CORREGIR sirve para lo mismo.
+- **Aviso de cámara** (W1 y W2): una línea pequeña con el ícono de cámara y la Ley 29733.
+
+**Paneles del equipo (`/sim`, `/caja`)**: misma paleta, tipografía y placas, pero a escala de escritorio (`rem`) y en dos columnas: tarjetas blancas con borde de tinta sobre fondo `#f3f1ec`, botones `pbtn` (rojo = acción principal) y el estado del quiosco como disco rojo con el código de pantalla. Estilos en `kiosk-ui/src/panels/panels.css`.
+
 Movimiento: la placa entra en 260 ms (clip de arriba abajo y un desplazamiento de 2cqw, curva de salida exponencial); las líneas nuevas entran desde la izquierda; la línea roja recorre la bandeja mientras se escanea. Con `prefers-reduced-motion` todo queda quieto.
 
 ## Do's and Don'ts

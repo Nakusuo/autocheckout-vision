@@ -35,7 +35,7 @@ npm run dev
 | URL | Para qué |
 |---|---|
 | http://localhost:5173/ | Quiosco (cliente), formato vertical |
-| http://localhost:5173/sim | Simulador: poner productos, esconder peso y abrir el «celular» que paga |
+| http://localhost:5173/sim | Simulador para la presentación: escenarios de un clic, bandeja (incluido «la cámara no lo ve»), balanza, acciones del quiosco, enlace al «celular» que paga y vista en vivo del quiosco |
 | http://localhost:5173/caja | Panel de caja: solicitudes de ayuda y reactivar el quiosco |
 
 Para pagar: en la pantalla del QR, abre en `/sim` el enlace «Abrir el celular simulado» y pulsa «Pagar con Yape/Plin (simulado)». El quiosco consulta la pasarela por HTTPS (TLS 1.3), verifica la firma RS256 y muestra el ticket.

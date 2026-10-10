@@ -50,6 +50,15 @@ export function CameraGlyph({ className }: Props) {
   );
 }
 
+export function RescanGlyph({ className }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+      <path d="M80 42 A31 31 0 0 0 23 34 M20 58 A31 31 0 0 0 77 66" fill="none" stroke="currentColor" strokeWidth="9" strokeLinecap="round" />
+      <path d="M82 20 V44 H58 M18 80 V56 H42" fill="none" stroke="currentColor" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function HelpGlyph({ className }: Props) {
   return (
     <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">

@@ -12,6 +12,7 @@ export function Confirmar({ snapshot, offline }: { snapshot: Snapshot; offline: 
       <Lines snapshot={snapshot} />
       {snapshot.alert && <Alert>{snapshot.alert}</Alert>}
       {error && <Alert>{error}</Alert>}
+      <p className="hint">¿Falta un producto? Pulsa CORREGIR y vuelve a escanear.</p>
       <div className="actions">
         <button type="button" className="btn btn-go" disabled={offline || pending || !snapshot.can_pay} onClick={() => run("/api/pay")}>
           PAGAR
