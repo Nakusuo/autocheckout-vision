@@ -42,6 +42,20 @@ Para pagar: en la pantalla del QR, abre en `/sim` el enlace «Abrir el celular s
 
 La API escucha en 127.0.0.1:8000 y solo acepta peticiones desde http://localhost:5173 (Vite usa ese puerto fijo; si está ocupado, libéralo).
 
+Cada venta pagada emite una boleta simulada del POS (serie `B001`) que se guarda en `kiosk-api/boletas.jsonl` (fuera de git).
+
+### Pruebas de punta a punta (Playwright)
+
+Recorren W1 a W4 con los tres servicios reales en modo simulado: trampa de peso, CORREGIR, pago desde el «celular», ticket, boleta y vuelta a W1, más SOLICITAR AYUDA en el panel de caja. Levantan solos la pasarela, la API y el build de la UI (usan el `.venv` de cada servicio si existe).
+
+```bash
+cd kiosk-ui
+npx playwright install chromium   # solo la primera vez
+npm run e2e
+```
+
+Si ya tienes los servicios abiertos, las pruebas los reutilizan; el quiosco debe estar en W1.
+
 ## Modo cámara
 
 Requiere el extra de visión: `pip install -e ".[dev,vision]"` en `kiosk-api`.
