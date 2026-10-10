@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 from collections.abc import Mapping
@@ -8,6 +9,7 @@ import uvicorn
 from kiosk.app import create_app
 from kiosk.catalog import Catalog
 from kiosk.payments import HttpGateway, JwtVerifier
+from kiosk.pos import SimulatedPos
 from kiosk.scale import SimulatedScale
 from kiosk.service import KioskService
 from kiosk.store import init_db, load_catalog
@@ -37,6 +39,7 @@ def build_detector(
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     keys = REPO / "keys"
     api_key = os.environ.get("GATEWAY_API_KEY")
     if not api_key:
@@ -53,7 +56,8 @@ def main() -> None:
         os.environ.get("GATEWAY_URL", "https://localhost:8443"), api_key, ca_file=keys / "ca.pem"
     )
     verifier = JwtVerifier((keys / "gateway_jwt_public.pem").read_bytes())
-    service = KioskService(catalog, detector, scale, gateway, verifier)
+    pos = SimulatedPos(REPO / "kiosk-api" / "boletas.jsonl")
+    service = KioskService(catalog, detector, scale, gateway, verifier, pos=pos)
     app = create_app(service, tray, scale) if tray is not None else create_app(service)
     uvicorn.run(app, host="127.0.0.1", port=8000)
 

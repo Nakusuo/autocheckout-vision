@@ -73,6 +73,34 @@ jobs:
       - run: bandit -r src -q
       - run: python -m pytest -q
 
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: kiosk-ui/package-lock.json
+      - run: pip install -e ./kiosk-api -e ./mock-gateway
+      - run: npm ci
+        working-directory: kiosk-ui
+      - run: npx playwright install --with-deps chromium
+        working-directory: kiosk-ui
+      - run: npm run e2e
+        working-directory: kiosk-ui
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            kiosk-ui/playwright-report
+            kiosk-ui/test-results
+          retention-days: 7
+
   secretos:
     runs-on: ubuntu-latest
     steps:

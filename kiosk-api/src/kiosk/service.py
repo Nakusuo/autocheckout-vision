@@ -7,6 +7,7 @@ from kiosk.catalog import Catalog
 from kiosk.checkout import MAX_ITEMS, Checkout, State, TransitionError
 from kiosk.fusion import build_cart, check_weight
 from kiosk.payments import Charge, JwtVerifier, PaymentError, PaymentGateway
+from kiosk.pos import SimulatedPos
 from kiosk.scale import ScaleReader
 from kiosk.stability import StabilityFilter
 from kiosk.tray import Detector
@@ -36,6 +37,7 @@ class KioskService:
         gateway: PaymentGateway,
         verifier: JwtVerifier,
         clock: Callable[[], float] = time.monotonic,
+        pos: SimulatedPos | None = None,
     ):
         self.catalog = catalog
         self._detector = detector
@@ -43,12 +45,14 @@ class KioskService:
         self._gateway = gateway
         self._verifier = verifier
         self._clock = clock
+        self.pos = pos if pos is not None else SimulatedPos()
         self.checkout = Checkout()
         self._stability = StabilityFilter()
         self._entered_at = clock()
         self.help_requests: list[dict] = []
         self._next_help_id = 1
         self._charge: Charge | None = None
+        self._reference = ""
         self._last_poll = float("-inf")
         self._references = itertools.count(1)
 
@@ -76,12 +80,14 @@ class KioskService:
         if not self.checkout.can_pay or cart is None:
             self._do(self.checkout.pay)  # lanza TransitionError con el motivo
             return
+        reference = f"venta-{next(self._references)}"
         try:
-            charge = self._gateway.create_charge(cart.total_cents, f"venta-{next(self._references)}")
+            charge = self._gateway.create_charge(cart.total_cents, reference)
         except PaymentError as e:
             raise TransitionError("No se pudo generar el código QR. Intente de nuevo") from e
         self._do(self.checkout.pay)
         self._charge = charge
+        self._reference = reference
         self._last_poll = float("-inf")
 
     def recover(self) -> None:
@@ -133,7 +139,9 @@ class KioskService:
         if event.charge_id != self._charge.id or cart is None or event.amount_cents != cart.total_cents:
             log.warning("El pago recibido no coincide con el cobro en curso")
             return
+        charge_id = self._charge.id
         self._do(self.checkout.payment_confirmed)
+        self.pos.issue_receipt(self._reference, charge_id, cart.lines, cart.total_cents)
 
     def request_help(self) -> dict:
         req = {

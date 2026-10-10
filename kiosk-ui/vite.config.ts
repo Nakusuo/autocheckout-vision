@@ -15,5 +15,9 @@ export default defineConfig({
       "/ws": { target: "ws://127.0.0.1:8000", ws: true },
     },
   },
-  test: { environment: "jsdom", globals: true, setupFiles: ["./src/setupTests.ts"] },
+  // Las pruebas e2e usan el build: mismo puerto (kiosk-api solo acepta ese origen) y mismo proxy.
+  preview: { port: 5173, strictPort: true },
+  // Hilos en vez de procesos: en Windows el primer proceso hijo puede tardar tanto en
+  // arrancar que vitest se rinde ("Timeout waiting for worker to respond").
+  test: { environment: "jsdom", globals: true, setupFiles: ["./src/setupTests.ts"], pool: "threads" },
 });
