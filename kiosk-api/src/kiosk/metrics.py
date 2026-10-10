@@ -16,7 +16,7 @@ from pathlib import Path
 
 TARGET_S = 45.0
 TARGET_AUTONOMOUS_PCT = 80.0
-COUNTERS = ("weight_alerts", "corrections", "rescans", "payment_timeouts")
+COUNTERS = ("weight_alerts", "corrections", "removals", "payment_timeouts")
 DEFAULT_PATH = Path(__file__).resolve().parents[2] / "sesiones.jsonl"
 
 
@@ -91,7 +91,7 @@ def summarize(rows: list[dict]) -> dict:
         "autonomous_pct": _pct(len(autonomous), len(rows)),
         "weight_alerts": sum(r["weight_alerts"] for r in rows),
         "corrections": sum(r["corrections"] for r in rows),
-        "rescans": sum(r.get("rescans", 0) for r in rows),
+        "removals": sum(r.get("removals", 0) for r in rows),
         "payment_timeouts": sum(r["payment_timeouts"] for r in rows),
     }
 
@@ -120,7 +120,7 @@ def report(s: dict) -> str:
         on02,
         "",
         (
-            f"Correcciones (CORREGIR): {s['corrections']} · Reescaneos: {s['rescans']} · "
+            f"Correcciones (CORREGIR): {s['corrections']} · Quitados: {s['removals']} · "
             f"Pagos vencidos (120 s): {s['payment_timeouts']}"
         ),
     ])

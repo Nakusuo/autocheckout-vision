@@ -164,17 +164,45 @@ def test_payment_timeout_returns_to_w3():
     assert svc.snapshot()["screen"] == "W3"
 
 
-def test_tray_change_in_w3_returns_to_w2():
+def test_w3_closes_the_list_and_keeps_watching_the_weight():
     svc, tray, _, _, _ = make()
     svc.start()
     tray.place(["AGUA"])
     ticks(svc)
     svc.confirm()
-    tray.place(["AGUA", "CHOCO"])
+    tray.place(["AGUA", "CHOCO"])  # alguien agrega algo después de confirmar
     ticks(svc)
     snap = svc.snapshot()
-    assert snap["screen"] == "W2"
-    assert snap["item_count"] == 2
+    assert snap["screen"] == "W3"
+    assert snap["item_count"] == 1
+    assert snap["alert"] == "Revise su bandeja"
+    assert snap["can_pay"] is False
+
+
+def test_products_add_up_one_by_one_as_they_enter_the_camera():
+    svc, tray, _, _, _ = make()
+    svc.start()
+    tray.place(["AGUA"])
+    ticks(svc)
+    tray.place([], hidden=["AGUA"])  # sale de la vista, queda en la bandeja
+    ticks(svc)
+    tray.place(["CHOCO"], hidden=["AGUA"])
+    ticks(svc)
+    tray.place([], hidden=["AGUA", "CHOCO"])
+    ticks(svc)
+    tray.place(["CHOCO"], hidden=["AGUA", "CHOCO"])  # el segundo chocolate
+    ticks(svc)
+    snap = svc.snapshot()
+    assert [(l["sku"], l["quantity"]) for l in snap["lines"]] == [("AGUA", 1), ("CHOCO", 2)]
+    assert snap["weight"]["ok"] is True
+
+
+def test_a_product_that_stays_in_view_counts_once():
+    svc, tray, _, _, _ = make()
+    svc.start()
+    tray.place(["AGUA"])
+    ticks(svc, 10)
+    assert svc.snapshot()["item_count"] == 1
 
 
 class BrokenCamera:
@@ -254,63 +282,58 @@ def test_qr_payload_only_while_paying():
     assert svc.snapshot()["qr_payload"] is None
 
 
-def test_rescan_clears_detection_and_reads_the_tray_again():
+def test_remove_takes_one_unit_off_the_list():
     svc, tray, _, _, _ = make()
     svc.start()
-    tray.place(["AGUA"], hidden=["CHOCO"])
+    tray.place(["CHOCO", "CHOCO"])
     ticks(svc)
-    assert svc.snapshot()["alert"] == "Revise su bandeja"
-
-    tray.place(["AGUA", "CHOCO"])  # el cliente acomoda la bandeja
-    svc.rescan()
+    svc.remove("CHOCO")
     snap = svc.snapshot()
-    assert snap["screen"] == "W2"
-    assert snap["lines"] == []
-    assert snap["alert"] is None
-    ticks(svc)
-    assert svc.snapshot()["item_count"] == 2
-    assert svc.snapshot()["weight"]["ok"] is True
+    assert snap["item_count"] == 1
+    assert snap["alert"] == "Revise su bandeja"  # sigue pesando dos en la bandeja
+    assert svc.sessions.sessions == []
+    with pytest.raises(TransitionError, match="no está en la lista"):
+        svc.remove("AGUA")
 
 
-def test_rescan_only_while_scanning():
+def test_remove_only_while_scanning():
     svc, _, _, _, _ = make()
     with pytest.raises(TransitionError):
-        svc.rescan()
+        svc.remove("AGUA")
 
 
-def test_rescan_is_counted_in_the_session():
-    svc, tray, _, clock, gateway = make()
-    svc.start()
-    svc.rescan()
-    tray.place(["AGUA"])
-    ticks(svc)
-    clock.t = 4.0
-    svc.confirm()
-    svc.pay()
-    gateway.paid = True
-    svc.tick()
-    assert svc.sessions.sessions[0]["rescans"] == 1
+def test_cancel_from_scanning_confirming_or_paying_goes_home():
+    for stage in ("W2", "W3", "QR"):
+        svc, tray, _, _, _ = make()
+        svc.start()
+        tray.place(["AGUA"])
+        ticks(svc)
+        if stage in ("W3", "QR"):
+            svc.confirm()
+        if stage == "QR":
+            svc.pay()
+        assert svc.snapshot()["screen"] == stage
+        svc.cancel()
+        snap = svc.snapshot()
+        assert snap["screen"] == "W1"
+        assert snap["lines"] == []
+        assert snap["qr_payload"] is None
+        assert svc.sessions.sessions[-1]["outcome"] == "cancelled"
 
 
-def test_rescan_opens_a_visible_window_that_blocks_confirm():
-    svc, tray, _, clock, _ = make()
-    svc.start()
-    tray.place(["AGUA"])
-    ticks(svc)
-    svc.rescan()
-    assert svc.snapshot()["rescan_left"] == 4.0
-    ticks(svc)
-    assert svc.snapshot()["item_count"] == 1  # se ve cómo vuelve a aparecer
-    with pytest.raises(TransitionError, match="Espera"):
-        svc.confirm()
-    clock.t = 1.5
-    assert svc.snapshot()["rescan_left"] == 2.5
-    clock.t = 4.0
-    assert svc.snapshot()["rescan_left"] == 0.0
-    svc.confirm()
-    assert svc.snapshot()["screen"] == "W3"
-
-
-def test_no_rescan_window_by_default():
+def test_cancel_not_allowed_on_w1_or_after_paying():
     svc, _, _, _, _ = make()
-    assert svc.snapshot()["rescan_left"] == 0.0
+    with pytest.raises(TransitionError):
+        svc.cancel()
+
+
+def test_new_purchase_starts_with_an_empty_list():
+    svc, tray, _, _, _ = make()
+    svc.start()
+    tray.place(["AGUA"])
+    ticks(svc)
+    svc.cancel()
+    tray.place([])
+    svc.start()
+    ticks(svc)
+    assert svc.snapshot()["lines"] == []

@@ -122,19 +122,22 @@ def test_sim_pay_no_longer_exists():
     assert client.post("/sim/pay").status_code == 404
 
 
-def test_rescan_and_hidden_products_over_http():
+def test_sim_scan_sneak_take_and_remove_over_http():
     svc, client, _ = make()
     client.post("/api/start")
-    assert client.post("/sim/tray", json={"skus": [], "hidden": ["AGUA"]}).status_code == 200
+    assert client.post("/sim/scan", json={"sku": "AGUA"}).json() == {"tray": ["AGUA"]}
     for _ in range(3):
         svc.tick()
-    # La balanza pesa un producto que la cámara no ve
-    assert client.get("/api/state").json()["alert"] == "Revise su bandeja"
-    r = client.post("/api/rescan")
-    assert r.status_code == 200
-    assert r.json()["screen"] == "W2"
+    assert client.get("/api/state").json()["item_count"] == 1
+    assert client.post("/sim/sneak", json={"sku": "AGUA"}).json() == {"tray": ["AGUA", "AGUA"]}
+    assert client.get("/sim/tray").json() == {"tray": ["AGUA", "AGUA"]}
+    assert client.post("/sim/take", json={"sku": "AGUA"}).status_code == 200
+    assert client.post("/sim/take", json={"sku": "NADA"}).status_code == 422
+    assert client.post("/api/remove", json={"sku": "AGUA"}).json()["item_count"] == 0
 
 
-def test_rescan_outside_scanning_is_409():
+def test_cancel_over_http():
     _, client, _ = make()
-    assert client.post("/api/rescan").status_code == 409
+    assert client.post("/api/cancel").status_code == 409
+    client.post("/api/start")
+    assert client.post("/api/cancel").json()["screen"] == "W1"

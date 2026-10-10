@@ -1,11 +1,12 @@
 import itertools
 import logging
 import time
+from collections import Counter
 from collections.abc import Callable
 
 from kiosk.catalog import Catalog
 from kiosk.checkout import MAX_ITEMS, Checkout, State, TransitionError
-from kiosk.fusion import build_cart, check_weight
+from kiosk.fusion import Cart, build_cart, check_weight
 from kiosk.metrics import SessionRecorder
 from kiosk.payments import Charge, JwtVerifier, PaymentError, PaymentGateway
 from kiosk.pos import SimulatedPos
@@ -18,7 +19,6 @@ log = logging.getLogger(__name__)
 RESET_AFTER_S = 10.0
 PAYMENT_TIMEOUT_S = 120.0
 POLL_EVERY_S = 1.0
-RESCAN_S = 4.0  # ventana visible para volver a leer la bandeja
 
 SCREEN = {
     State.IDLE: "W1",
@@ -41,6 +41,7 @@ class KioskService:
         clock: Callable[[], float] = time.monotonic,
         pos: SimulatedPos | None = None,
         sessions: SessionRecorder | None = None,
+        on_cart: Callable[[Cart], None] | None = None,
     ):
         self.catalog = catalog
         self._detector = detector
@@ -51,7 +52,12 @@ class KioskService:
         self.pos = pos if pos is not None else SimulatedPos()
         self.sessions = sessions if sessions is not None else SessionRecorder()
         self._weight_alerted = False
-        self._rescan_until = float("-inf")
+        # Escaneo uno por uno: lo escaneado se acumula; un producto se suma cuando entra
+        # a la vista de la cámara, no mientras sigue ahí.
+        self._scanned: Counter[str] = Counter()
+        self._view: Counter[str] = Counter()
+        self._last_grams = 0.0
+        self._on_cart = on_cart
         self.checkout = Checkout()
         self._stability = StabilityFilter()
         self._entered_at = clock()
@@ -76,19 +82,31 @@ class KioskService:
         self._do(self.checkout.start)
         self.sessions.begin(self._clock())
         self._weight_alerted = False
+        self._scanned = Counter()
+        self._view = Counter()
+        self._cart_changed()
 
     def confirm(self) -> None:
-        if self._rescan_left() > 0:
-            raise TransitionError("Espera a que termine el escaneo")
         self._do(self.checkout.confirm)
 
-    def rescan(self) -> None:
-        """El cliente pide leer la bandeja de nuevo (p. ej., la cámara no vio un producto)."""
-        self.checkout.rescan()
-        self._stability.reset()
-        self._rescan_until = self._clock() + RESCAN_S
-        self._weight_alerted = False
-        self.sessions.note("rescans")
+    def cancel(self) -> None:
+        """El cliente abandona la compra: se descarta la lista (y el cobro, si había QR)."""
+        self._do(self.checkout.cancel)
+        self._scanned = Counter()
+        self._view = Counter()
+        self._cart_changed()
+        self.sessions.finish(self._clock(), "cancelled")
+
+    def remove(self, sku: str) -> None:
+        """El cliente quita una unidad de la lista (p. ej., la cámara la contó dos veces)."""
+        if self.checkout.state is not State.SCANNING:
+            raise TransitionError(f"Acción no permitida en el estado {self.checkout.state.value}")
+        if self._scanned[sku] <= 0:
+            raise TransitionError("Ese producto no está en la lista")
+        self._scanned[sku] -= 1
+        self.sessions.note("removals")
+        self._cart_changed()
+        self._refresh(self._last_grams)
 
     def correct(self) -> None:
         self._do(self.checkout.correct)
@@ -128,19 +146,37 @@ class KioskService:
         if state not in (State.SCANNING, State.CONFIRMING):
             return
         try:
-            skus = self._detector.detect()
+            # En W3 la lista está cerrada: solo se vigila el peso.
+            skus = self._detector.detect() if state is State.SCANNING else None
             grams = self._scale.read()
         except Exception:
             log.exception("Fallo de sensor; quiosco fuera de servicio")
             self._do(self.checkout.fault)
             self.sessions.finish(self._clock(), "fault")
             return
-        stable = self._stability.push(skus)
-        if stable is None:
-            return
-        cart = build_cart(stable, self.catalog)
-        if state is State.CONFIRMING and cart != self.checkout.cart:
-            self._do(self.checkout.correct)
+        if skus is not None:
+            stable = self._stability.push(skus)
+            if stable is not None:
+                self._register_view(Counter(stable))
+        self._refresh(grams)
+
+    def _register_view(self, view: Counter[str]) -> None:
+        arrived = {sku: n - self._view[sku] for sku, n in view.items() if n > self._view[sku]}
+        self._view = view
+        if arrived:
+            self._scanned.update(arrived)
+            self._cart_changed()
+
+    def _cart(self) -> Cart:
+        return build_cart(sorted(self._scanned.elements()), self.catalog)
+
+    def _cart_changed(self) -> None:
+        if self._on_cart is not None:
+            self._on_cart(self._cart())
+
+    def _refresh(self, grams: float) -> None:
+        self._last_grams = grams
+        cart = self._cart()
         weight = check_weight(cart.theoretical_weight_g, grams)
         self.checkout.update(cart, weight)
         # Cuenta cada vez que la balanza detiene la compra, no cada cuadro con el peso mal.
@@ -184,11 +220,6 @@ class KioskService:
     def resolve_help(self, help_id: int) -> None:
         self.help_requests = [r for r in self.help_requests if r["id"] != help_id]
 
-    def _rescan_left(self) -> float:
-        if self.checkout.state is not State.SCANNING:
-            return 0.0
-        return max(0.0, round(self._rescan_until - self._clock(), 1))
-
     def _alert(self) -> str | None:
         cart, weight = self.checkout.cart, self.checkout.weight
         if cart is None:
@@ -224,5 +255,4 @@ class KioskService:
             "seconds_in_state": round(self._clock() - self._entered_at, 1),
             "help_pending": bool(self.help_requests),
             "qr_payload": self._charge.qr_payload if self._charge else None,
-            "rescan_left": self._rescan_left(),
         }
