@@ -43,6 +43,13 @@ describe("Kiosk", () => {
     expect(screen.getByRole("button", { name: "CORREGIR" })).toBeEnabled();
   });
 
+  it("W2 permite volver a escanear; W3 explica cómo", () => {
+    const { rerender } = render(<Kiosk snapshot={{ ...base, screen: "W2" }} />);
+    expect(screen.getByRole("button", { name: "VOLVER A ESCANEAR" })).toBeEnabled();
+    rerender(<Kiosk snapshot={{ ...base, screen: "W3", lines: [agua], item_count: 1 }} />);
+    expect(screen.getByText(/¿Falta un producto\? Pulsa CORREGIR/)).toBeInTheDocument();
+  });
+
   it("W3 con can_pay habilita PAGAR", () => {
     const snap = { ...base, screen: "W3" as const, lines: [agua], item_count: 1, can_pay: true };
     render(<Kiosk snapshot={snap} />);

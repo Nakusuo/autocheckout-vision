@@ -1,5 +1,5 @@
 import type { Snapshot } from "../../api";
-import { ArrowRight, CautionDiamond, CheckDisc, TraySign } from "../signs";
+import { ArrowRight, CautionDiamond, CheckDisc, RescanGlyph, TraySign } from "../signs";
 import { useAction } from "../useAction";
 import { Alert } from "./Alert";
 import { Lines } from "./Lines";
@@ -19,7 +19,7 @@ export function Escaneo({ snapshot, offline }: { snapshot: Snapshot; offline: bo
       ) : (
         <Lines snapshot={snapshot} />
       )}
-      {w && !empty && (
+      {w && !empty && !snapshot.alert && (
         <p className={`weight ${w.ok ? "ok" : "bad"}`}>
           {w.ok ? <CheckDisc className="weight-icon" /> : <CautionDiamond className="weight-icon" />}
           <span>{w.ok ? "Peso correcto" : `Peso no coincide (${w.diff_g > 0 ? "+" : ""}${w.diff_g} g)`}</span>
@@ -35,6 +35,10 @@ export function Escaneo({ snapshot, offline }: { snapshot: Snapshot; offline: bo
       >
         CONFIRMAR
         <ArrowRight className="btn-icon" />
+      </button>
+      <button type="button" className="btn btn-plain btn-small" disabled={offline || pending} onClick={() => run("/api/rescan")}>
+        <RescanGlyph className="btn-icon" />
+        VOLVER A ESCANEAR
       </button>
     </section>
   );

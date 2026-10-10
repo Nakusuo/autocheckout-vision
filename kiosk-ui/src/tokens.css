@@ -121,8 +121,8 @@ body:has(.kiosk) {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 3.2cqw;
-  padding: 6cqw 5cqw 3cqw;
+  gap: 2.6cqw;
+  padding: 4.5cqw 5cqw 2.4cqw;
 }
 .screen-center { justify-content: center; align-items: center; text-align: center; }
 .screen-start { justify-content: flex-end; align-items: center; text-align: center; padding-bottom: 5cqw; }
@@ -174,7 +174,7 @@ body:has(.kiosk) {
   grid-template-columns: auto 1fr auto;
   gap: 3.5cqw;
   align-items: center;
-  padding: 3.6cqw 4cqw;
+  padding: 2.6cqw 4cqw;
   font-size: 4.4cqw;
   font-weight: 700;
   border-bottom: 0.35cqw solid var(--rule);
@@ -201,7 +201,7 @@ body:has(.kiosk) {
   justify-content: space-between;
   align-items: baseline;
   gap: 4cqw;
-  padding: 4cqw;
+  padding: 2.8cqw 4cqw;
   background: var(--sign-yellow);
   border-top: var(--border) solid var(--ink);
   font-size: 4.6cqw;
@@ -209,7 +209,7 @@ body:has(.kiosk) {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.total-amount { font-size: 8.5cqw; letter-spacing: -0.02em; text-transform: none; }
+.total-amount { font-size: 7.6cqw; letter-spacing: -0.02em; text-transform: none; }
 
 .empty {
   flex: 1;
@@ -245,7 +245,7 @@ body:has(.kiosk) {
   align-items: center;
   gap: 3cqw;
   margin: 0;
-  padding: 3cqw 4cqw;
+  padding: 2.4cqw 4cqw;
   background: var(--sign-yellow-soft);
   border: var(--border) solid var(--ink);
   border-radius: var(--radius);
@@ -253,7 +253,7 @@ body:has(.kiosk) {
   font-weight: 800;
   line-height: 1.2;
 }
-.alert-icon { width: 9cqw; flex: none; }
+.alert-icon { width: 8cqw; flex: none; }
 
 .notice {
   display: flex;
@@ -309,6 +309,9 @@ body:has(.kiosk) {
   box-shadow: inset 0 0 0 0.5cqw var(--disabled-bg), inset 0 0 0 1cqw var(--disabled-ink);
   cursor: not-allowed;
 }
+.btn-small { min-height: 11cqw; font-size: 4.4cqw; }
+.btn-small .btn-icon { width: 5.4cqw; margin-top: -0.8cqw; }
+.hint { margin: 0; font-size: 3.6cqw; font-weight: 700; color: var(--ink-soft); }
 .actions { display: flex; flex-direction: column; gap: 2.4cqw; }
 
 /* Ayuda: siempre al pie, placa blanca más baja que la acción principal. */

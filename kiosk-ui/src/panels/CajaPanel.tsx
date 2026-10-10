@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { request } from "../api";
+import { request, useKioskState } from "../api";
+import { formatPEN } from "../format";
+import { CautionDiamond, StopOctagon } from "../kiosk/signs";
+import { KioskStatus, PanelHeader } from "./common";
+import { SCREEN_NAME } from "./screens";
 
-type HelpRequest = { id: number; screen: string; at: number };
+type HelpRequest = { id: number; screen: keyof typeof SCREEN_NAME; at: number };
 
 export function CajaPanel() {
+  const { snapshot, connected } = useKioskState();
   const [items, setItems] = useState<HelpRequest[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -43,23 +48,77 @@ export function CajaPanel() {
     request<HelpRequest[]>("DELETE", `/api/help/${id}`).then(apply).catch(fail);
   const recover = () => request("POST", "/api/recover").then(() => setError(null)).catch(fail);
 
+  const down = snapshot?.screen === "FUERA_DE_SERVICIO";
+  const lines = snapshot?.lines ?? [];
+
   return (
-    <main style={{ padding: 16, fontFamily: "system-ui, sans-serif", maxWidth: 640 }}>
-      <h1>Caja</h1>
-      {error && <p role="alert" style={{ color: "#c62828" }}>{error}</p>}
-      <h2>Solicitudes de ayuda</h2>
-      {items.length === 0 && <p>Sin solicitudes</p>}
-      <ul style={{ listStyle: "none", padding: 0 }}>
-        {items.map((r) => (
-          <li key={r.id} style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
-            <span style={{ flex: 1 }}>
-              #{r.id} - {r.screen} - hace {Math.max(0, Math.floor((now - (seen[r.id] ?? now)) / 1000))} s
-            </span>
-            <button type="button" onClick={() => resolve(r.id)}>Atendido</button>
-          </li>
-        ))}
-      </ul>
-      <button type="button" onClick={recover}>Reactivar quiosco</button>
-    </main>
+    <div className="panel">
+      <PanelHeader role="Caja" connected={connected} />
+      {error && <p className="panel-error" role="alert">{error}</p>}
+      <div className="caja-layout">
+        <main className="card">
+          <div className="card-head">
+            <h1 className="card-title">Solicitudes de ayuda</h1>
+            {items.length > 0 && <span className="count">{items.length}</span>}
+          </div>
+          {items.length === 0 && (
+            <div className="empty-panel">
+              <p className="empty-title">Sin solicitudes</p>
+              <p className="muted">Cuando un cliente pulse SOLICITAR AYUDA aparecerá aquí.</p>
+            </div>
+          )}
+          <ul className="requests">
+            {items.map((r) => (
+              <li key={r.id} className="request">
+                <CautionDiamond className="request-icon" />
+                <div className="request-info">
+                  <span className="request-title">Quiosco 1<span className="sep">–</span>{r.screen}<span className="sep">–</span>{SCREEN_NAME[r.screen] ?? r.screen}</span>
+                  <span className="muted">
+                    Solicitud #{r.id}<span className="sep">–</span>hace {Math.max(0, Math.floor((now - (seen[r.id] ?? now)) / 1000))} s
+                  </span>
+                </div>
+                <button type="button" className="pbtn go" onClick={() => resolve(r.id)}>Atendido</button>
+              </li>
+            ))}
+          </ul>
+        </main>
+
+        <aside className="caja-side">
+          <section className={`card ${down ? "card-down" : ""}`}>
+            <h2 className="card-title">Quiosco 1</h2>
+            {down && (
+              <div className="down">
+                <StopOctagon className="down-icon" />
+                <p>La cámara o la balanza dejó de responder. Revisa el equipo y reactívalo.</p>
+              </div>
+            )}
+            <KioskStatus snapshot={snapshot} />
+            <button type="button" className={`pbtn ${down ? "go" : "plain"}`} onClick={recover} disabled={!down}>
+              Reactivar quiosco
+            </button>
+          </section>
+
+          <section className="card">
+            <h2 className="card-title">Compra en curso</h2>
+            {lines.length === 0 ? (
+              <p className="muted">No hay productos en la bandeja.</p>
+            ) : (
+              <div className="sale">
+                {lines.map((l) => (
+                  <div key={l.sku} className="sale-line">
+                    <span>{l.quantity} × {l.name}</span>
+                    <span>{formatPEN(l.unit_price_cents * l.quantity)}</span>
+                  </div>
+                ))}
+                <div className="sale-line sale-total">
+                  <span>Total</span>
+                  <span>{formatPEN(snapshot?.total_cents ?? 0)}</span>
+                </div>
+              </div>
+            )}
+          </section>
+        </aside>
+      </div>
+    </div>
   );
 }
