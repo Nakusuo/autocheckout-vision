@@ -1,6 +1,6 @@
 import type { Snapshot } from "../api";
 import { HelpButton } from "./HelpButton";
-import { CautionDiamond } from "./signs";
+import { CameraGlyph, CautionDiamond } from "./signs";
 import { Confirmar } from "./screens/Confirmar";
 import { Escaneo } from "./screens/Escaneo";
 import { FueraDeServicio } from "./screens/FueraDeServicio";
@@ -71,6 +71,12 @@ export function Kiosk({ snapshot, connected = true }: { snapshot: Snapshot; conn
       <div className="plate" key={snapshot.screen}>
         <Screen snapshot={snapshot} offline={!connected} />
       </div>
+      {(snapshot.screen === "W1" || snapshot.screen === "W2") && (
+        <p className="privacy">
+          <CameraGlyph className="privacy-icon" />
+          <span>La cámara solo mira la bandeja y no guarda imágenes <span className="nowrap">(Ley 29733).</span></span>
+        </p>
+      )}
       <HelpButton helpPending={snapshot.help_pending} />
     </main>
   );
