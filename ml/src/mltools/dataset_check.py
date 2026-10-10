@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from mltools.catalog import REPO, load_skus
+from mltools.console import utf8_output
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png"}
 VIDEO_EXT = {".mp4", ".mov", ".avi"}
@@ -91,6 +92,7 @@ def format_report(report: Report) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    utf8_output()
     parser = argparse.ArgumentParser(description="Revisa la carpeta del dataset.")
     parser.add_argument("root", type=Path, nargs="?", default=REPO / "ml" / "data" / "raw")
     parser.add_argument("--catalog", type=Path, default=REPO / "catalog" / "products.csv")
