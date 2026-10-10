@@ -54,6 +54,16 @@ describe("Kiosk", () => {
     expect(screen.getByRole("button", { name: "SOLICITAR AYUDA" })).toBeInTheDocument();
   });
 
+  it.each(["W1", "W2"] as const)("aviso de cámara (Ley 29733) visible en %s", (screen_) => {
+    render(<Kiosk snapshot={{ ...base, screen: screen_ }} />);
+    expect(screen.getByText(/La cámara solo mira la bandeja y no guarda imágenes/)).toBeInTheDocument();
+  });
+
+  it("sin aviso de cámara al pagar", () => {
+    render(<Kiosk snapshot={{ ...base, screen: "QR" }} />);
+    expect(screen.queryByText(/La cámara solo mira la bandeja/)).not.toBeInTheDocument();
+  });
+
   it("Ayuda en camino solo si help_pending", () => {
     const { rerender } = render(<Kiosk snapshot={base} />);
     expect(screen.queryByText("Ayuda en camino")).not.toBeInTheDocument();
