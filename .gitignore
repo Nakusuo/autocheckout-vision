@@ -23,6 +23,15 @@ ml/runs/
 *.pt
 *.onnx
 
-# Base local
+# Base local y boletas simuladas
 *.sqlite3
 *.db
+boletas.jsonl
+
+# Playwright
+test-results/
+playwright-report/
+
+# Capturas de revisión de diseño
+.impeccable/review/
+.impeccable/build/

@@ -1,8 +1,11 @@
+import { StopOctagon } from "../signs";
+
 export function FueraDeServicio() {
   return (
     <section className="screen screen-center">
-      <h1 className="title">Fuera de servicio</h1>
-      <p>Un colaborador vendrá a ayudarle</p>
+      <StopOctagon className="stop-sign" />
+      <h1 className="title title-hero">Fuera de servicio</h1>
+      <p className="lead">Un colaborador vendrá a ayudarle</p>
     </section>
   );
 }
