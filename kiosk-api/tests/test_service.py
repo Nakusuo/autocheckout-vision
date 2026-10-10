@@ -279,13 +279,38 @@ def test_rescan_only_while_scanning():
 
 
 def test_rescan_is_counted_in_the_session():
-    svc, tray, _, _, gateway = make()
+    svc, tray, _, clock, gateway = make()
     svc.start()
     svc.rescan()
     tray.place(["AGUA"])
     ticks(svc)
+    clock.t = 4.0
     svc.confirm()
     svc.pay()
     gateway.paid = True
     svc.tick()
     assert svc.sessions.sessions[0]["rescans"] == 1
+
+
+def test_rescan_opens_a_visible_window_that_blocks_confirm():
+    svc, tray, _, clock, _ = make()
+    svc.start()
+    tray.place(["AGUA"])
+    ticks(svc)
+    svc.rescan()
+    assert svc.snapshot()["rescan_left"] == 4.0
+    ticks(svc)
+    assert svc.snapshot()["item_count"] == 1  # se ve cómo vuelve a aparecer
+    with pytest.raises(TransitionError, match="Espera"):
+        svc.confirm()
+    clock.t = 1.5
+    assert svc.snapshot()["rescan_left"] == 2.5
+    clock.t = 4.0
+    assert svc.snapshot()["rescan_left"] == 0.0
+    svc.confirm()
+    assert svc.snapshot()["screen"] == "W3"
+
+
+def test_no_rescan_window_by_default():
+    svc, _, _, _, _ = make()
+    assert svc.snapshot()["rescan_left"] == 0.0

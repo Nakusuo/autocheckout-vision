@@ -18,6 +18,7 @@ log = logging.getLogger(__name__)
 RESET_AFTER_S = 10.0
 PAYMENT_TIMEOUT_S = 120.0
 POLL_EVERY_S = 1.0
+RESCAN_S = 4.0  # ventana visible para volver a leer la bandeja
 
 SCREEN = {
     State.IDLE: "W1",
@@ -50,6 +51,7 @@ class KioskService:
         self.pos = pos if pos is not None else SimulatedPos()
         self.sessions = sessions if sessions is not None else SessionRecorder()
         self._weight_alerted = False
+        self._rescan_until = float("-inf")
         self.checkout = Checkout()
         self._stability = StabilityFilter()
         self._entered_at = clock()
@@ -76,12 +78,15 @@ class KioskService:
         self._weight_alerted = False
 
     def confirm(self) -> None:
+        if self._rescan_left() > 0:
+            raise TransitionError("Espera a que termine el escaneo")
         self._do(self.checkout.confirm)
 
     def rescan(self) -> None:
         """El cliente pide leer la bandeja de nuevo (p. ej., la cámara no vio un producto)."""
         self.checkout.rescan()
         self._stability.reset()
+        self._rescan_until = self._clock() + RESCAN_S
         self._weight_alerted = False
         self.sessions.note("rescans")
 
@@ -179,6 +184,11 @@ class KioskService:
     def resolve_help(self, help_id: int) -> None:
         self.help_requests = [r for r in self.help_requests if r["id"] != help_id]
 
+    def _rescan_left(self) -> float:
+        if self.checkout.state is not State.SCANNING:
+            return 0.0
+        return max(0.0, round(self._rescan_until - self._clock(), 1))
+
     def _alert(self) -> str | None:
         cart, weight = self.checkout.cart, self.checkout.weight
         if cart is None:
@@ -214,4 +224,5 @@ class KioskService:
             "seconds_in_state": round(self._clock() - self._entered_at, 1),
             "help_pending": bool(self.help_requests),
             "qr_payload": self._charge.qr_payload if self._charge else None,
+            "rescan_left": self._rescan_left(),
         }
