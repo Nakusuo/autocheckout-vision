@@ -159,8 +159,8 @@ Plano: la profundidad la dan los bordes de tinta, no las sombras. La única somb
 - **Señal de velocidad**: disco blanco con aro rojo y la cifra en negro para los 120 s del pago y los 10 s del ticket.
 - **Fuera de servicio**: octógono rojo de PARE sobre el título.
 
-- **Escaneo en vivo** (W2): una píldora «En vivo» junto al título (punto rojo que late). Cada producto nuevo se marca «+ Agregado» (fila amarilla clara y etiqueta roja) unos 2,4 s. Una pista invita a pulsar CONFIRMAR cuando estén todos: el cliente decide cuándo termina.
-- **Escanear de nuevo** (W2): placa blanca más baja, debajo de CONFIRMAR. Abre una ventana visible de 4 s: la píldora pasa a roja con la cuenta («De nuevo… 3 s»), una barra roja avanza por el borde superior del tablero, las líneas reaparecen una tras otra y CONFIRMAR queda bloqueado hasta el final. En W3, una pista indica que CORREGIR permite seguir escaneando.
+- **Escaneo en vivo, uno por uno** (W2): la píldora «En vivo» (punto rojo que late) junto al título. El cliente pasa cada producto frente a la cámara y se suma a la lista: la fila nueva se pone amarilla clara, la insignia de cantidad roja y la etiqueta «+ Agregado» flota en el margen superior (no cambia la altura). Cada línea tiene un botón cuadrado «−» para quitar una unidad. Mientras el producto llega a la bandeja se ve «Pesando la bandeja…» (aro que gira) y CONFIRMAR espera; «Revise su bandeja» solo aparece si la diferencia dura más de 2 s.
+- **Cancelar compra** (W2, W3 y QR): la acción más callada, texto subrayado sin placa, debajo de la acción principal. Vuelve al inicio y descarta la lista.
 - **Aviso de cámara** (W1 y W2): una línea pequeña con el ícono de cámara y la Ley 29733.
 
 **Paneles del equipo (`/sim`, `/caja`)**: misma paleta, tipografía y placas, pero a escala de escritorio (`rem`) y en dos columnas: tarjetas blancas con borde de tinta sobre fondo `#f3f1ec`, botones `pbtn` (rojo = acción principal) y el estado del quiosco como disco rojo con el código de pantalla. Estilos en `kiosk-ui/src/panels/panels.css`.

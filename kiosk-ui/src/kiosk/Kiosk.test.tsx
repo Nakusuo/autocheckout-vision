@@ -14,7 +14,6 @@ const base: Snapshot = {
   seconds_in_state: 0,
   help_pending: false,
   qr_payload: null,
-  rescan_left: 0,
 };
 const agua = { sku: "AGUA", name: "Agua", quantity: 1, unit_price_cents: 250 };
 
@@ -26,7 +25,7 @@ describe("Kiosk", () => {
   });
 
   it("W2 muestra la línea y CONFIRMAR; deshabilitado sin productos", () => {
-    const snap = { ...base, screen: "W2" as const, lines: [agua], total_cents: 250, item_count: 1 };
+    const snap = { ...base, screen: "W2" as const, lines: [agua], total_cents: 250, item_count: 1, weight: { ok: true, diff_g: 0 } };
     const { rerender } = render(<Kiosk snapshot={snap} />);
     expect(screen.getByText("Agua")).toBeInTheDocument();
     expect(screen.getByText("1")).toBeInTheDocument();
@@ -44,23 +43,32 @@ describe("Kiosk", () => {
     expect(screen.getByRole("button", { name: "CORREGIR" })).toBeEnabled();
   });
 
-  it("W2 permite volver a escanear; W3 explica cómo", () => {
-    const { rerender } = render(<Kiosk snapshot={{ ...base, screen: "W2" }} />);
-    expect(screen.getByRole("button", { name: "ESCANEAR DE NUEVO" })).toBeEnabled();
-    rerender(<Kiosk snapshot={{ ...base, screen: "W3", lines: [agua], item_count: 1 }} />);
-    expect(screen.getByText(/¿Falta un producto\? Pulsa CORREGIR/)).toBeInTheDocument();
-  });
-
-  it("al escanear de nuevo bloquea CONFIRMAR y muestra la cuenta", () => {
-    render(<Kiosk snapshot={{ ...base, screen: "W2", lines: [agua], item_count: 1, total_cents: 250, rescan_left: 2.4 }} />);
-    expect(screen.getByText("De nuevo… 3 s")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "CONFIRMAR" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "ESCANEAR DE NUEVO" })).toBeDisabled();
-  });
-
-  it("W2 avisa cómo terminar de escanear", () => {
+  it("W2 escanea en vivo: Quitar por línea y CANCELAR COMPRA", () => {
     render(<Kiosk snapshot={{ ...base, screen: "W2", lines: [agua], item_count: 1, total_cents: 250 }} />);
-    expect(screen.getByText(/Pulsa CONFIRMAR para terminar de escanear/)).toBeInTheDocument();
+    expect(screen.getByText("En vivo")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Quitar uno de Agua" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "CANCELAR COMPRA" })).toBeEnabled();
+    expect(screen.getByText(/pulsa CONFIRMAR si ya están todos/)).toBeInTheDocument();
+  });
+
+  it("W2 mientras se pesa: sin alarma, pero CONFIRMAR bloqueado", () => {
+    const snap = { ...base, screen: "W2" as const, lines: [agua], total_cents: 250, item_count: 1, weight: { ok: false, diff_g: -651 } };
+    render(<Kiosk snapshot={snap} />);
+    expect(screen.getByText("Pesando la bandeja…")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CONFIRMAR" })).toBeDisabled();
+  });
+
+  it("W3 explica cómo agregar lo que falta y permite cancelar", () => {
+    render(<Kiosk snapshot={{ ...base, screen: "W3", lines: [agua], item_count: 1 }} />);
+    expect(screen.getByText(/¿Falta un producto\? Pulsa CORREGIR/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CANCELAR COMPRA" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /Quitar uno/ })).not.toBeInTheDocument();
+  });
+
+  it("QR permite cancelar la compra", () => {
+    render(<Kiosk snapshot={{ ...base, screen: "QR", total_cents: 250 }} />);
+    expect(screen.getByRole("button", { name: "CANCELAR COMPRA" })).toBeEnabled();
   });
 
   it("W3 con can_pay habilita PAGAR", () => {

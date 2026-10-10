@@ -1,85 +1,122 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { request, useKioskState, type Snapshot } from "../api";
 import { formatPEN } from "../format";
 import { KioskStatus, PanelHeader } from "./common";
 
 type Product = { sku: string; name: string; price_cents: number; weight_g: number };
-type Tray = { qty: Record<string, number>; hidden: Record<string, boolean> };
+type TrayState = { tray: string[]; camera: string[] };
+type Step = { kind: "scan" | "sneak" | "trap" | "empty"; sku?: string; grams?: number };
 
-const EMPTY: Tray = { qty: {}, hidden: {} };
+const STEP_GAP_MS = 1800; // pausa entre productos en los escenarios, para que se vea cada uno
 
 /** Acciones del quiosco que el presentador puede disparar desde aquí, según la pantalla. */
 const KIOSK_ACTIONS: Partial<Record<Snapshot["screen"], { label: string; path: string }[]>> = {
   W1: [{ label: "Iniciar compra", path: "/api/start" }],
   W2: [
     { label: "Confirmar", path: "/api/confirm" },
-    { label: "Escanear de nuevo", path: "/api/rescan" },
+    { label: "Cancelar compra", path: "/api/cancel" },
   ],
   W3: [
     { label: "Pagar", path: "/api/pay" },
     { label: "Corregir", path: "/api/correct" },
+    { label: "Cancelar compra", path: "/api/cancel" },
   ],
+  QR: [{ label: "Cancelar compra", path: "/api/cancel" }],
   FUERA_DE_SERVICIO: [{ label: "Reactivar quiosco", path: "/api/recover" }],
 };
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function SimPanel() {
   const { snapshot, connected } = useKioskState();
   const [catalog, setCatalog] = useState<Product[]>([]);
-  const [tray, setTray] = useState<Tray>(EMPTY);
+  const [tray, setTray] = useState<string[]>([]);
+  const [camera, setCamera] = useState<string[]>([]);
   const [trap, setTrap] = useState(0);
+  const [running, setRunning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const unmounted = useRef(false);
 
-  const call = async (method: string, path: string, body?: unknown) => {
+  const call = useCallback(async <T,>(method: string, path: string, body?: unknown): Promise<T | null> => {
     setError(null);
     try {
-      await request(method, path, body);
-      return true;
+      return await request<T>(method, path, body);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error desconocido");
-      return false;
+      return null;
     }
-  };
+  }, []);
 
   useEffect(() => {
+    unmounted.current = false;
+    const refreshTray = () =>
+      request<TrayState>("GET", "/sim/tray")
+        .then((r) => {
+          setTray(r.tray);
+          setCamera(r.camera);
+        })
+        .catch(() => undefined);
     request<Product[]>("GET", "/sim/catalog")
       .then(setCatalog)
       .catch((e) => setError(e instanceof Error ? e.message : "Error desconocido"));
+    refreshTray();
+    const poll = setInterval(refreshTray, 500);
+    return () => {
+      unmounted.current = true;
+      clearInterval(poll);
+    };
   }, []);
 
-  const place = async (next: Tray) => {
-    const skus: string[] = [];
-    const hidden: string[] = [];
-    for (const p of catalog) {
-      const units = Array<string>(next.qty[p.sku] ?? 0).fill(p.sku);
-      (next.hidden[p.sku] ? hidden : skus).push(...units);
+  const onTray = async (path: string, sku: string) => {
+    const r = await call<TrayState>("POST", path, { sku });
+    if (r) {
+      setTray(r.tray);
+      setCamera(r.camera);
     }
-    if (await call("POST", "/sim/tray", { skus, hidden })) setTray(next);
   };
-
   const applyTrap = async (grams: number) => {
-    if (await call("POST", "/sim/trap", { offset_g: grams })) setTrap(grams);
+    if ((await call("POST", "/sim/trap", { offset_g: grams })) !== null) setTrap(grams);
+  };
+  const emptyTray = async () => {
+    if ((await call("POST", "/sim/tray", { skus: [] })) !== null) {
+      setTray([]);
+      setCamera([]);
+    }
   };
 
-  const change = (sku: string, delta: number) =>
-    place({ ...tray, qty: { ...tray.qty, [sku]: Math.max(0, (tray.qty[sku] ?? 0) + delta) } });
-  const toggleHidden = (sku: string) => place({ ...tray, hidden: { ...tray.hidden, [sku]: !tray.hidden[sku] } });
+  const runSteps = async (label: string, steps: Step[]) => {
+    setRunning(label);
+    for (const [i, step] of steps.entries()) {
+      if (unmounted.current) break;
+      if (i > 0) await wait(STEP_GAP_MS);
+      if (step.kind === "scan" && step.sku) await onTray("/sim/scan", step.sku);
+      if (step.kind === "sneak" && step.sku) await onTray("/sim/sneak", step.sku);
+      if (step.kind === "trap") await applyTrap(step.grams ?? 0);
+      if (step.kind === "empty") {
+        await emptyTray();
+        await applyTrap(0);
+      }
+    }
+    setRunning(null);
+  };
 
+  const scan = (sku: string): Step => ({ kind: "scan", sku });
   const [a, b, c, d] = catalog;
-  const scenarios: { label: string; detail: string; run: () => void }[] = [
-    { label: "Vaciar bandeja", detail: "Sin productos ni peso extra", run: () => { place(EMPTY); applyTrap(0); } },
-    ...(a ? [{ label: "Compra de 1", detail: a.name, run: () => place({ qty: { [a.sku]: 1 }, hidden: {} }) }] : []),
+  const scenarios: { label: string; detail: string; steps: Step[] }[] = [
+    { label: "Vaciar bandeja", detail: "Sin productos ni peso extra", steps: [{ kind: "empty" }] },
     ...(a && b && c
-      ? [{ label: "Compra de 3", detail: `${a.name}, ${b.name} y ${c.name}`, run: () => place({ qty: { [a.sku]: 1, [b.sku]: 1, [c.sku]: 1 }, hidden: {} }) }]
+      ? [{ label: "Compra de 3, uno por uno", detail: `${a.name}, ${b.name} y ${c.name}`, steps: [scan(a.sku), scan(b.sku), scan(c.sku)] }]
       : []),
+    ...(d ? [{ label: "El mismo producto dos veces", detail: `2 × ${d.name}`, steps: [scan(d.sku), scan(d.sku)] }] : []),
     ...(a && d
-      ? [{ label: "La cámara no ve un producto", detail: `${d.name} pesa pero no se detecta`, run: () => place({ qty: { [a.sku]: 1, [d.sku]: 1 }, hidden: { [d.sku]: true } }) }]
+      ? [{ label: "La cámara no ve un producto", detail: `${d.name} va a la bandeja sin escanear`, steps: [scan(a.sku), { kind: "sneak" as const, sku: d.sku }] }]
       : []),
-    ...(d ? [{ label: "Más de 3 productos", detail: `4 × ${d.name}`, run: () => place({ qty: { [d.sku]: 4 }, hidden: {} }) }] : []),
-    { label: "Peso escondido", detail: "+40 g que nadie declaró", run: () => applyTrap(40) },
+    ...(d ? [{ label: "Más de 3 productos", detail: `4 × ${d.name}, uno por uno`, steps: [scan(d.sku), scan(d.sku), scan(d.sku), scan(d.sku)] }] : []),
+    { label: "Peso escondido", detail: "+40 g que nadie declaró", steps: [{ kind: "trap", grams: 40 }] },
   ];
 
   const actions = snapshot ? (KIOSK_ACTIONS[snapshot.screen] ?? []) : [];
-  const onTray = Object.values(tray.qty).reduce((n, q) => n + q, 0);
+  const count = (sku: string) => tray.filter((s) => s === sku).length;
 
   return (
     <div className="panel">
@@ -88,10 +125,13 @@ export function SimPanel() {
       <div className="sim-layout">
         <main className="sim-main">
           <section className="card">
-            <h2 className="card-title">Escenarios</h2>
+            <div className="card-head">
+              <h2 className="card-title">Escenarios</h2>
+              {running && <span className="running">Ejecutando: {running}…</span>}
+            </div>
             <div className="scenarios">
               {scenarios.map((s) => (
-                <button key={s.label} type="button" className="scenario" onClick={s.run}>
+                <button key={s.label} type="button" className="scenario" disabled={running !== null} onClick={() => runSteps(s.label, s.steps)}>
                   <span className="scenario-label">{s.label}</span>
                   <span className="scenario-detail">{s.detail}</span>
                 </button>
@@ -101,28 +141,35 @@ export function SimPanel() {
 
           <section className="card">
             <div className="card-head">
-              <h2 className="card-title">Bandeja</h2>
-              <span className="muted">{onTray} en la bandeja</span>
+              <h2 className="card-title">Productos</h2>
+              <span className="muted">{tray.length} en la bandeja</span>
             </div>
+            <p className="muted">Pasa cada producto por la cámara, como haría el cliente. Después queda en la bandeja.</p>
             <ul className="products">
               {catalog.map((p) => {
-                const q = tray.qty[p.sku] ?? 0;
-                const hidden = !!tray.hidden[p.sku];
+                const n = count(p.sku);
+                const seen = camera.includes(p.sku);
                 return (
-                  <li key={p.sku} className={`product ${q ? "on" : ""} ${hidden && q ? "hidden" : ""}`}>
+                  <li key={p.sku} className={`product ${n ? "on" : ""} ${seen ? "seen" : ""}`}>
                     <div className="product-info">
-                      <span className="product-name">{p.name}</span>
+                      <span className="product-name">
+                        {p.name}
+                        {seen && <span className="seen-tag">Frente a la cámara</span>}
+                      </span>
                       <span className="muted">{formatPEN(p.price_cents)}<span className="sep">–</span>{p.weight_g} g</span>
                     </div>
-                    <div className="stepper">
-                      <button type="button" aria-label={`Quitar ${p.name}`} disabled={q === 0} onClick={() => change(p.sku, -1)}>−</button>
-                      <span aria-label={`Cantidad de ${p.name}`}>{q}</span>
-                      <button type="button" aria-label={`Añadir ${p.name}`} onClick={() => change(p.sku, 1)}>+</button>
+                    <span className="product-count" aria-label={`En la bandeja: ${p.name}`}>{n}</span>
+                    <div className="product-actions">
+                      <button type="button" className="pbtn go" disabled={running !== null} onClick={() => onTray("/sim/scan", p.sku)}>
+                        Pasar por la cámara
+                      </button>
+                      <button type="button" className="pbtn plain" disabled={running !== null} onClick={() => onTray("/sim/sneak", p.sku)}>
+                        Sin escanear
+                      </button>
+                      <button type="button" className="pbtn plain" disabled={running !== null || n === 0} onClick={() => onTray("/sim/take", p.sku)}>
+                        Sacar
+                      </button>
                     </div>
-                    <label className="hide-toggle">
-                      <input type="checkbox" checked={hidden} onChange={() => toggleHidden(p.sku)} />
-                      La cámara no lo ve
-                    </label>
                   </li>
                 );
               })}

@@ -65,10 +65,12 @@ def test_scan_shows_the_product_briefly_and_leaves_it_on_the_tray():
     tray = SimulatedTray(CATALOG, scale, clock=clock, show_s=1.5)
     tray.scan("AGUA")
     assert tray.detect() == ["AGUA"]
-    assert scale.read() == 651.0
+    assert scale.read() == 0.0  # primero pasa por la cámara...
+    assert tray.contents() == []
     clock.t = 1.6
     assert tray.detect() == []
-    assert tray.contents() == ["AGUA"]
+    assert tray.contents() == ["AGUA"]  # ...y después queda en la bandeja
+    assert scale.read() == 651.0
 
 
 def test_sneak_weighs_without_being_seen_and_take_removes():

@@ -125,12 +125,13 @@ def test_sim_pay_no_longer_exists():
 def test_sim_scan_sneak_take_and_remove_over_http():
     svc, client, _ = make()
     client.post("/api/start")
-    assert client.post("/sim/scan", json={"sku": "AGUA"}).json() == {"tray": ["AGUA"]}
+    # Primero frente a la cámara; a la bandeja cuando sale de la vista
+    assert client.post("/sim/scan", json={"sku": "AGUA"}).json() == {"tray": [], "camera": ["AGUA"]}
     for _ in range(3):
         svc.tick()
     assert client.get("/api/state").json()["item_count"] == 1
-    assert client.post("/sim/sneak", json={"sku": "AGUA"}).json() == {"tray": ["AGUA", "AGUA"]}
-    assert client.get("/sim/tray").json() == {"tray": ["AGUA", "AGUA"]}
+    assert client.post("/sim/sneak", json={"sku": "AGUA"}).json() == {"tray": ["AGUA"], "camera": ["AGUA"]}
+    assert client.get("/sim/tray").json() == {"tray": ["AGUA"], "camera": ["AGUA"]}
     assert client.post("/sim/take", json={"sku": "AGUA"}).status_code == 200
     assert client.post("/sim/take", json={"sku": "NADA"}).status_code == 422
     assert client.post("/api/remove", json={"sku": "AGUA"}).json()["item_count"] == 0
