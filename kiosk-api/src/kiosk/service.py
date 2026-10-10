@@ -38,7 +38,7 @@ class KioskService:
         self,
         catalog: Catalog,
         detector: Detector,
-        scale: ScaleReader,
+        scale: ScaleReader | None,
         gateway: PaymentGateway,
         verifier: JwtVerifier,
         clock: Callable[[], float] = time.monotonic,
@@ -62,7 +62,7 @@ class KioskService:
         self._last_grams = 0.0
         self._mismatch_since: float | None = None
         self._on_cart = on_cart
-        self.checkout = Checkout()
+        self.checkout = Checkout(require_weight=scale is not None)
         self._stability = StabilityFilter()
         self._entered_at = clock()
         self.help_requests: list[dict] = []
@@ -84,7 +84,7 @@ class KioskService:
 
     def start(self) -> None:
         self._do(self.checkout.start)
-        self.sessions.begin(self._clock())
+        self.sessions.begin(self._clock(), weight_checked=self._scale is not None)
         self._weight_alerted = False
         self._scanned = Counter()
         self._view = Counter()
@@ -110,7 +110,7 @@ class KioskService:
         self._scanned[sku] -= 1
         self.sessions.note("removals")
         self._cart_changed()
-        self._refresh(self._last_grams)
+        self._refresh(self._last_grams if self._scale is not None else None)
 
     def correct(self) -> None:
         self._do(self.checkout.correct)
@@ -151,7 +151,7 @@ class KioskService:
             return
         try:
             skus = self._detector.detect()
-            grams = self._scale.read()
+            grams = self._scale.read() if self._scale is not None else None
         except Exception:
             log.exception("Fallo de sensor; quiosco fuera de servicio")
             self._do(self.checkout.fault)
@@ -181,9 +181,12 @@ class KioskService:
         if self._on_cart is not None:
             self._on_cart(self._cart())
 
-    def _refresh(self, grams: float) -> None:
-        self._last_grams = grams
+    def _refresh(self, grams: float | None) -> None:
         cart = self._cart()
+        if grams is None:  # sin balanza: solo cuenta lo que reconoce la cámara
+            self.checkout.update(cart, None)
+            return
+        self._last_grams = grams
         weight = check_weight(cart.theoretical_weight_g, grams)
         self.checkout.update(cart, weight)
         if weight.ok:
@@ -267,6 +270,7 @@ class KioskService:
             "total_cents": cart.total_cents if cart else 0,
             "item_count": cart.item_count if cart else 0,
             "weight": {"ok": c.weight.ok, "diff_g": c.weight.diff_g} if c.weight else None,
+            "weight_enabled": self._scale is not None,
             "alert": self._alert(),
             "seconds_in_state": round(self._clock() - self._entered_at, 1),
             "help_pending": bool(self.help_requests),

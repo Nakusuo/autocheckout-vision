@@ -10,6 +10,7 @@ const base: Snapshot = {
   total_cents: 0,
   item_count: 0,
   weight: null,
+  weight_enabled: true,
   alert: null,
   seconds_in_state: 0,
   help_pending: false,
@@ -57,6 +58,13 @@ describe("Kiosk", () => {
     expect(screen.getByText("Pesando la bandeja…")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "CONFIRMAR" })).toBeDisabled();
+  });
+
+  it("sin balanza, CONFIRMAR solo depende de lo escaneado", () => {
+    const snap = { ...base, screen: "W2" as const, lines: [agua], total_cents: 250, item_count: 1, weight_enabled: false };
+    render(<Kiosk snapshot={snap} />);
+    expect(screen.queryByText("Pesando la bandeja…")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CONFIRMAR" })).toBeEnabled();
   });
 
   it("W3 explica cómo agregar lo que falta y permite cancelar", () => {
