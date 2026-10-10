@@ -14,7 +14,7 @@ from kiosk.pos import SimulatedPos
 from kiosk.scale import SimulatedScale
 from kiosk.service import KioskService
 from kiosk.store import init_db, load_catalog
-from kiosk.tray import Detector, ScaleFollowingDetector, SimulatedTray
+from kiosk.tray import Detector, SimulatedTray
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -35,7 +35,7 @@ def build_detector(
         yolo = YoloOnnxDetector.from_model(
             Path(model), source, imgsz=int(env.get("KIOSK_IMGSZ", "416"))
         )
-        return ScaleFollowingDetector(yolo, catalog, scale), None
+        return yolo, None
     sys.exit(f"KIOSK_MODE desconocido: {mode!r} (usa 'sim' o 'camera')")
 
 
@@ -59,7 +59,11 @@ def main() -> None:
     verifier = JwtVerifier((keys / "gateway_jwt_public.pem").read_bytes())
     pos = SimulatedPos(REPO / "kiosk-api" / "boletas.jsonl")
     sessions = SessionRecorder(REPO / "kiosk-api" / "sesiones.jsonl")
-    service = KioskService(catalog, detector, scale, gateway, verifier, pos=pos, sessions=sessions)
+    # Sin balanza física, en modo cámara la balanza simulada pesa lo que se va escaneando.
+    follow = (lambda cart: scale.set_load(cart.theoretical_weight_g)) if tray is None else None
+    service = KioskService(
+        catalog, detector, scale, gateway, verifier, pos=pos, sessions=sessions, on_cart=follow
+    )
     app = create_app(service, tray, scale) if tray is not None else create_app(service)
     uvicorn.run(app, host="127.0.0.1", port=8000)
 

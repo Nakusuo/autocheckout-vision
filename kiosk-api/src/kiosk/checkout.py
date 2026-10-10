@@ -52,9 +52,10 @@ class Checkout:
             raise TransitionError("Se necesitan de 1 a 3 productos reconocidos")
         self.state = State.CONFIRMING
 
-    def rescan(self) -> None:
-        self._require(State.SCANNING)
+    def cancel(self) -> None:
+        self._require(State.SCANNING, State.CONFIRMING, State.PAYING)
         self._clear()
+        self.state = State.IDLE
 
     def correct(self) -> None:
         self._require(State.CONFIRMING)

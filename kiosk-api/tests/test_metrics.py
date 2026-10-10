@@ -36,7 +36,7 @@ def test_recorder_tracks_one_session_and_appends_jsonl(tmp_path):
         "help_requested": True,
         "weight_alerts": 2,
         "corrections": 1,
-        "rescans": 0,
+        "removals": 0,
         "payment_timeouts": 0,
         "items": 2,
         "total_cents": 530,
@@ -83,7 +83,7 @@ def test_main_without_file_fails_clearly(tmp_path, capsys):
 
 
 @pytest.mark.parametrize(
-    "field", ["weight_alerts", "corrections", "rescans", "payment_timeouts", "help_requested"]
+    "field", ["weight_alerts", "corrections", "removals", "payment_timeouts", "help_requested"]
 )
 def test_recorder_accepts_known_notes(field):
     rec = SessionRecorder()
