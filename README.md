@@ -89,7 +89,9 @@ pip install -e ".[dev,bench]"
 python -m mltools.dataset_check                 # revisa data/raw/ contra el catálogo
 python -m mltools.frames VIDEO.mp4 --out data/raw/SKU   # fotos desde un video
 python -m mltools.labelstudio                   # configuración para Label Studio
+python -m mltools.split                         # exportación de Label Studio → dataset 70/20/10
+python -m mltools.train                         # entrena, evalúa (mAP50 ≥ 0,90) y exporta a ONNX
 python -m mltools.bench --model modelo.onnx     # latencia vs RNF-01 (p95 ≤ 150 ms)
 ```
 
-Guía de etiquetado: [`docs/ml/etiquetado.md`](docs/ml/etiquetado.md). Los datos (`ml/data/`) nunca van a git.
+Guía de etiquetado: [`docs/ml/etiquetado.md`](docs/ml/etiquetado.md). Guía de entrenamiento: [`docs/ml/entrenamiento.md`](docs/ml/entrenamiento.md). Los datos (`ml/data/`) nunca van a git.
