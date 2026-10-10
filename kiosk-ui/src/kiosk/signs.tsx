@@ -41,6 +41,15 @@ export function ArrowRight({ className }: Props) {
   );
 }
 
+export function CameraGlyph({ className }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+      <path d="M14 32 h16 l7 -10 h26 l7 10 h16 a6 6 0 0 1 6 6 v38 a6 6 0 0 1 -6 6 h-72 a6 6 0 0 1 -6 -6 v-38 a6 6 0 0 1 6 -6 z" fill="none" stroke="currentColor" strokeWidth="8" strokeLinejoin="round" />
+      <circle cx="50" cy="56" r="14" fill="none" stroke="currentColor" strokeWidth="8" />
+    </svg>
+  );
+}
+
 export function HelpGlyph({ className }: Props) {
   return (
     <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">

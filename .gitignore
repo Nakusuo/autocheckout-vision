@@ -27,6 +27,7 @@ ml/runs/
 *.sqlite3
 *.db
 boletas.jsonl
+sesiones.jsonl
 
 # Playwright
 test-results/

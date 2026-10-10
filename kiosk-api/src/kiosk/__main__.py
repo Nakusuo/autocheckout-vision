@@ -8,6 +8,7 @@ import uvicorn
 
 from kiosk.app import create_app
 from kiosk.catalog import Catalog
+from kiosk.metrics import SessionRecorder
 from kiosk.payments import HttpGateway, JwtVerifier
 from kiosk.pos import SimulatedPos
 from kiosk.scale import SimulatedScale
@@ -57,7 +58,8 @@ def main() -> None:
     )
     verifier = JwtVerifier((keys / "gateway_jwt_public.pem").read_bytes())
     pos = SimulatedPos(REPO / "kiosk-api" / "boletas.jsonl")
-    service = KioskService(catalog, detector, scale, gateway, verifier, pos=pos)
+    sessions = SessionRecorder(REPO / "kiosk-api" / "sesiones.jsonl")
+    service = KioskService(catalog, detector, scale, gateway, verifier, pos=pos, sessions=sessions)
     app = create_app(service, tray, scale) if tray is not None else create_app(service)
     uvicorn.run(app, host="127.0.0.1", port=8000)
 

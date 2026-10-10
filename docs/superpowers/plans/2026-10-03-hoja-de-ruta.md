@@ -23,7 +23,7 @@ Cada hito tiene su propio plan detallado (`docs/superpowers/plans/`), que se esc
 | **M2 Flujo con simuladores** | `kiosk-api` con FastAPI y WebSocket, catálogo en SQLite (RNF-03), temporizadores de 10 s y 120 s; `kiosk-ui` con las pantallas W1, W2, W3, QR, W4 y fuera de servicio en 1080×1920 (RNF-06); panel de caja para SOLICITAR AYUDA | backend, ui-ux | por escribir |
 | **M3 Pagos y seguridad** | `mock-gateway`: crea el cobro, genera el QR, tiene la página «simular pago» y envía el webhook con JWT RS256 (`iss`, `aud`, `exp`, `jti` contra reenvíos); TLS 1.3 con mkcert (RNF-04/05) | pagos-seguridad | por escribir |
 | **M4 Integración con webcam** | `YoloOnnxDetector` conectado a la webcam real; Playwright de W1 a W4 en CI. Hecho: las e2e usan la bandeja simulada (`KIOSK_MODE=sim`), porque reproducir imágenes grabadas necesita el modelo entrenado del M1 | ia, backend, ui-ux | [`2026-10-03-m4a-camara.md`](2026-10-03-m4a-camara.md) |
-| **M5 Demo y medición** | Cronometrar a 5 personas ajenas al equipo (≤ 45 s, RNF-02); informe de resultados frente a ON-01/02/03; revisión legal (avisos de la Ley 29733, marca genérica) | todos | por escribir |
+| **M5 Demo y medición** | Cronometrar a 5 personas ajenas al equipo (≤ 45 s, RNF-02); informe de resultados frente a ON-01/02/03; revisión legal (avisos de la Ley 29733, marca genérica) | todos | [`2026-10-10-m5-demo.md`](2026-10-10-m5-demo.md) |
 
 ## Dependencias
 
