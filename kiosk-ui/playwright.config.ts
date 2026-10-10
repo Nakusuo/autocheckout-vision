@@ -16,7 +16,8 @@ function python(service: string): string {
   return existsSync(venv) ? `"${venv}"` : "python";
 }
 
-const env = { GATEWAY_API_KEY: API_KEY, KIOSK_MODE: "sim", PYTHONUTF8: "1" };
+// Con balanza simulada: las e2e cubren también la validación de peso (trampa de +40 g).
+const env = { GATEWAY_API_KEY: API_KEY, KIOSK_MODE: "sim", KIOSK_SCALE: "sim", PYTHONUTF8: "1" };
 
 export default defineConfig({
   testDir: "./e2e",

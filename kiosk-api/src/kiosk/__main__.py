@@ -40,6 +40,14 @@ def build_detector(
     sys.exit(f"KIOSK_MODE desconocido: {mode!r} (usa 'sim' o 'camera')")
 
 
+def scale_enabled(env: Mapping[str, str]) -> bool:
+    """KIOSK_SCALE=off (por defecto): sin balanza, solo la cámara. sim: balanza simulada."""
+    mode = env.get("KIOSK_SCALE", "off")
+    if mode not in ("off", "sim"):
+        sys.exit(f"KIOSK_SCALE desconocido: {mode!r} (usa 'off' o 'sim')")
+    return mode == "sim"
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     keys = REPO / "keys"
@@ -60,17 +68,27 @@ def main() -> None:
     verifier = JwtVerifier((keys / "gateway_jwt_public.pem").read_bytes())
     pos = SimulatedPos(REPO / "kiosk-api" / "boletas.jsonl")
     sessions = SessionRecorder(REPO / "kiosk-api" / "sesiones.jsonl")
-    # Sin balanza física, en modo cámara la balanza simulada pesa lo que se va escaneando:
+    use_scale = scale_enabled(os.environ)
+    if not use_scale:
+        log.info("Sin balanza (KIOSK_SCALE=off): se paga con lo que reconoce la cámara")
+    # Con balanza simulada en modo cámara, la balanza pesa lo que se va escaneando:
     # la validación de peso (ON-02) NO protege nada en ese modo. Solo para demostrar la visión.
     follow = None
-    if tray is None:
+    if tray is None and use_scale:
         log.warning(
             "Modo cámara con balanza simulada: el peso sigue a la lista y no valida nada. "
             "Conecta una balanza real antes de usarlo con clientes."
         )
         follow = lambda cart: scale.set_load(cart.theoretical_weight_g)
     service = KioskService(
-        catalog, detector, scale, gateway, verifier, pos=pos, sessions=sessions, on_cart=follow
+        catalog,
+        detector,
+        scale if use_scale else None,
+        gateway,
+        verifier,
+        pos=pos,
+        sessions=sessions,
+        on_cart=follow,
     )
     app = create_app(service, tray, scale) if tray is not None else create_app(service)
     uvicorn.run(app, host="127.0.0.1", port=8000)

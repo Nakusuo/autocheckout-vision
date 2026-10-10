@@ -19,7 +19,9 @@ class TransitionError(Exception):
 
 
 class Checkout:
-    def __init__(self) -> None:
+    def __init__(self, require_weight: bool = True) -> None:
+        # Sin balanza (require_weight=False) se paga con lo que reconoce la cámara.
+        self._require_weight = require_weight
         self.state = State.IDLE
         self.cart: Cart | None = None
         self.weight: WeightCheck | None = None
@@ -34,13 +36,17 @@ class Checkout:
 
     @property
     def can_pay(self) -> bool:
-        return self.state is State.CONFIRMING and self.weight is not None and self.weight.ok
+        if self.state is not State.CONFIRMING:
+            return False
+        if not self._require_weight:
+            return True
+        return self.weight is not None and self.weight.ok
 
     def start(self) -> None:
         self._require(State.IDLE)
         self.state = State.SCANNING
 
-    def update(self, cart: Cart, weight: WeightCheck) -> None:
+    def update(self, cart: Cart, weight: WeightCheck | None) -> None:
         self._require(State.SCANNING, State.CONFIRMING)
         self.cart = cart
         self.weight = weight

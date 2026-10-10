@@ -386,3 +386,45 @@ def test_brief_weight_gap_while_placing_raises_no_alarm():
     assert snap["alert"] is None
     assert snap["weight"]["ok"] is True
     assert svc.sessions._current["weight_alerts"] == 0
+
+
+
+def make_without_scale():
+    clock = FakeClock()
+    tray = SimulatedTray(CATALOG, SimulatedScale(noise_g=0))
+    gateway = FakeGateway()
+    svc = KioskService(CATALOG, tray, None, gateway, JwtVerifier(PUBLIC_PEM), clock)
+    return svc, tray, clock, gateway
+
+
+def test_without_scale_only_the_camera_matters():
+    svc, tray, _, gateway = make_without_scale()
+    svc.start()
+    tray.place(["AGUA"])
+    ticks(svc)
+    snap = svc.snapshot()
+    assert snap["weight_enabled"] is False
+    assert snap["weight"] is None
+    assert snap["alert"] is None
+    svc.confirm()
+    assert svc.snapshot()["can_pay"] is True
+    svc.pay()
+    gateway.paid = True
+    svc.tick()
+    assert svc.snapshot()["screen"] == "W4"
+    assert svc.sessions.sessions[0]["weight_checked"] is False
+
+
+def test_without_scale_other_rules_still_apply():
+    svc, tray, _, _ = make_without_scale()
+    svc.start()
+    tray.place(["CHOCO"] * 4)
+    ticks(svc)
+    assert svc.snapshot()["alert"] == "Para más de 3 productos use la caja"
+    with pytest.raises(TransitionError):
+        svc.confirm()
+
+
+def test_with_scale_snapshot_says_so():
+    svc, _, _, _, _ = make()
+    assert svc.snapshot()["weight_enabled"] is True

@@ -42,6 +42,8 @@ Para pagar: en la pantalla del QR, abre en `/sim` el enlace «Abrir el celular s
 
 La API escucha en 127.0.0.1:8000 y solo acepta peticiones desde http://localhost:5173 (Vite usa ese puerto fijo; si está ocupado, libéralo).
 
+**Balanza:** por defecto no se usa (`KIOSK_SCALE=off`): el quiosco cobra lo que reconoce la cámara. Con `KIOSK_SCALE=sim` se activa la balanza simulada y la validación de peso (±5 g, ON-02), con la trampa de peso en `/sim`.
+
 Cada venta pagada emite una boleta simulada del POS (serie `B001`) que se guarda en `kiosk-api/boletas.jsonl` (fuera de git).
 
 Cada compra queda registrada en `kiosk-api/sesiones.jsonl` (duración de INICIAR a W4, ayuda pedida, alertas de peso). `python -m kiosk.metrics` en `kiosk-api` resume esos datos frente a las metas del SRS (ON-01/02/03, RNF-02); se usa en la demo, ver [`docs/superpowers/plans/2026-10-10-m5-demo.md`](docs/superpowers/plans/2026-10-10-m5-demo.md).

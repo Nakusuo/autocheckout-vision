@@ -101,6 +101,7 @@ export function SimPanel() {
   };
 
   const scan = (sku: string): Step => ({ kind: "scan", sku });
+  const scaleOn = snapshot?.weight_enabled ?? false;
   const [a, b, c, d] = catalog;
   const scenarios: { label: string; detail: string; steps: Step[] }[] = [
     { label: "Vaciar bandeja", detail: "Sin productos ni peso extra", steps: [{ kind: "empty" }] },
@@ -108,11 +109,12 @@ export function SimPanel() {
       ? [{ label: "Compra de 3, uno por uno", detail: `${a.name}, ${b.name} y ${c.name}`, steps: [scan(a.sku), scan(b.sku), scan(c.sku)] }]
       : []),
     ...(d ? [{ label: "El mismo producto dos veces", detail: `2 × ${d.name}`, steps: [scan(d.sku), scan(d.sku)] }] : []),
-    ...(a && d
+    // Sin balanza no hay forma de notar un producto sin escanear: esos escenarios se ocultan.
+    ...(scaleOn && a && d
       ? [{ label: "La cámara no ve un producto", detail: `${d.name} va a la bandeja sin escanear`, steps: [scan(a.sku), { kind: "sneak" as const, sku: d.sku }] }]
       : []),
     ...(d ? [{ label: "Más de 3 productos", detail: `4 × ${d.name}, uno por uno`, steps: [scan(d.sku), scan(d.sku), scan(d.sku), scan(d.sku)] }] : []),
-    { label: "Peso escondido", detail: "+40 g que nadie declaró", steps: [{ kind: "trap", grams: 40 }] },
+    ...(scaleOn ? [{ label: "Peso escondido", detail: "+40 g que nadie declaró", steps: [{ kind: "trap" as const, grams: 40 }] }] : []),
   ];
 
   const actions = snapshot ? (KIOSK_ACTIONS[snapshot.screen] ?? []) : [];
@@ -163,9 +165,11 @@ export function SimPanel() {
                       <button type="button" className="pbtn go" disabled={running !== null} onClick={() => onTray("/sim/scan", p.sku)}>
                         Pasar por la cámara
                       </button>
-                      <button type="button" className="pbtn plain" disabled={running !== null} onClick={() => onTray("/sim/sneak", p.sku)}>
-                        Sin escanear
-                      </button>
+                      {scaleOn && (
+                        <button type="button" className="pbtn plain" disabled={running !== null} onClick={() => onTray("/sim/sneak", p.sku)}>
+                          Sin escanear
+                        </button>
+                      )}
                       <button type="button" className="pbtn plain" disabled={running !== null || n === 0} onClick={() => onTray("/sim/take", p.sku)}>
                         Sacar
                       </button>
@@ -176,6 +180,7 @@ export function SimPanel() {
             </ul>
           </section>
 
+          {scaleOn ? (
           <section className="card">
             <h2 className="card-title">Balanza</h2>
             <p className="muted">Peso extra que la cámara no ve (por ejemplo, un producto escondido).</p>
@@ -187,6 +192,12 @@ export function SimPanel() {
               ))}
             </div>
           </section>
+          ) : (
+            <section className="card">
+              <h2 className="card-title">Balanza</h2>
+              <p className="muted">Sin balanza (KIOSK_SCALE=off): el quiosco cobra lo que reconoce la cámara.</p>
+            </section>
+          )}
         </main>
 
         <aside className="sim-side">

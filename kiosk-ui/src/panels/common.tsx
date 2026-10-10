@@ -38,7 +38,11 @@ export function KioskStatus({ snapshot }: { snapshot: Snapshot | null }) {
         <div>
           <dt>Peso</dt>
           <dd className={w ? (w.ok ? "ok" : "bad") : ""}>
-            {w ? (w.ok ? "Coincide" : `${w.diff_g > 0 ? "+" : ""}${w.diff_g} g`) : "—"}
+            {!snapshot.weight_enabled
+              ? "Sin balanza"
+              : w
+                ? w.ok ? "Coincide" : `${w.diff_g > 0 ? "+" : ""}${w.diff_g} g`
+                : "—"}
           </dd>
         </div>
       </dl>

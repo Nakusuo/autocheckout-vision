@@ -32,6 +32,7 @@ def test_recorder_tracks_one_session_and_appends_jsonl(tmp_path):
     assert row == {
         "started_at": "2026-10-10T10:00:00+00:00",
         "outcome": "paid",
+        "weight_checked": True,
         "duration_s": 32.5,
         "help_requested": True,
         "weight_alerts": 2,
@@ -91,3 +92,18 @@ def test_recorder_accepts_known_notes(field):
     rec.note(field)
     rec.finish(1.0, "paid", items=1, total_cents=1)
     assert rec.sessions[0][field] in (1, True)
+
+
+
+def test_session_records_whether_weight_was_checked():
+    rec = SessionRecorder()
+    rec.begin(0.0, weight_checked=False)
+    rec.finish(1.0, "paid", items=1, total_cents=1)
+    assert rec.sessions[0]["weight_checked"] is False
+
+
+def test_report_marks_on02_as_not_measured_without_scale(tmp_path, capsys):
+    path = tmp_path / "sesiones.jsonl"
+    path.write_text(json.dumps({**paid(30.0), "weight_checked": False}) + "\n", encoding="utf-8")
+    assert main([str(path)]) == 0
+    assert "No medido (sin balanza)" in capsys.readouterr().out

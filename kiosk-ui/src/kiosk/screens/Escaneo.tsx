@@ -84,7 +84,7 @@ export function Escaneo({ snapshot, offline }: { snapshot: Snapshot; offline: bo
       <button
         type="button"
         className="btn btn-go"
-        disabled={offline || pending || snapshot.item_count === 0 || snapshot.alert !== null || !w?.ok}
+        disabled={offline || pending || snapshot.item_count === 0 || snapshot.alert !== null || (w !== null && !w.ok)}
         onClick={() => run("/api/confirm")}
       >
         CONFIRMAR
