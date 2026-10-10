@@ -78,6 +78,13 @@ class KioskService:
     def confirm(self) -> None:
         self._do(self.checkout.confirm)
 
+    def rescan(self) -> None:
+        """El cliente pide leer la bandeja de nuevo (p. ej., la cámara no vio un producto)."""
+        self.checkout.rescan()
+        self._stability.reset()
+        self._weight_alerted = False
+        self.sessions.note("rescans")
+
     def correct(self) -> None:
         self._do(self.checkout.correct)
         self.sessions.note("corrections")
@@ -132,7 +139,7 @@ class KioskService:
         weight = check_weight(cart.theoretical_weight_g, grams)
         self.checkout.update(cart, weight)
         # Cuenta cada vez que la balanza detiene la compra, no cada cuadro con el peso mal.
-        if not weight.ok and cart.item_count and not self._weight_alerted:
+        if not weight.ok and not self._weight_alerted:
             self.sessions.note("weight_alerts")
         self._weight_alerted = not weight.ok
 

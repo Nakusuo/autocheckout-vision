@@ -58,3 +58,16 @@ def test_unknown_detection_weighs_nothing():
     detector = ScaleFollowingDetector(FixedDetector(["AGUA", "OTRA"]), CATALOG, scale)
     detector.detect()
     assert scale.read() == 651.0
+
+
+def test_hidden_products_weigh_but_are_not_detected():
+    tray, scale = make()
+    tray.place(["AGUA"], hidden=["CHOCO"])
+    assert tray.detect() == ["AGUA"]
+    assert scale.read() == 684.0
+
+
+def test_unknown_hidden_sku_is_rejected():
+    tray, _ = make()
+    with pytest.raises(ValueError, match="FANTASMA"):
+        tray.place([], hidden=["FANTASMA"])
