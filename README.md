@@ -44,6 +44,8 @@ La API escucha en 127.0.0.1:8000 y solo acepta peticiones desde http://localhost
 
 Cada venta pagada emite una boleta simulada del POS (serie `B001`) que se guarda en `kiosk-api/boletas.jsonl` (fuera de git).
 
+Cada compra queda registrada en `kiosk-api/sesiones.jsonl` (duración de INICIAR a W4, ayuda pedida, alertas de peso). `python -m kiosk.metrics` en `kiosk-api` resume esos datos frente a las metas del SRS (ON-01/02/03, RNF-02); se usa en la demo, ver [`docs/superpowers/plans/2026-10-10-m5-demo.md`](docs/superpowers/plans/2026-10-10-m5-demo.md).
+
 ### Pruebas de punta a punta (Playwright)
 
 Recorren W1 a W4 con los tres servicios reales en modo simulado: trampa de peso, CORREGIR, pago desde el «celular», ticket, boleta y vuelta a W1, más SOLICITAR AYUDA en el panel de caja. Levantan solos la pasarela, la API y el build de la UI (usan el `.venv` de cada servicio si existe).
