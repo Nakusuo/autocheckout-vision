@@ -1,5 +1,7 @@
 import type { Snapshot } from "../../api";
+import { ArrowRight } from "../signs";
 import { useAction } from "../useAction";
+import { Alert } from "./Alert";
 import { Lines } from "./Lines";
 
 export function Confirmar({ snapshot, offline }: { snapshot: Snapshot; offline: boolean }) {
@@ -8,11 +10,14 @@ export function Confirmar({ snapshot, offline }: { snapshot: Snapshot; offline: 
     <section className="screen">
       <h1 className="title">Confirma tu compra</h1>
       <Lines snapshot={snapshot} />
-      {snapshot.alert && <p className="alert" role="alert">{snapshot.alert}</p>}
-      {error && <p className="alert" role="alert">{error}</p>}
+      {snapshot.alert && <Alert>{snapshot.alert}</Alert>}
+      {error && <Alert>{error}</Alert>}
       <div className="actions">
-        <button type="button" className="btn" disabled={offline || pending || !snapshot.can_pay} onClick={() => run("/api/pay")}>PAGAR</button>
-        <button type="button" className="btn secondary" disabled={offline || pending} onClick={() => run("/api/correct")}>CORREGIR</button>
+        <button type="button" className="btn btn-go" disabled={offline || pending || !snapshot.can_pay} onClick={() => run("/api/pay")}>
+          PAGAR
+          <ArrowRight className="btn-icon" />
+        </button>
+        <button type="button" className="btn btn-plain" disabled={offline || pending} onClick={() => run("/api/correct")}>CORREGIR</button>
       </div>
     </section>
   );

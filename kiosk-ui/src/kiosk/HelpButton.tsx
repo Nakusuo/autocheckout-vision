@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { post } from "../api";
+import { HelpGlyph } from "./signs";
 
 export function HelpButton({ helpPending }: { helpPending: boolean }) {
   const [pending, setPending] = useState(false);
@@ -21,8 +22,11 @@ export function HelpButton({ helpPending }: { helpPending: boolean }) {
   return (
     <div className="help">
       {helpPending && <p className="help-note" role="status">Ayuda en camino</p>}
-      {error && <p className="alert" role="alert">{error}</p>}
-      <button type="button" className="btn secondary" disabled={pending} onClick={ask}>SOLICITAR AYUDA</button>
+      {error && <p className="help-error" role="alert">{error}</p>}
+      <button type="button" className="btn btn-help" disabled={pending} onClick={ask}>
+        <HelpGlyph className="btn-icon" />
+        SOLICITAR AYUDA
+      </button>
     </div>
   );
 }
