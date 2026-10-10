@@ -120,3 +120,21 @@ def test_trap_offset_out_of_bounds():
 def test_sim_pay_no_longer_exists():
     _, client, _ = make()
     assert client.post("/sim/pay").status_code == 404
+
+
+def test_rescan_and_hidden_products_over_http():
+    svc, client, _ = make()
+    client.post("/api/start")
+    assert client.post("/sim/tray", json={"skus": [], "hidden": ["AGUA"]}).status_code == 200
+    for _ in range(3):
+        svc.tick()
+    # La balanza pesa un producto que la cámara no ve
+    assert client.get("/api/state").json()["alert"] == "Revise su bandeja"
+    r = client.post("/api/rescan")
+    assert r.status_code == 200
+    assert r.json()["screen"] == "W2"
+
+
+def test_rescan_outside_scanning_is_409():
+    _, client, _ = make()
+    assert client.post("/api/rescan").status_code == 409

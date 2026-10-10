@@ -36,6 +36,7 @@ def test_recorder_tracks_one_session_and_appends_jsonl(tmp_path):
         "help_requested": True,
         "weight_alerts": 2,
         "corrections": 1,
+        "rescans": 0,
         "payment_timeouts": 0,
         "items": 2,
         "total_cents": 530,
@@ -81,7 +82,9 @@ def test_main_without_file_fails_clearly(tmp_path, capsys):
     assert "No existe" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("field", ["weight_alerts", "corrections", "payment_timeouts", "help_requested"])
+@pytest.mark.parametrize(
+    "field", ["weight_alerts", "corrections", "rescans", "payment_timeouts", "help_requested"]
+)
 def test_recorder_accepts_known_notes(field):
     rec = SessionRecorder()
     rec.begin(0.0)

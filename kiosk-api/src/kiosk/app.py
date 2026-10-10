@@ -20,6 +20,7 @@ ALLOWED_ORIGINS = {"http://localhost:5173", "http://127.0.0.1:5173"}
 
 class TrayIn(BaseModel):
     skus: list[str]
+    hidden: list[str] = []
 
 
 class TrapIn(BaseModel):
@@ -79,6 +80,10 @@ def create_app(
     async def confirm() -> dict:
         return act(service.confirm)
 
+    @app.post("/api/rescan")
+    async def rescan() -> dict:
+        return act(service.rescan)
+
     @app.post("/api/correct")
     async def correct() -> dict:
         return act(service.correct)
@@ -131,7 +136,7 @@ def create_app(
         @app.post("/sim/tray")
         async def sim_tray(body: TrayIn) -> dict:
             try:
-                tray.place(body.skus)
+                tray.place(body.skus, body.hidden)
             except ValueError as e:
                 raise HTTPException(status_code=422, detail=str(e)) from e
             return service.snapshot()

@@ -252,3 +252,40 @@ def test_polls_at_most_once_per_second():
 def test_qr_payload_only_while_paying():
     svc, _, _, _, _ = make()
     assert svc.snapshot()["qr_payload"] is None
+
+
+def test_rescan_clears_detection_and_reads_the_tray_again():
+    svc, tray, _, _, _ = make()
+    svc.start()
+    tray.place(["AGUA"], hidden=["CHOCO"])
+    ticks(svc)
+    assert svc.snapshot()["alert"] == "Revise su bandeja"
+
+    tray.place(["AGUA", "CHOCO"])  # el cliente acomoda la bandeja
+    svc.rescan()
+    snap = svc.snapshot()
+    assert snap["screen"] == "W2"
+    assert snap["lines"] == []
+    assert snap["alert"] is None
+    ticks(svc)
+    assert svc.snapshot()["item_count"] == 2
+    assert svc.snapshot()["weight"]["ok"] is True
+
+
+def test_rescan_only_while_scanning():
+    svc, _, _, _, _ = make()
+    with pytest.raises(TransitionError):
+        svc.rescan()
+
+
+def test_rescan_is_counted_in_the_session():
+    svc, tray, _, _, gateway = make()
+    svc.start()
+    svc.rescan()
+    tray.place(["AGUA"])
+    ticks(svc)
+    svc.confirm()
+    svc.pay()
+    gateway.paid = True
+    svc.tick()
+    assert svc.sessions.sessions[0]["rescans"] == 1

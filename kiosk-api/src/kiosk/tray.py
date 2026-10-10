@@ -10,16 +10,20 @@ class Detector(Protocol):
 
 
 class SimulatedTray:
-    """Bandeja simulada: hace de cámara (detector) y carga la balanza simulada."""
+    """Bandeja simulada: hace de cámara (detector) y carga la balanza simulada.
+
+    Los productos `hidden` están en la bandeja (pesan) pero la cámara no los ve:
+    sirve para mostrar qué pasa cuando la detección se salta un producto.
+    """
 
     def __init__(self, catalog: Catalog, scale: SimulatedScale):
         self._catalog = catalog
         self._scale = scale
         self._skus: list[str] = []
 
-    def place(self, skus: list[str]) -> None:
+    def place(self, skus: list[str], hidden: list[str] | None = None) -> None:
         products = []
-        for sku in skus:
+        for sku in [*skus, *(hidden or [])]:
             product = self._catalog.get(sku)
             if product is None:
                 raise ValueError(f"Producto desconocido: {sku}")
