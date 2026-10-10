@@ -6,6 +6,7 @@ from collections.abc import Callable
 from kiosk.catalog import Catalog
 from kiosk.checkout import MAX_ITEMS, Checkout, State, TransitionError
 from kiosk.fusion import build_cart, check_weight
+from kiosk.metrics import SessionRecorder
 from kiosk.payments import Charge, JwtVerifier, PaymentError, PaymentGateway
 from kiosk.pos import SimulatedPos
 from kiosk.scale import ScaleReader
@@ -38,6 +39,7 @@ class KioskService:
         verifier: JwtVerifier,
         clock: Callable[[], float] = time.monotonic,
         pos: SimulatedPos | None = None,
+        sessions: SessionRecorder | None = None,
     ):
         self.catalog = catalog
         self._detector = detector
@@ -46,6 +48,8 @@ class KioskService:
         self._verifier = verifier
         self._clock = clock
         self.pos = pos if pos is not None else SimulatedPos()
+        self.sessions = sessions if sessions is not None else SessionRecorder()
+        self._weight_alerted = False
         self.checkout = Checkout()
         self._stability = StabilityFilter()
         self._entered_at = clock()
@@ -68,12 +72,15 @@ class KioskService:
 
     def start(self) -> None:
         self._do(self.checkout.start)
+        self.sessions.begin(self._clock())
+        self._weight_alerted = False
 
     def confirm(self) -> None:
         self._do(self.checkout.confirm)
 
     def correct(self) -> None:
         self._do(self.checkout.correct)
+        self.sessions.note("corrections")
 
     def pay(self) -> None:
         cart = self.checkout.cart
@@ -101,6 +108,7 @@ class KioskService:
             return
         if state is State.PAYING and elapsed >= PAYMENT_TIMEOUT_S:
             self._do(self.checkout.payment_timeout)
+            self.sessions.note("payment_timeouts")
             return
         if state is State.PAYING:
             self._poll_payment()
@@ -113,6 +121,7 @@ class KioskService:
         except Exception:
             log.exception("Fallo de sensor; quiosco fuera de servicio")
             self._do(self.checkout.fault)
+            self.sessions.finish(self._clock(), "fault")
             return
         stable = self._stability.push(skus)
         if stable is None:
@@ -120,7 +129,12 @@ class KioskService:
         cart = build_cart(stable, self.catalog)
         if state is State.CONFIRMING and cart != self.checkout.cart:
             self._do(self.checkout.correct)
-        self.checkout.update(cart, check_weight(cart.theoretical_weight_g, grams))
+        weight = check_weight(cart.theoretical_weight_g, grams)
+        self.checkout.update(cart, weight)
+        # Cuenta cada vez que la balanza detiene la compra, no cada cuadro con el peso mal.
+        if not weight.ok and cart.item_count and not self._weight_alerted:
+            self.sessions.note("weight_alerts")
+        self._weight_alerted = not weight.ok
 
     def _poll_payment(self) -> None:
         now = self._clock()
@@ -142,6 +156,7 @@ class KioskService:
         charge_id = self._charge.id
         self._do(self.checkout.payment_confirmed)
         self.pos.issue_receipt(self._reference, charge_id, cart.lines, cart.total_cents)
+        self.sessions.finish(self._clock(), "paid", cart.item_count, cart.total_cents)
 
     def request_help(self) -> dict:
         req = {
@@ -151,6 +166,7 @@ class KioskService:
         }
         self._next_help_id += 1
         self.help_requests.append(req)
+        self.sessions.note("help_requested")
         return req
 
     def resolve_help(self, help_id: int) -> None:
