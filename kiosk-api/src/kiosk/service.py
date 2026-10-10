@@ -146,26 +146,29 @@ class KioskService:
         if state not in (State.SCANNING, State.CONFIRMING):
             return
         try:
-            # En W3 la lista está cerrada: solo se vigila el peso.
-            skus = self._detector.detect() if state is State.SCANNING else None
+            skus = self._detector.detect()
             grams = self._scale.read()
         except Exception:
             log.exception("Fallo de sensor; quiosco fuera de servicio")
             self._do(self.checkout.fault)
             self.sessions.finish(self._clock(), "fault")
             return
-        if skus is not None:
-            stable = self._stability.push(skus)
-            if stable is not None:
-                self._register_view(Counter(stable))
+        stable = self._stability.push(skus)
+        if stable is not None:
+            self._register_view(Counter(stable))
         self._refresh(grams)
 
     def _register_view(self, view: Counter[str]) -> None:
         arrived = {sku: n - self._view[sku] for sku, n in view.items() if n > self._view[sku]}
         self._view = view
-        if arrived:
-            self._scanned.update(arrived)
-            self._cart_changed()
+        if not arrived:
+            return
+        # Un producto que entra a la vista en W3 reabre el escaneo: la lista confirmada
+        # no puede cambiar a espaldas del cliente ni de la cámara.
+        if self.checkout.state is State.CONFIRMING:
+            self._do(self.checkout.correct)
+        self._scanned.update(arrived)
+        self._cart_changed()
 
     def _cart(self) -> Cart:
         return build_cart(sorted(self._scanned.elements()), self.catalog)
