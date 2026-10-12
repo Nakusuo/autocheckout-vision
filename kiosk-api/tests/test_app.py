@@ -142,3 +142,19 @@ def test_cancel_over_http():
     assert client.post("/api/cancel").status_code == 409
     client.post("/api/start")
     assert client.post("/api/cancel").json()["screen"] == "W1"
+
+
+def test_capture_returns_the_error_instead_of_raising():
+    from kiosk.app import capture
+
+    class Broken:
+        def read_sensors(self):
+            raise OSError("sin cámara")
+
+    assert isinstance(capture(Broken()), OSError)
+
+
+def test_recalibrate_without_camera_is_409():
+    _, client, _ = make()
+    r = client.post("/api/recalibrate")
+    assert r.status_code == 409

@@ -3,6 +3,7 @@ import logging
 import time
 from collections import Counter
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from kiosk.catalog import Catalog
 from kiosk.checkout import MAX_ITEMS, Checkout, State, TransitionError
@@ -22,6 +23,14 @@ POLL_EVERY_S = 1.0
 # Margen antes de alertar por peso: el cliente pasa el producto y lo deja en la bandeja
 # un instante después. PAGAR sigue bloqueado mientras el peso no coincida.
 WEIGHT_GRACE_S = 2.0
+
+
+@dataclass(frozen=True)
+class Reading:
+    """Lo que vieron los sensores en un instante: SKUs a la vista y gramos (None sin balanza)."""
+
+    skus: list[str]
+    grams: float | None
 
 SCREEN = {
     State.IDLE: "W1",
@@ -134,7 +143,25 @@ class KioskService:
     def recover(self) -> None:
         self._do(self.checkout.recover)
 
-    def tick(self) -> None:
+    def recalibrate(self) -> None:
+        """Vuelve a aprender la bandeja vacía (la cámara se movió o había algo al arrancar)."""
+        recalibrate = getattr(self._detector, "recalibrate", None)
+        if recalibrate is None:
+            raise TransitionError("Este modo no usa cámara")
+        recalibrate()
+
+    def wants_reading(self) -> bool:
+        """En W1 también se lee: la cámara sigue aprendiendo la bandeja vacía."""
+        return self.checkout.state in (State.IDLE, State.SCANNING, State.CONFIRMING)
+
+    def read_sensors(self) -> Reading:
+        """La parte lenta (cámara + reconocimiento): puede correr en otro hilo, no toca el estado."""
+        skus = self._detector.detect()
+        grams = self._scale.read() if self._scale is not None else None
+        return Reading(skus, grams)
+
+    def tick(self, reading: Reading | Exception | None = None) -> None:
+        """Avanza el quiosco. `reading` viene del hilo de la cámara; sin él, se lee aquí mismo."""
         state = self.checkout.state
         elapsed = self._clock() - self._entered_at
         if state is State.PAID and elapsed >= RESET_AFTER_S:
@@ -149,18 +176,20 @@ class KioskService:
             return
         if state not in (State.SCANNING, State.CONFIRMING):
             return
-        try:
-            skus = self._detector.detect()
-            grams = self._scale.read() if self._scale is not None else None
-        except Exception:
-            log.exception("Fallo de sensor; quiosco fuera de servicio")
+        if reading is None:
+            try:
+                reading = self.read_sensors()
+            except Exception as e:  # noqa: BLE001 - cualquier fallo de sensor detiene el quiosco
+                reading = e
+        if isinstance(reading, Exception):
+            log.error("Fallo de sensor; quiosco fuera de servicio", exc_info=reading)
             self._do(self.checkout.fault)
             self.sessions.finish(self._clock(), "fault")
             return
-        stable = self._stability.push(skus)
+        stable = self._stability.push(reading.skus)
         if stable is not None:
             self._register_view(Counter(stable))
-        self._refresh(grams)
+        self._refresh(reading.grams)
 
     def _register_view(self, view: Counter[str]) -> None:
         arrived = {sku: n - self._view[sku] for sku, n in view.items() if n > self._view[sku]}
@@ -271,6 +300,7 @@ class KioskService:
             "item_count": cart.item_count if cart else 0,
             "weight": {"ok": c.weight.ok, "diff_g": c.weight.diff_g} if c.weight else None,
             "weight_enabled": self._scale is not None,
+            "camera": hasattr(self._detector, "recalibrate"),
             "alert": self._alert(),
             "seconds_in_state": round(self._clock() - self._entered_at, 1),
             "help_pending": bool(self.help_requests),

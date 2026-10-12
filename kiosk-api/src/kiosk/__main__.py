@@ -98,7 +98,10 @@ def main() -> None:
         sessions=sessions,
         on_cart=follow,
     )
-    app = create_app(service, tray, scale) if tray is not None else create_app(service)
+    if tray is not None:
+        app = create_app(service, tray, scale)
+    else:
+        app = create_app(service, threaded_sensing=True)  # cámara: reconocer sin congelar
     uvicorn.run(app, host="127.0.0.1", port=8000)
 
 

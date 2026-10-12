@@ -11,6 +11,7 @@ const base: Snapshot = {
   item_count: 0,
   weight: null,
   weight_enabled: true,
+  camera: false,
   alert: null,
   seconds_in_state: 0,
   help_pending: false,

@@ -10,6 +10,8 @@ export type Snapshot = {
   weight: { ok: boolean; diff_g: number } | null;
   /** false sin balanza: solo cuenta lo que reconoce la cámara. */
   weight_enabled: boolean;
+  /** true con cámara real: la caja puede recalibrar el fondo (bandeja vacía). */
+  camera: boolean;
   alert: string | null;
   seconds_in_state: number;
   help_pending: boolean;
