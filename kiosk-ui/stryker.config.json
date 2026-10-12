@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
-  "testRunner": "vitest",
+  "testRunner": "command",
   "mutate": [
     "src/kiosk/screens/Escaneo.tsx",
     "src/kiosk/screens/Lines.tsx",
@@ -21,9 +21,12 @@
     "low": 70,
     "break": null
   },
-  "coverageAnalysis": "perTest",
+  "coverageAnalysis": "off",
   "concurrency": 4,
   "jsonReporter": {
     "fileName": "reports/mutation/mutation.json"
+  },
+  "commandRunner": {
+    "command": "npx vitest run src/kiosk src/format.test.ts"
   }
 }
