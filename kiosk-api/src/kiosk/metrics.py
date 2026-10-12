@@ -8,11 +8,12 @@ Uso: python -m kiosk.metrics [kiosk-api/sesiones.jsonl]
 """
 
 import datetime as dt
-import json
 import statistics
 import sys
 from collections.abc import Callable
 from pathlib import Path
+
+from kiosk import jsonl
 
 TARGET_S = 45.0
 TARGET_AUTONOMOUS_PCT = 80.0
@@ -66,9 +67,9 @@ class SessionRecorder:
         }
         self._current = None
         self.sessions.append(row)
+        del self.sessions[: -jsonl.KEEP_IN_MEMORY]
         if self._path is not None:
-            with self._path.open("a", encoding="utf-8") as f:
-                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            jsonl.append(self._path, row)
 
 
 def _pct(part: int, whole: int) -> float:
@@ -140,8 +141,7 @@ def main(argv: list[str] | None = None) -> int:
     if not path.exists():
         print(f"No existe {path}: arranca el quiosco y haz algunas compras primero")
         return 1
-    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    print(report(summarize(rows)))
+    print(report(summarize(jsonl.read_rows(path))))
     return 0
 
 
