@@ -1,5 +1,5 @@
 import pytest
-from payment_helpers import PUBLIC_PEM, FakeGateway
+from payment_helpers import PUBLIC_PEM, FakeGateway, sign
 
 from kiosk.catalog import Catalog, Product
 from kiosk.checkout import TransitionError
@@ -123,7 +123,9 @@ def test_session_metrics_from_start_to_paid():
 
 def test_session_ends_as_fault_when_sensor_fails():
     scale = SimulatedScale(noise_g=0)
-    svc = KioskService(CATALOG, BrokenCamera(), scale, FakeGateway(), JwtVerifier(PUBLIC_PEM), FakeClock())
+    svc = KioskService(
+        CATALOG, BrokenCamera(), scale, FakeGateway(), JwtVerifier(PUBLIC_PEM), FakeClock()
+    )
     svc.start()
     svc.tick()
     assert [s["outcome"] for s in svc.sessions.sessions] == ["fault"]
@@ -246,7 +248,9 @@ class BrokenCamera:
 
 def test_sensor_failure_goes_out_of_service_and_recovers():
     scale = SimulatedScale(noise_g=0)
-    svc = KioskService(CATALOG, BrokenCamera(), scale, FakeGateway(), JwtVerifier(PUBLIC_PEM), FakeClock())
+    svc = KioskService(
+        CATALOG, BrokenCamera(), scale, FakeGateway(), JwtVerifier(PUBLIC_PEM), FakeClock()
+    )
     svc.start()
     svc.tick()
     assert svc.snapshot()["screen"] == "FUERA_DE_SERVICIO"
@@ -388,7 +392,6 @@ def test_brief_weight_gap_while_placing_raises_no_alarm():
     assert svc.sessions._current["weight_alerts"] == 0
 
 
-
 def make_without_scale():
     clock = FakeClock()
     tray = SimulatedTray(CATALOG, SimulatedScale(noise_g=0))
@@ -484,3 +487,81 @@ def test_failed_reading_puts_kiosk_out_of_service():
     svc.start()
     svc.tick(OSError("La cámara no entregó imagen"))
     assert svc.snapshot()["screen"] == "FUERA_DE_SERVICIO"
+
+
+# ---------- Bordes exactos (para que un cambio de constante no pase inadvertido) ----------
+
+
+def test_exactly_three_items_can_pay_but_four_cannot():
+    svc, tray, _, clock, _ = make()
+    svc.start()
+    tray.place(["CHOCO"] * 3)
+    ticks(svc)
+    settle(svc, clock)
+    assert svc.snapshot()["alert"] is None
+    svc.confirm()
+    assert svc.snapshot()["can_pay"] is True
+
+
+def test_weight_alarm_fires_exactly_at_the_grace_period():
+    from kiosk.service import WEIGHT_GRACE_S
+
+    assert WEIGHT_GRACE_S == 2.0
+    svc, tray, scale, clock, _ = make()
+    svc.start()
+    tray.place(["AGUA"])
+    scale.set_trap(40.0)
+    ticks(svc)
+    clock.t += 1.99
+    svc.tick()
+    assert svc.snapshot()["alert"] is None
+    clock.t += 0.01
+    svc.tick()
+    assert svc.snapshot()["alert"] == "Revise su bandeja"
+
+
+def test_no_poll_before_one_second():
+    svc, clock, gateway = paying()
+    svc.tick()
+    clock.t = 0.99
+    svc.tick()
+    assert gateway.polls == 1
+
+
+def test_auto_reset_happens_exactly_at_ten_seconds():
+    svc, clock, gateway = paying()
+    gateway.paid = True
+    svc.tick()
+    assert svc.snapshot()["screen"] == "W4"
+    paid_at = clock.t
+    clock.t = paid_at + 9.99
+    svc.tick()
+    assert svc.snapshot()["screen"] == "W4"
+    clock.t = paid_at + 10.0
+    svc.tick()
+    assert svc.snapshot()["screen"] == "W1"
+
+
+def test_payment_for_another_charge_does_not_complete_the_sale(monkeypatch):
+    svc, _clock, gateway = paying()
+    gateway.paid = True
+    monkeypatch.setattr(
+        gateway, "poll", lambda charge_id: sign(charge_id="ch_otro", amount_cents=250)
+    )
+    svc.tick()
+    assert svc.snapshot()["screen"] == "QR"
+
+
+def test_forged_token_while_polling_keeps_waiting(monkeypatch):
+    svc, _clock, gateway = paying()
+    monkeypatch.setattr(gateway, "poll", lambda charge_id: "no-es-un-jwt")
+    svc.tick()
+    assert svc.snapshot()["screen"] == "QR"
+
+
+def test_resolve_help_reports_unknown_ids():
+    svc, *_ = make()
+    svc.request_help()
+    help_id = svc.help_requests[0]["id"]
+    assert svc.resolve_help(help_id) is True
+    assert svc.resolve_help(help_id) is False

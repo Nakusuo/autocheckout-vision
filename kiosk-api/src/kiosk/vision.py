@@ -44,10 +44,11 @@ def decode_yolov8(output: np.ndarray, conf: float = 0.5, iou: float = 0.45) -> l
     cx, cy, w, h = preds[:, 0], preds[:, 1], preds[:, 2], preds[:, 3]
     boxes = np.stack([cx - w / 2, cy - h / 2, w, h], axis=1)
     kept = cv2.dnn.NMSBoxes(boxes.tolist(), scores.tolist(), conf, iou)
-    return [
-        Detection(int(class_ids[i]), float(scores[i]), tuple(float(v) for v in boxes[i]))
-        for i in np.array(kept).flatten()
-    ]
+    detections = []
+    for i in np.array(kept).flatten():
+        x, y, w_, h_ = (float(v) for v in boxes[i])
+        detections.append(Detection(int(class_ids[i]), float(scores[i]), (x, y, w_, h_)))
+    return detections
 
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png"}

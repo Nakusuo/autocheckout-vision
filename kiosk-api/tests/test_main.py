@@ -24,7 +24,6 @@ def test_unknown_mode_exits():
         build_detector("magia", CATALOG, SimulatedScale(), {})
 
 
-
 def test_scale_is_off_by_default_and_can_be_simulated():
     assert scale_enabled({}) is False
     assert scale_enabled({"KIOSK_SCALE": "off"}) is False

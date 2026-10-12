@@ -43,7 +43,9 @@ class SimulatedTray:
                 raise ValueError(f"Producto desconocido: {sku}")
 
     def _load(self) -> None:
-        self._scale.set_load(sum(self._catalog.get(sku).weight_g for sku in self._tray))
+        # _check garantiza que cada SKU de la bandeja está en el catálogo
+        products = [p for sku in self._tray if (p := self._catalog.get(sku)) is not None]
+        self._scale.set_load(sum(p.weight_g for p in products))
 
     def place(self, skus: list[str], hidden: list[str] | None = None) -> None:
         hidden = hidden or []
