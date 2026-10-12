@@ -152,7 +152,7 @@ def small_product() -> np.ndarray:
 def test_small_product_is_seen_and_never_absorbed_into_the_background():
     d = detector([tray(), tray()] + [small_product()] * 30)
     results = [d.detect() for _ in range(32)]
-    assert results[2] != []
+    assert results[2] == ["ROJO"]
     assert results[-1] == results[2]  # sigue a la vista: el fondo no se lo «tragó»
 
 

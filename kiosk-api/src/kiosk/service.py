@@ -265,8 +265,11 @@ class KioskService:
         self.sessions.note("help_requested")
         return req
 
-    def resolve_help(self, help_id: int) -> None:
+    def resolve_help(self, help_id: int) -> bool:
+        """Marca la solicitud como atendida. False si no existía (ya atendida o id inválido)."""
+        before = len(self.help_requests)
         self.help_requests = [r for r in self.help_requests if r["id"] != help_id]
+        return len(self.help_requests) < before
 
     def _alert(self) -> str | None:
         cart, weight = self.checkout.cart, self.checkout.weight

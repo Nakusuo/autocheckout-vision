@@ -23,7 +23,9 @@ jobs:
       - run: pip install -e ".[dev,vision]"
       - run: ruff check .
       - run: bandit -r src -q
-      - run: python -m pytest -q
+      - run: mypy src
+      # Cobertura de ramas mínima del 90 % (hoy ~95 %)
+      - run: python -m pytest -q --cov=kiosk --cov-branch --cov-report=term --cov-fail-under=90
 
   kiosk-ui:
     runs-on: ubuntu-latest

@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 from payment_helpers import PUBLIC_PEM, FakeGateway
 from starlette.websockets import WebSocketDisconnect
@@ -130,7 +131,10 @@ def test_sim_scan_sneak_take_and_remove_over_http():
     for _ in range(3):
         svc.tick()
     assert client.get("/api/state").json()["item_count"] == 1
-    assert client.post("/sim/sneak", json={"sku": "AGUA"}).json() == {"tray": ["AGUA"], "camera": ["AGUA"]}
+    assert client.post("/sim/sneak", json={"sku": "AGUA"}).json() == {
+        "tray": ["AGUA"],
+        "camera": ["AGUA"],
+    }
     assert client.get("/sim/tray").json() == {"tray": ["AGUA"], "camera": ["AGUA"]}
     assert client.post("/sim/take", json={"sku": "AGUA"}).status_code == 200
     assert client.post("/sim/take", json={"sku": "NADA"}).status_code == 422
@@ -158,3 +162,26 @@ def test_recalibrate_without_camera_is_409():
     _, client, _ = make()
     r = client.post("/api/recalibrate")
     assert r.status_code == 409
+
+
+@pytest.mark.parametrize("sku", ["", "agua", "AGUA; DROP", "A" * 33])
+def test_invalid_sku_is_rejected(sku):
+    svc, client, _ = make()
+    svc.start()
+    assert client.post("/sim/scan", json={"sku": sku}).status_code == 422
+
+
+def test_tray_list_is_limited():
+    _, client, _ = make()
+    assert client.post("/sim/tray", json={"skus": ["AGUA"] * 21}).status_code == 422
+
+
+def test_api_docs_are_not_published():
+    _, client, _ = make()
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        assert client.get(path).status_code == 404
+
+
+def test_resolving_unknown_help_is_404():
+    _, client, _ = make()
+    assert client.delete("/api/help/999").status_code == 404
