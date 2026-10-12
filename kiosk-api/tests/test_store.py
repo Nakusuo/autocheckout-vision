@@ -5,9 +5,7 @@ from kiosk.store import init_db, load_catalog
 
 
 def write_seed(path: Path, price: int) -> Path:
-    path.write_text(
-        f"sku,name,price_cents,weight_g\nAGUA,Agua,{price},651.0\n", encoding="utf-8"
-    )
+    path.write_text(f"sku,name,price_cents,weight_g\nAGUA,Agua,{price},651.0\n", encoding="utf-8")
     return path
 
 

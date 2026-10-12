@@ -1,4 +1,5 @@
 import ssl
+import time
 
 import certifi
 import httpx
@@ -84,7 +85,9 @@ def test_http_gateway_create_and_poll():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["X-API-Key"] == "k"
         if request.method == "POST":
-            return httpx.Response(201, json={"charge_id": "ch_1", "qr_payload": "q", "status": "PENDING"})
+            return httpx.Response(
+                201, json={"charge_id": "ch_1", "qr_payload": "q", "status": "PENDING"}
+            )
         return httpx.Response(200, json={"charge_id": "ch_1", "status": "PAID", "token": "t"})
 
     gw = _gateway(handler)
@@ -99,3 +102,15 @@ def test_http_gateway_errors_become_payment_error():
         gw.create_charge(530, "venta-1")
     with pytest.raises(PaymentError):
         gw.poll("ch_1")
+
+
+def test_replay_registry_forgets_expired_tokens():
+    now = [time.time()]
+    verifier = JwtVerifier(PUBLIC_PEM, wall=lambda: now[0])
+    token = sign(jti="viejo")
+    verifier.verify(token)
+    with pytest.raises(PaymentError, match="reutilizado"):
+        verifier.verify(token)  # dentro de su vigencia sigue rechazado
+    now[0] += 301  # ya venció: no hace falta recordarlo
+    verifier.verify(sign(jti="nuevo"))
+    assert list(verifier._seen) == ["nuevo"]

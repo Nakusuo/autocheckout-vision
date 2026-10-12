@@ -446,9 +446,9 @@ def main(argv: list[str] | None = None) -> int:
         detector = SimilarityDetector.from_files(args.galeria, source, args.embedder)
         for _ in range(args.frames):
             start = time.perf_counter()
-            skus = detector.detect()
+            seen = detector.detect()
             best = f"{detector.last[0]} {detector.last[1]:.2f}" if detector.last else "—"
-            print(f"{(time.perf_counter() - start) * 1000:6.1f} ms  {skus}  (mejor: {best})")
+            print(f"{(time.perf_counter() - start) * 1000:6.1f} ms  {seen}  (mejor: {best})")
     finally:
         source.close()
     return 0

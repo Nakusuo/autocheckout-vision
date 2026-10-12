@@ -10,6 +10,15 @@ class Product:
     price_cents: int
     weight_g: float
 
+    def __post_init__(self):
+        # Mismas reglas que la tabla SQLite (store.SCHEMA), también al leer el CSV directamente.
+        if not self.sku or not self.name:
+            raise ValueError("Producto sin SKU o sin nombre")
+        if self.price_cents < 0:
+            raise ValueError(f"{self.sku}: precio negativo")
+        if self.weight_g <= 0:
+            raise ValueError(f"{self.sku}: el peso debe ser mayor que 0")
+
 
 class Catalog:
     def __init__(self, products: list[Product]):

@@ -94,7 +94,6 @@ def test_recorder_accepts_known_notes(field):
     assert rec.sessions[0][field] in (1, True)
 
 
-
 def test_session_records_whether_weight_was_checked():
     rec = SessionRecorder()
     rec.begin(0.0, weight_checked=False)
