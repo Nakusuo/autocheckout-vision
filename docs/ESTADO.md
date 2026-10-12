@@ -11,10 +11,10 @@
 
 | | |
 |---|---|
-| Rama de integración | `develop` (tiene M0–M5 en código: PRs #17–#26) |
-| **PR abierto** | **#27** `feature/sim-caja` → `develop`, CI en verde, **falta fusionarlo** (escaneo uno por uno, cancelar, paneles /sim y /caja). Este archivo viaja en ese PR. |
-| `main` | Solo el commit inicial. Falta una versión (`develop` → `main`, p. ej. `v0.1.0`) antes de la demo. |
-| Pruebas (local, `feature/camara-fluida`) | kiosk-api 146 · kiosk-ui 25 · ml 39 · mock-gateway 13 · e2e Playwright 3 — todo en verde |
+| `main` | **v0.1.0** etiquetada (PR #31): la versión de la demo. |
+| `develop` | Igual que `main`; todo fusionado (PRs #17–#31). No hay PR abiertos. |
+| Pruebas | kiosk-api 146 · kiosk-ui 25 · ml 39 · mock-gateway 13 · e2e Playwright 3 — todo en verde; CI con 6 jobs |
+| Informe en Word | `docs/informe/Informe-AutoCaja.docx` (fuera de git; generado con capturas reales, diagramas y gráficos) |
 
 **Ya no hay bloqueo de modelo:** el modo cámara reconoce los 11 productos con la galería de fotos (`KIOSK_GALLERY`). Falta probarlo con la webcam y la bandeja de la demo y sumar fotos tomadas ahí (`python -m kiosk.recognizer capturar SKU`).
 
@@ -51,17 +51,15 @@
 
 **Del equipo (no es código)**
 1. **Fotos con la webcam de la demo**: 10–20 por producto con `python -m kiosk.recognizer capturar SKU`, luego `galeria` y ajustar `KIOSK_THRESHOLD` (ver `docs/ml/reconocimiento.md`). El camino YOLOv8 (etiquetar ~100 fotos por producto) queda para después.
-2. **Benchmark en la laptop de la demo** (`python -m mltools.bench`) y anotar en `docs/ml/benchmark.md`.
+2. **Benchmark en la laptop de la demo** (`python -m kiosk.recognizer medir`) y anotar el resultado en `docs/ml/benchmark.md`.
 3. **M5**: medir a 5 personas ajenas al equipo según `docs/superpowers/plans/2026-10-10-m5-demo.md` y llenar `docs/demo/informe-resultados.md` con `python -m kiosk.metrics`.
 4. **ON-02 (peso)** queda **«No medido (sin balanza)»** en el informe mientras no haya balanza; `kiosk.metrics` ya lo marca así.
 5. **Legal**: checklist del plan de M5 (aviso de cámara, permiso del cliente para usar sus colores, AGPL-3.0).
 
-**De código**
-1. **Fusionar PR #27** a `develop`.
-2. **Medir RNF-01 en la laptop de la demo** con `python -m kiosk.recognizer medir` (en desarrollo: ~110–150 ms por cuadro a 140 px; ver `docs/ml/reconocimiento.md`).
-   **Probar el modo cámara en vivo** (`KIOSK_MODE=camera KIOSK_GALLERY=../ml/data/models/galeria.npz`) con la webcam de la demo; la bandeja debe estar vacía al arrancar (aprende el fondo).
-3. **Fusionar** la rama `feature/reconocimiento-parecido` (sale de #27).
-4. **Versión para la demo**: PR `develop` → `main` y etiqueta `v0.1.0`.
+**De código** (todo lo planificado está hecho; queda lo que salga de las pruebas del equipo)
+1. **Medir RNF-01 en la laptop de la demo** con `python -m kiosk.recognizer medir` (en desarrollo: ~110–150 ms por cuadro a 140 px). Si no cumple: modelo cuantizado (`dinov2-small-q.onnx`, mismo acierto) o 112 px.
+2. **Probar el modo cámara en vivo** (`KIOSK_MODE=camera KIOSK_GALLERY=../ml/data/models/galeria.npz`) con la webcam de la demo; si había algo en la bandeja al arrancar, «Recalibrar cámara» en `/caja`.
+3. Correcciones que salgan de esas pruebas → `v0.1.1`.
 
 ## 4. Riesgos y qué se puede mejorar
 
