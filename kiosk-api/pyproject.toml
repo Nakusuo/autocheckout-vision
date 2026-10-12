@@ -25,8 +25,14 @@ testpaths = ["tests"]
 
 [tool.mutmut]
 # Pruebas de mutación (solo Linux: corre en .github/workflows/mutation.yml).
-paths_to_mutate = ["src/kiosk/checkout.py", "src/kiosk/fusion.py", "src/kiosk/service.py"]
-tests_dir = ["tests/"]
+# Se copia todo el paquete (las pruebas importan los demás módulos) y se mutan solo tres.
+source_paths = ["src/"]
+do_not_mutate = [
+    "src/kiosk/__init__.py", "src/kiosk/__main__.py", "src/kiosk/app.py", "src/kiosk/catalog.py",
+    "src/kiosk/metrics.py", "src/kiosk/payments.py", "src/kiosk/pos.py", "src/kiosk/recognizer.py",
+    "src/kiosk/scale.py", "src/kiosk/stability.py", "src/kiosk/store.py", "src/kiosk/tray.py",
+    "src/kiosk/vision.py",
+]
 # Fuera: las que leen archivos del repo o dependen de tiempos reales
 pytest_add_cli_args = [
     "--ignore=tests/test_catalog.py",
