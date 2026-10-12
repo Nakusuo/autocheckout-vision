@@ -2,7 +2,7 @@
 
 > Traspaso para la próxima sesión. Actualizado: **2026-10-12**.
 >
-> **Decisión (2026-10-12): reconocimiento por parecido, sin entrenar.** Con las 56 fotos del Drive (11 productos) no alcanza para YOLOv8; el modo cámara usa una galería de fotos + DINOv2 + color (91 % de aciertos, 98 % sin reversos). Ver [`ml/reconocimiento.md`](ml/reconocimiento.md). El **catálogo** pasó a esos 11 productos; **los precios son estimados** hasta que el equipo los confirme.
+> **Decisión (2026-10-12): reconocimiento por parecido, sin entrenar.** Con las 56 fotos del Drive (11 productos) no alcanza para YOLOv8; el modo cámara usa una galería de fotos + DINOv2 + color (91 % de aciertos, 98 % sin reversos). Ver [`ml/reconocimiento.md`](ml/reconocimiento.md). El **catálogo** pasó a esos 11 productos, con precios de bodega fijados para la demo (aprobados por el equipo; se cambian en `catalog/products.csv`).
 >
 > **Decisión del equipo (2026-10-10): no habrá balanza por ahora.** El quiosco corre con `KIOSK_SCALE=off` (por defecto) y cobra solo lo que reconoce la cámara. La lógica de peso sigue en el código y se enciende con `KIOSK_SCALE=sim` (o una balanza real en el futuro).
 > Requisitos: [`SRS.md`](SRS.md) · Diseño aprobado: [`superpowers/specs/2026-10-03-autocheckout-design.md`](superpowers/specs/2026-10-03-autocheckout-design.md) · Hoja de ruta: [`superpowers/plans/2026-10-03-hoja-de-ruta.md`](superpowers/plans/2026-10-03-hoja-de-ruta.md) · Producto y diseño visual: [`../PRODUCT.md`](../PRODUCT.md), [`../DESIGN.md`](../DESIGN.md)
@@ -49,8 +49,7 @@
 ## 3. Qué falta
 
 **Del equipo (no es código)**
-1. **Precios reales** de los 11 productos en `catalog/products.csv` (hoy son estimados; `catalogo.xlsx` del Drive llegó sin precios).
-   **Fotos con la webcam de la demo**: 10–20 por producto con `python -m kiosk.recognizer capturar SKU`, luego `galeria` y ajustar `KIOSK_THRESHOLD` (ver `docs/ml/reconocimiento.md`). El camino YOLOv8 (etiquetar ~100 fotos por producto) queda para después.
+1. **Fotos con la webcam de la demo**: 10–20 por producto con `python -m kiosk.recognizer capturar SKU`, luego `galeria` y ajustar `KIOSK_THRESHOLD` (ver `docs/ml/reconocimiento.md`). El camino YOLOv8 (etiquetar ~100 fotos por producto) queda para después.
 2. **Benchmark en la laptop de la demo** (`python -m mltools.bench`) y anotar en `docs/ml/benchmark.md`.
 3. **M5**: medir a 5 personas ajenas al equipo según `docs/superpowers/plans/2026-10-10-m5-demo.md` y llenar `docs/demo/informe-resultados.md` con `python -m kiosk.metrics`.
 4. **ON-02 (peso)** queda **«No medido (sin balanza)»** en el informe mientras no haya balanza; `kiosk.metrics` ya lo marca así.
