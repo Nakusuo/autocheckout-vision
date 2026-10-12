@@ -82,8 +82,24 @@ def test_build_detector_camera_with_gallery_uses_similarity(monkeypatch, tmp_pat
     detector, tray_ = entry.build_detector(
         "camera", None, None, {"KIOSK_GALLERY": str(tmp_path / "g.npz"), "KIOSK_THRESHOLD": "1.1"}
     )
-    assert detector == ("similar", {"threshold": 1.1})
+    assert detector == ("similar", {"threshold": 1.1, "zone": None, "hands": True})
     assert tray_ is None
+
+
+def test_build_detector_camera_with_zone_and_without_hand_filter(monkeypatch, tmp_path):
+    monkeypatch.setattr(vision, "CameraSource", lambda index: ImageFolderSource([tray()]))
+    monkeypatch.setattr(
+        rec.SimilarityDetector, "from_files", classmethod(lambda cls, g, s, **kw: kw)
+    )
+    env = {
+        "KIOSK_GALLERY": str(tmp_path / "g.npz"),
+        "KIOSK_ZONE": "0.25,0.1,0.75,0.9",
+        "KIOSK_HANDS": "off",
+    }
+    kw, _ = entry.build_detector("camera", None, None, env)
+    assert (kw["zone"], kw["hands"]) == ((0.25, 0.1, 0.75, 0.9), False)
+    with pytest.raises(ValueError, match="Zona inválida"):
+        entry.build_detector("camera", None, None, {**env, "KIOSK_ZONE": "1,1,0,0"})
 
 
 def test_build_detector_camera_with_yolo_model(monkeypatch, tmp_path):
@@ -268,3 +284,20 @@ def test_vision_cli_without_camera_fails(monkeypatch, capsys):
     monkeypatch.setattr(vision, "CameraSource", no_camera)
     assert vision.main(["--model", "m.onnx"]) == 1
     assert "No se pudo abrir" in capsys.readouterr().out
+
+
+def test_cli_zone_saves_a_photo_with_the_rectangle(tmp_path, fake_models, capsys):
+    out = tmp_path / "zona.jpg"
+    assert rec.main(["zona", "0.25,0.25,0.75,0.75", "--salida", str(out)]) == 0
+    assert tuple(rec.imread(out)[30, 80]) != (235, 235, 235)  # el recuadro se dibujó
+    assert "KIOSK_ZONE=0.25,0.25,0.75,0.75" in capsys.readouterr().out
+
+
+def test_cli_live_camera_with_zone(tmp_path, fake_models, capsys):
+    raw, gallery = tmp_path / "raw", tmp_path / "g.npz"
+    rec.main(
+        ["--galeria", str(gallery), "galeria", "--raw", str(raw), "--catalogo", str(photos(raw))]
+    )
+    args = ["--galeria", str(gallery), "camara", "--frames", "15", "--zona", "0,0,1,1"]
+    assert rec.main(args) == 0
+    assert "['ROJO']" in capsys.readouterr().out

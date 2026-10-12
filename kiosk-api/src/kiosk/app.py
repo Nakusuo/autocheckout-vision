@@ -142,6 +142,10 @@ def create_app(
         service.request_help()
         return service.snapshot()
 
+    @app.get("/api/sales")
+    async def sales() -> dict:
+        return service.pos.sales_today()
+
     @app.get("/api/help")
     async def list_help() -> list[dict]:
         return service.help_requests

@@ -99,10 +99,96 @@ describe("useKioskState", () => {
   });
 });
 
+const noSales = { count: 0, total_cents: 0, receipts: [] };
+
+/** AudioContext falso: cuenta los osciladores que arrancan. */
+function stubAudio() {
+  const starts = { n: 0 };
+  class FakeAudio {
+    currentTime = 0;
+    destination = {};
+    createOscillator() {
+      return { type: "", frequency: { value: 0 }, connect() {}, start: () => void starts.n++, stop() {} };
+    }
+    createGain() {
+      return { gain: { value: 0 }, connect() {} };
+    }
+    close() {
+      return Promise.resolve();
+    }
+  }
+  vi.stubGlobal("AudioContext", FakeAudio);
+  return starts;
+}
+
+describe("CajaPanel ventas y sonido", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("muestra las ventas del día", async () => {
+    stubFetch((_m, path) =>
+      path === "/api/sales"
+        ? {
+            count: 2,
+            total_cents: 1250,
+            receipts: [
+              { number: "B001-00000002", issued_at: new Date(2026, 9, 12, 15, 4).toISOString(), items: 3, total_cents: 1000 },
+              { number: "B001-00000001", issued_at: new Date(2026, 9, 12, 9, 30).toISOString(), items: 1, total_cents: 250 },
+            ],
+          }
+        : [],
+    );
+    render(<CajaPanel />);
+    expect(await screen.findByText("B001-00000002", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("2 ventas")).toBeInTheDocument();
+    expect(screen.getByText(/15:04/)).toHaveTextContent("3 productos");
+    expect(screen.getByText(/09:30/)).toHaveTextContent("1 producto");
+  });
+
+  it("sin ventas muestra el estado vacío", async () => {
+    stubFetch((_m, path) => (path === "/api/sales" ? noSales : []));
+    render(<CajaPanel />);
+    expect(await screen.findByText("Aún no hay ventas hoy.")).toBeInTheDocument();
+  });
+
+  it("pita cuando llega una solicitud nueva", async () => {
+    const starts = stubAudio();
+    let pending: { id: number; screen: string; at: number }[] = [];
+    stubFetch((_m, path) => (path === "/api/sales" ? noSales : pending));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<CajaPanel />);
+    await screen.findByText("Sin solicitudes");
+    expect(starts.n).toBe(0);
+    pending = [{ id: 3, screen: "W2", at: 0 }];
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(await screen.findByText(/Solicitud #3/)).toBeInTheDocument();
+    expect(starts.n).toBe(2);
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(starts.n).toBe(2);
+  });
+
+  it("con el sonido apagado no pita y recuerda la elección", async () => {
+    const starts = stubAudio();
+    let pending: { id: number; screen: string; at: number }[] = [];
+    stubFetch((_m, path) => (path === "/api/sales" ? noSales : pending));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { unmount } = render(<CajaPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Sonido: sí" }));
+    expect(localStorage.getItem("caja.sound")).toBe("off");
+    pending = [{ id: 4, screen: "W2", at: 0 }];
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(await screen.findByText(/Solicitud #4/)).toBeInTheDocument();
+    expect(starts.n).toBe(0);
+    unmount();
+    render(<CajaPanel />);
+    expect(screen.getByRole("button", { name: "Sonido: no" })).toBeInTheDocument();
+  });
+});
+
 describe("CajaPanel", () => {
   it("lista la ayuda pendiente y la marca como atendida", async () => {
     let pending = [{ id: 7, screen: "W2", at: 0 }];
-    const calls = stubFetch((method) => {
+    const calls = stubFetch((method, path) => {
+      if (path === "/api/sales") return noSales;
       if (method === "DELETE") pending = [];
       return pending;
     });
@@ -114,7 +200,7 @@ describe("CajaPanel", () => {
   });
 
   it("«Recalibrar cámara» solo aparece con cámara y llama a la API", async () => {
-    const calls = stubFetch(() => []);
+    const calls = stubFetch((_m, path) => (path === "/api/sales" ? noSales : []));
     render(<CajaPanel />);
     const ws = FakeSocket.all[0];
     ws.open();
@@ -128,7 +214,7 @@ describe("CajaPanel", () => {
   });
 
   it("«Reactivar quiosco» solo se habilita fuera de servicio", async () => {
-    stubFetch(() => []);
+    stubFetch((_m, path) => (path === "/api/sales" ? noSales : []));
     render(<CajaPanel />);
     const ws = FakeSocket.all[0];
     ws.open();

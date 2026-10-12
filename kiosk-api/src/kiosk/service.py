@@ -104,11 +104,12 @@ class KioskService:
 
     def cancel(self) -> None:
         """El cliente abandona la compra: se descarta la lista (y el cobro, si había QR)."""
+        screen = SCREEN[self.checkout.state]
         self._do(self.checkout.cancel)
         self._scanned = Counter()
         self._view = Counter()
         self._cart_changed()
-        self.sessions.finish(self._clock(), "cancelled")
+        self.sessions.finish(self._clock(), "cancelled", screen=screen)
 
     def remove(self, sku: str) -> None:
         """El cliente quita una unidad de la lista (p. ej., la cámara la contó dos veces)."""
