@@ -45,7 +45,7 @@ function Screen({ snapshot, offline }: { snapshot: Snapshot; offline: boolean })
     case "W3":
       return <Confirmar snapshot={snapshot} offline={offline} />;
     case "QR":
-      return <Pago snapshot={snapshot} />;
+      return <Pago snapshot={snapshot} offline={offline} />;
     case "W4":
       return <Ticket snapshot={snapshot} />;
     case "FUERA_DE_SERVICIO":

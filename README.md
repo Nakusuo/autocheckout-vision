@@ -35,12 +35,14 @@ npm run dev
 | URL | Para qué |
 |---|---|
 | http://localhost:5173/ | Quiosco (cliente), formato vertical |
-| http://localhost:5173/sim | Simulador: poner productos, esconder peso y abrir el «celular» que paga |
+| http://localhost:5173/sim | Simulador para la presentación: pasar cada producto por la cámara (o ponerlo «sin escanear»), escenarios paso a paso, balanza, acciones del quiosco, enlace al «celular» que paga y vista en vivo del quiosco |
 | http://localhost:5173/caja | Panel de caja: solicitudes de ayuda y reactivar el quiosco |
 
 Para pagar: en la pantalla del QR, abre en `/sim` el enlace «Abrir el celular simulado» y pulsa «Pagar con Yape/Plin (simulado)». El quiosco consulta la pasarela por HTTPS (TLS 1.3), verifica la firma RS256 y muestra el ticket.
 
 La API escucha en 127.0.0.1:8000 y solo acepta peticiones desde http://localhost:5173 (Vite usa ese puerto fijo; si está ocupado, libéralo).
+
+**Balanza:** por defecto no se usa (`KIOSK_SCALE=off`): el quiosco cobra lo que reconoce la cámara. Con `KIOSK_SCALE=sim` se activa la balanza simulada y la validación de peso (±5 g, ON-02), con la trampa de peso en `/sim`.
 
 Cada venta pagada emite una boleta simulada del POS (serie `B001`) que se guarda en `kiosk-api/boletas.jsonl` (fuera de git).
 
