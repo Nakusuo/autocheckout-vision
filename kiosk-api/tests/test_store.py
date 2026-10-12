@@ -26,3 +26,16 @@ def test_init_twice_updates_without_duplicates(tmp_path: Path):
     catalog = load_catalog(db)
     assert len(catalog.all()) == 1
     assert catalog.get("AGUA").price_cents == 300
+
+
+def test_init_removes_products_no_longer_in_seed(tmp_path: Path):
+    db = tmp_path / "kiosk.db"
+    seed = tmp_path / "seed.csv"
+    seed.write_text(
+        "sku,name,price_cents,weight_g\nAGUA,Agua,250,651.0\nCOLA,Cola,350,528.0\n",
+        encoding="utf-8",
+    )
+    init_db(db, seed)
+    init_db(db, write_seed(seed, 250))
+
+    assert [p.sku for p in load_catalog(db).all()] == ["AGUA"]

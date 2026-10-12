@@ -56,10 +56,10 @@ test("compra de W1 a W4 con trampa de peso, CORREGIR y pago por QR", async ({ pa
 
   // W2: dos productos reconocidos, pero con peso escondido en la bandeja
   await expect(page.getByRole("heading", { name: "Escaneando" })).toBeVisible();
-  await placeOnTray(request, ["AGUA-625", "CHOCOLATE-30"]);
+  await placeOnTray(request, ["GUARANA-450", "CHOCMAN-39"]);
   await setTrap(request, 40);
-  await expect(page.getByText("Agua sin gas 625 ml")).toBeVisible();
-  await expect(page.getByText("Chocolate de leche 30 g")).toBeVisible();
+  await expect(page.getByText("Guaraná 450 ml")).toBeVisible();
+  await expect(page.getByText("Chocman 39 g")).toBeVisible();
   await expect(page.getByText("Revise su bandeja")).toBeVisible();
   await expect(page.getByRole("button", { name: "CONFIRMAR" })).toBeDisabled();
 
@@ -74,29 +74,29 @@ test("compra de W1 a W4 con trampa de peso, CORREGIR y pago por QR", async ({ pa
   await expect(page.getByRole("heading", { name: "Escaneando" })).toBeVisible();
   await expect(page.getByText("Peso correcto")).toBeVisible();
   await page.getByRole("button", { name: "CONFIRMAR" }).click();
-  await expect(page.getByText("S/ 5.30")).toBeVisible();
+  await expect(page.getByText("S/ 4.50")).toBeVisible();
   await page.getByRole("button", { name: "PAGAR" }).click();
 
   // QR dinámico por el monto exacto
   await expect(page.getByRole("img", { name: "Código QR de pago" })).toBeVisible();
-  await expect(page.getByText("S/ 5.30")).toBeVisible();
+  await expect(page.getByText("S/ 4.50")).toBeVisible();
   const { qr_payload } = await kioskState(request);
   expect(qr_payload).toMatch(/^https:\/\/localhost:8443\/pay\//);
 
   // El "celular" del cliente abre el enlace del QR y paga en la pasarela simulada
   const phone = await context.newPage();
   await phone.goto(qr_payload!);
-  await expect(phone.getByText("S/ 5.30")).toBeVisible();
+  await expect(phone.getByText("S/ 4.50")).toBeVisible();
   await phone.getByRole("button", { name: /Pagar con Yape\/Plin/ }).click();
   await expect(phone.getByText("Pago realizado")).toBeVisible();
   await phone.close();
 
   // W4: ticket tras la confirmación firmada (JWT RS256) y boleta simulada del POS
   await expect(page.getByRole("heading", { name: "Gracias por su compra" })).toBeVisible();
-  await expect(page.getByText("S/ 5.30")).toBeVisible();
+  await expect(page.getByText("S/ 4.50")).toBeVisible();
   expect(receiptCount()).toBe(receiptsBefore + 1);
   const last = JSON.parse(readFileSync(RECEIPTS, "utf-8").trim().split("\n").at(-1)!);
-  expect(last.total_cents).toBe(530);
+  expect(last.total_cents).toBe(450);
 
   // A los 10 s vuelve solo a W1 (3.4.4.4)
   await expect(page.getByText(W1_TEXT)).toBeVisible({ timeout: 15_000 });

@@ -11,6 +11,7 @@ dependencies = ["numpy>=1.26", "opencv-python-headless>=4.9"]
 [project.optional-dependencies]
 bench = ["onnxruntime>=1.18"]
 dev = ["pytest>=8", "ruff>=0.6", "bandit>=1.7"]
+heic = ["pillow>=10", "pillow-heif>=0.16"]
 train = ["ultralytics>=8.3"]
 
 [tool.setuptools.packages.find]
