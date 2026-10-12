@@ -20,7 +20,9 @@ def init_db(db_path: Path, seed_csv: Path) -> None:
     ]
     with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.execute(SCHEMA)
-        conn.executemany("INSERT OR REPLACE INTO products VALUES (?, ?, ?, ?)", rows)
+        # El CSV manda: los productos que ya no están se borran (en la misma transacción).
+        conn.execute("DELETE FROM products")
+        conn.executemany("INSERT INTO products VALUES (?, ?, ?, ?)", rows)
 
 
 def load_catalog(db_path: Path) -> Catalog:
