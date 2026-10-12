@@ -23,6 +23,10 @@ updates:
     groups:
       dependencias-de-desarrollo:
         dependency-type: development
+    ignore:
+      # Stryker 10 usa la API de TypeScript en JS, que TypeScript 7 (nativo) ya no trae.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
