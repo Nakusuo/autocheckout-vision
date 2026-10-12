@@ -45,3 +45,7 @@ ignore_missing_imports = true  # cv2 y onnxruntime no traen tipos
 
 [tool.ruff]
 line-length = 100
+
+[tool.bandit]
+# Todo el paquete salvo pruebas y entornos; ningún chequeo desactivado (los nosec van con su código y motivo).
+exclude_dirs = ["tests", ".venv", "build"]

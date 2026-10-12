@@ -18,6 +18,38 @@ export type Snapshot = {
   qr_payload: string | null;
 };
 
+const SCREENS = new Set<unknown>(["W1", "W2", "W3", "QR", "W4", "FUERA_DE_SERVICIO"]);
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const isLine = (v: unknown) =>
+  isObj(v) &&
+  typeof v.sku === "string" &&
+  typeof v.name === "string" &&
+  isNum(v.quantity) &&
+  isNum(v.unit_price_cents);
+
+/** Comprueba la forma del estado que llega por WebSocket: si no cuadra, la pantalla no lo usa. */
+export function isSnapshot(v: unknown): v is Snapshot {
+  return (
+    isObj(v) &&
+    typeof v.state === "string" &&
+    SCREENS.has(v.screen) &&
+    typeof v.can_pay === "boolean" &&
+    Array.isArray(v.lines) &&
+    v.lines.every(isLine) &&
+    isNum(v.total_cents) &&
+    isNum(v.item_count) &&
+    (v.weight === null || (isObj(v.weight) && typeof v.weight.ok === "boolean" && isNum(v.weight.diff_g))) &&
+    typeof v.weight_enabled === "boolean" &&
+    typeof v.camera === "boolean" &&
+    (v.alert === null || typeof v.alert === "string") &&
+    isNum(v.seconds_in_state) &&
+    typeof v.help_pending === "boolean" &&
+    (v.qr_payload === null || typeof v.qr_payload === "string")
+  );
+}
+
 export async function post(path: string, body?: unknown): Promise<Snapshot> {
   return request<Snapshot>("POST", path, body);
 }
@@ -60,11 +92,13 @@ export function useKioskState(): { snapshot: Snapshot | null; connected: boolean
       ws = new WebSocket(`${proto}://${location.host}/ws`);
       ws.onopen = () => setConnected(true);
       ws.onmessage = (ev) => {
+        let data: unknown;
         try {
-          setSnapshot(JSON.parse(ev.data) as Snapshot);
+          data = JSON.parse(ev.data);
         } catch {
-          /* mensaje malformado: se ignora */
+          return; // mensaje malformado: se ignora
         }
+        if (isSnapshot(data)) setSnapshot(data);
       };
       ws.onclose = () => {
         if (closed) return;

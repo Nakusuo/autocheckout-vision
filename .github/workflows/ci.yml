@@ -22,7 +22,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev,vision]"
       - run: ruff check .
-      - run: bandit -r src -q
+      - run: bandit -c pyproject.toml -r . -q
       - run: mypy src
       # Cobertura de ramas mínima del 90 % (hoy ~95 %)
       - run: python -m pytest -q --cov=kiosk --cov-branch --cov-report=term --cov-fail-under=90
@@ -57,7 +57,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: ruff check .
-      - run: bandit -r src -q
+      - run: bandit -c pyproject.toml -r . -q
       - run: python -m pytest -q
 
   ml:
@@ -72,7 +72,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: ruff check .
-      - run: bandit -r src -q
+      - run: bandit -c pyproject.toml -r . -q
       - run: python -m pytest -q
 
   e2e:
