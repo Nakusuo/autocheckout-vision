@@ -78,6 +78,7 @@ describe("useKioskState", () => {
     expect(result.current).toEqual({ snapshot: snap, connected: true });
 
     first.send("{no es json");
+    first.send({ ...snap, screen: "W9", total_cents: "mucho" });
     expect(result.current.snapshot).toEqual(snap);
 
     first.drop();
