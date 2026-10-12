@@ -129,3 +129,38 @@ def test_low_similarity_is_unknown():
     d = detector([tray(), tray(), tray(GREEN)])
     assert [d.detect() for _ in range(3)] == [[], [], [UNKNOWN]]
     assert d.last is not None
+
+
+def two_products() -> np.ndarray:
+    img = tray()
+    cv2.rectangle(img, (5, 5), (40, 40), RED, -1)
+    cv2.rectangle(img, (115, 75), (150, 110), BLUE, -1)
+    return img
+
+
+def test_two_products_in_view_are_not_guessed():
+    d = detector([tray(), tray(), two_products()])
+    assert [d.detect() for _ in range(3)] == [[], [], [UNKNOWN]]
+
+
+def small_product() -> np.ndarray:
+    img = tray()
+    cv2.rectangle(img, (70, 50), (79, 59), RED, -1)  # 100 px: 0,5 % de la imagen
+    return img
+
+
+def test_small_product_is_seen_and_never_absorbed_into_the_background():
+    d = detector([tray(), tray()] + [small_product()] * 30)
+    results = [d.detect() for _ in range(32)]
+    assert results[2] != []
+    assert results[-1] == results[2]  # sigue a la vista: el fondo no se lo «tragó»
+
+
+def test_background_learning_skips_the_foreground():
+    from kiosk.recognizer import BackgroundModel
+
+    bg = BackgroundModel(learn_rate=1.0)
+    bg.learn(tray())
+    fg = bg.foreground(small_product())
+    bg.learn(small_product(), fg)
+    assert bg.foreground(small_product()).sum() > 0
