@@ -5,7 +5,7 @@ from kiosk.catalog import Catalog, Product
 from kiosk.checkout import TransitionError
 from kiosk.payments import JwtVerifier
 from kiosk.scale import SimulatedScale
-from kiosk.service import KioskService
+from kiosk.service import KioskService, Reading
 from kiosk.tray import SimulatedTray
 
 CATALOG = Catalog([Product("AGUA", "Agua", 250, 651.0), Product("CHOCO", "Chocolate", 280, 33.0)])
@@ -428,3 +428,59 @@ def test_without_scale_other_rules_still_apply():
 def test_with_scale_snapshot_says_so():
     svc, _, _, _, _ = make()
     assert svc.snapshot()["weight_enabled"] is True
+
+
+class CameraLike:
+    """Detector con cámara: se puede recalibrar."""
+
+    def __init__(self):
+        self.recalibrated = 0
+        self.seen: list[str] = []
+
+    def detect(self) -> list[str]:
+        return list(self.seen)
+
+    def recalibrate(self) -> None:
+        self.recalibrated += 1
+
+
+def make_with_camera():
+    camera = CameraLike()
+    svc = KioskService(CATALOG, camera, None, FakeGateway(), JwtVerifier(PUBLIC_PEM), FakeClock())
+    return svc, camera
+
+
+def test_recalibrate_reaches_the_camera_and_snapshot_says_camera():
+    svc, camera = make_with_camera()
+    assert svc.snapshot()["camera"] is True
+    svc.recalibrate()
+    assert camera.recalibrated == 1
+
+
+def test_recalibrate_without_camera_is_rejected():
+    svc, *_ = make()
+    assert svc.snapshot()["camera"] is False
+    with pytest.raises(TransitionError, match="no usa cámara"):
+        svc.recalibrate()
+
+
+def test_camera_keeps_reading_on_w1_and_w2():
+    svc, _ = make_with_camera()
+    assert svc.wants_reading()  # W1: aprende la bandeja vacía
+    svc.start()
+    assert svc.wants_reading()
+
+
+def test_reading_from_another_thread_is_applied_in_tick():
+    svc, _ = make_with_camera()
+    svc.start()
+    for _ in range(3):
+        svc.tick(Reading(["AGUA"], None))
+    assert svc.snapshot()["item_count"] == 1
+
+
+def test_failed_reading_puts_kiosk_out_of_service():
+    svc, _ = make_with_camera()
+    svc.start()
+    svc.tick(OSError("La cámara no entregó imagen"))
+    assert svc.snapshot()["screen"] == "FUERA_DE_SERVICIO"

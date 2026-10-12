@@ -164,3 +164,10 @@ def test_background_learning_skips_the_foreground():
     fg = bg.foreground(small_product())
     bg.learn(small_product(), fg)
     assert bg.foreground(small_product()).sum() > 0
+
+
+def test_recalibrate_learns_the_current_view_as_background():
+    d = detector([tray(), tray()] + [tray(BLUE)] * 10)
+    assert [d.detect() for _ in range(3)] == [[], [], ["AZUL"]]
+    d.recalibrate()
+    assert [d.detect() for _ in range(3)] == [[], [], []]  # lo que había quedó como fondo
