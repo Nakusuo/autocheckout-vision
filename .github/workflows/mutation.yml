@@ -10,6 +10,9 @@ on:
     paths:
       - .github/workflows/mutation.yml
       - kiosk-ui/stryker.config.json
+      # Pruebas escritas para matar mutantes: al cambiar, se vuelve a medir
+      - kiosk-api/tests/test_exact.py
+      - kiosk-ui/src/kiosk/screens/screens.test.tsx
 
 permissions:
   contents: read
