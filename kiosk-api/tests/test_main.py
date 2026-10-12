@@ -14,8 +14,8 @@ def test_sim_mode_uses_tray():
     assert detector is tray
 
 
-def test_camera_mode_requires_model():
-    with pytest.raises(SystemExit, match="KIOSK_MODEL"):
+def test_camera_mode_requires_gallery_or_model():
+    with pytest.raises(SystemExit, match="KIOSK_GALLERY"):
         build_detector("camera", CATALOG, SimulatedScale(), {})
 
 

@@ -1,6 +1,8 @@
 # Estado del proyecto — AutoCaja (auto-checkout por visión)
 
-> Traspaso para la próxima sesión. Actualizado: **2026-10-10**.
+> Traspaso para la próxima sesión. Actualizado: **2026-10-12**.
+>
+> **Decisión (2026-10-12): reconocimiento por parecido, sin entrenar.** Con las 56 fotos del Drive (11 productos) no alcanza para YOLOv8; el modo cámara usa una galería de fotos + DINOv2 + color (91 % de aciertos, 98 % sin reversos). Ver [`ml/reconocimiento.md`](ml/reconocimiento.md). El **catálogo** pasó a esos 11 productos, con precios de bodega fijados para la demo (aprobados por el equipo; se cambian en `catalog/products.csv`).
 >
 > **Decisión del equipo (2026-10-10): no habrá balanza por ahora.** El quiosco corre con `KIOSK_SCALE=off` (por defecto) y cobra solo lo que reconoce la cámara. La lógica de peso sigue en el código y se enciende con `KIOSK_SCALE=sim` (o una balanza real en el futuro).
 > Requisitos: [`SRS.md`](SRS.md) · Diseño aprobado: [`superpowers/specs/2026-10-03-autocheckout-design.md`](superpowers/specs/2026-10-03-autocheckout-design.md) · Hoja de ruta: [`superpowers/plans/2026-10-03-hoja-de-ruta.md`](superpowers/plans/2026-10-03-hoja-de-ruta.md) · Producto y diseño visual: [`../PRODUCT.md`](../PRODUCT.md), [`../DESIGN.md`](../DESIGN.md)
@@ -14,7 +16,7 @@
 | `main` | Solo el commit inicial. Falta una versión (`develop` → `main`, p. ej. `v0.1.0`) antes de la demo. |
 | Pruebas (local, rama #27) | kiosk-api 117 · kiosk-ui 24 · ml 34 · mock-gateway 13 · e2e Playwright 2 — todo en verde; CI con 6 jobs en verde |
 
-**Bloqueo principal: no hay modelo entrenado.** El quiosco funciona de punta a punta en **modo simulado**; el modo cámara existe pero necesita el modelo de los 5 productos del catálogo.
+**Ya no hay bloqueo de modelo:** el modo cámara reconoce los 11 productos con la galería de fotos (`KIOSK_GALLERY`). Falta probarlo con la webcam y la bandeja de la demo y sumar fotos tomadas ahí (`python -m kiosk.recognizer capturar SKU`).
 
 ## 2. Qué está hecho
 
@@ -47,7 +49,7 @@
 ## 3. Qué falta
 
 **Del equipo (no es código)**
-1. **Dataset**: ~100 fotos por producto (5 productos), etiquetar en Label Studio, `python -m mltools.split` y `python -m mltools.train` hasta mAP50 ≥ 0.90. Guías: `docs/ml/etiquetado.md`, `docs/ml/entrenamiento.md`.
+1. **Fotos con la webcam de la demo**: 10–20 por producto con `python -m kiosk.recognizer capturar SKU`, luego `galeria` y ajustar `KIOSK_THRESHOLD` (ver `docs/ml/reconocimiento.md`). El camino YOLOv8 (etiquetar ~100 fotos por producto) queda para después.
 2. **Benchmark en la laptop de la demo** (`python -m mltools.bench`) y anotar en `docs/ml/benchmark.md`.
 3. **M5**: medir a 5 personas ajenas al equipo según `docs/superpowers/plans/2026-10-10-m5-demo.md` y llenar `docs/demo/informe-resultados.md` con `python -m kiosk.metrics`.
 4. **ON-02 (peso)** queda **«No medido (sin balanza)»** en el informe mientras no haya balanza; `kiosk.metrics` ya lo marca así.
@@ -55,8 +57,9 @@
 
 **De código**
 1. **Fusionar PR #27** a `develop`.
-2. **Conectar el modelo entrenado** (`KIOSK_MODE=camera`, `KIOSK_MODEL=...onnx`) y probar el escaneo uno por uno con la webcam real (ver «Riesgos»).
-3. **Versión para la demo**: PR `develop` → `main` y etiqueta `v0.1.0`.
+2. **Probar el modo cámara en vivo** (`KIOSK_MODE=camera KIOSK_GALLERY=../ml/data/models/galeria.npz`) con la webcam de la demo; la bandeja debe estar vacía al arrancar (aprende el fondo).
+3. **Fusionar** la rama `feature/reconocimiento-parecido` (sale de #27).
+4. **Versión para la demo**: PR `develop` → `main` y etiqueta `v0.1.0`.
 
 ## 4. Riesgos y qué se puede mejorar
 
@@ -67,7 +70,8 @@
 
 **Mejoras posibles**
 - E2E Playwright del flujo **uno por uno** con `/sim/scan` y en el modo por defecto **sin balanza** (hoy las e2e corren con `KIOSK_SCALE=sim` y `/sim/tray`, que coloca todo junto), y de CANCELAR.
-- E2E en **modo cámara** con imágenes grabadas (`ImageFolderSource`) cuando exista el modelo.
+- E2E en **modo cámara** con imágenes grabadas (`ImageFolderSource` + `SimilarityDetector`).
+- Reconocimiento: zona de escaneo fija (recortar la imagen), más fotos del frente de los productos parecidos (galletas en empaque rojo/blanco), y descartar la mano antes del recorte.
 - `SerialScale` (pyserial) para una balanza real.
 - La etiqueta «+ Agregado» de la **primera** fila roza el borde superior del tablero en W2 (detalle visual menor).
 - `/caja`: historial de ventas del día (leer `boletas.jsonl`) y avisos sonoros de ayuda.
