@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 
@@ -9,7 +10,7 @@ from starlette.responses import JSONResponse
 
 from kiosk.checkout import TransitionError
 from kiosk.scale import SimulatedScale
-from kiosk.service import KioskService
+from kiosk.service import KioskService, Reading
 from kiosk.tray import SimulatedTray
 
 log = logging.getLogger(__name__)
@@ -31,11 +32,19 @@ class TrapIn(BaseModel):
     offset_g: float = Field(ge=-5000, le=5000)
 
 
-def safe_tick(service: KioskService) -> None:
+def safe_tick(service: KioskService, reading: Reading | Exception | None = None) -> None:
     try:
-        service.tick()
+        service.tick(reading) if reading is not None else service.tick()
     except Exception:
         log.exception("Error en tick; el bucle sigue")
+
+
+def capture(service: KioskService) -> Reading | Exception:
+    """Corre en un hilo: si falla, devuelve el error para que el bucle lo procese."""
+    try:
+        return service.read_sensors()
+    except Exception as e:  # noqa: BLE001 - el bucle principal decide (fuera de servicio)
+        return e
 
 
 def create_app(
@@ -43,11 +52,19 @@ def create_app(
     tray: SimulatedTray | None = None,
     scale: SimulatedScale | None = None,
     run_loop: bool = True,
+    threaded_sensing: bool = False,
 ) -> FastAPI:
+    """threaded_sensing: la cámara se lee en otro hilo para que la pantalla y los botones no se
+    congelen mientras se reconoce (~200 ms por cuadro); el estado solo cambia en este bucle."""
+
     async def tick_loop() -> None:
         while True:
-            safe_tick(service)
-            await asyncio.sleep(TICK_S)
+            started = time.monotonic()
+            reading = None
+            if threaded_sensing and service.wants_reading():
+                reading = await asyncio.to_thread(capture, service)
+            safe_tick(service, reading)
+            await asyncio.sleep(max(0.0, TICK_S - (time.monotonic() - started)))
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -99,6 +116,10 @@ def create_app(
     @app.post("/api/pay")
     async def pay() -> dict:
         return act(service.pay)
+
+    @app.post("/api/recalibrate")
+    async def recalibrate() -> dict:
+        return act(service.recalibrate)
 
     @app.post("/api/recover")
     async def recover() -> dict:

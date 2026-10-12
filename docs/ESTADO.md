@@ -14,7 +14,7 @@
 | Rama de integración | `develop` (tiene M0–M5 en código: PRs #17–#26) |
 | **PR abierto** | **#27** `feature/sim-caja` → `develop`, CI en verde, **falta fusionarlo** (escaneo uno por uno, cancelar, paneles /sim y /caja). Este archivo viaja en ese PR. |
 | `main` | Solo el commit inicial. Falta una versión (`develop` → `main`, p. ej. `v0.1.0`) antes de la demo. |
-| Pruebas (local, rama #27) | kiosk-api 117 · kiosk-ui 24 · ml 34 · mock-gateway 13 · e2e Playwright 2 — todo en verde; CI con 6 jobs en verde |
+| Pruebas (local, `feature/camara-fluida`) | kiosk-api 146 · kiosk-ui 25 · ml 39 · mock-gateway 13 · e2e Playwright 3 — todo en verde |
 
 **Ya no hay bloqueo de modelo:** el modo cámara reconoce los 11 productos con la galería de fotos (`KIOSK_GALLERY`). Falta probarlo con la webcam y la bandeja de la demo y sumar fotos tomadas ahí (`python -m kiosk.recognizer capturar SKU`).
 
@@ -39,6 +39,7 @@
 4. **CANCELAR COMPRA** en W2, W3 y QR; **CORREGIR** en W3; **SOLICITAR AYUDA** siempre.
 
 **Reglas clave del backend** (`kiosk-api/src/kiosk/service.py`):
+- En modo cámara, `read_sensors()` (cámara + reconocimiento) corre en **otro hilo** (`create_app(threaded_sensing=True)`); el estado solo cambia en el bucle principal (`tick(reading)`). La cámara también lee en W1 para aprender la bandeja vacía; `/api/recalibrate` (botón en `/caja`) la reaprende.
 - Un producto se suma cuando **entra** a la vista de la cámara (estable 3 cuadros); no se cuenta dos veces mientras sigue a la vista.
 - **Balanza opcional** (`KIOSK_SCALE`, ver `__main__.scale_enabled`): con `off` (por defecto) `KioskService` recibe `scale=None`, no lee peso y PAGAR depende solo de lo escaneado; el snapshot trae `weight_enabled: false` y la UI oculta todo lo de peso.
 - Con balanza: «Revise su bandeja» solo si el peso no coincide **más de 2 s** (`WEIGHT_GRACE_S`); PAGAR exige peso correcto.
@@ -57,7 +58,8 @@
 
 **De código**
 1. **Fusionar PR #27** a `develop`.
-2. **Probar el modo cámara en vivo** (`KIOSK_MODE=camera KIOSK_GALLERY=../ml/data/models/galeria.npz`) con la webcam de la demo; la bandeja debe estar vacía al arrancar (aprende el fondo).
+2. **Medir RNF-01 en la laptop de la demo** con `python -m kiosk.recognizer medir` (en desarrollo: ~110–150 ms por cuadro a 140 px; ver `docs/ml/reconocimiento.md`).
+   **Probar el modo cámara en vivo** (`KIOSK_MODE=camera KIOSK_GALLERY=../ml/data/models/galeria.npz`) con la webcam de la demo; la bandeja debe estar vacía al arrancar (aprende el fondo).
 3. **Fusionar** la rama `feature/reconocimiento-parecido` (sale de #27).
 4. **Versión para la demo**: PR `develop` → `main` y etiqueta `v0.1.0`.
 
@@ -69,7 +71,7 @@
 - **Vitest en Windows**: algunas primeras corridas terminan en «no tests» por arranque lento del worker (`pool: "threads"` ya puesto). Al repetir pasan; en CI (Linux) nunca falló. Si vuelve, probar `poolOptions` / más tiempo de arranque.
 
 **Mejoras posibles**
-- E2E Playwright del flujo **uno por uno** con `/sim/scan` y en el modo por defecto **sin balanza** (hoy las e2e corren con `KIOSK_SCALE=sim` y `/sim/tray`, que coloca todo junto), y de CANCELAR.
+- E2E en el modo por defecto **sin balanza** (las e2e corren con `KIOSK_SCALE=sim`; el flujo uno por uno, quitar y CANCELAR ya tienen e2e).
 - E2E en **modo cámara** con imágenes grabadas (`ImageFolderSource` + `SimilarityDetector`).
 - Reconocimiento: zona de escaneo fija (recortar la imagen), más fotos del frente de los productos parecidos (galletas en empaque rojo/blanco), y descartar la mano antes del recorte.
 - `SerialScale` (pyserial) para una balanza real.

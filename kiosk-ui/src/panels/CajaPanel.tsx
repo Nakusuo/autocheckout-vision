@@ -47,6 +47,15 @@ export function CajaPanel() {
   const resolve = (id: number) =>
     request<HelpRequest[]>("DELETE", `/api/help/${id}`).then(apply).catch(fail);
   const recover = () => request("POST", "/api/recover").then(() => setError(null)).catch(fail);
+  const [calibrating, setCalibrating] = useState(false);
+  const recalibrate = () =>
+    request("POST", "/api/recalibrate")
+      .then(() => {
+        setError(null);
+        setCalibrating(true);
+        setTimeout(() => setCalibrating(false), 4000);
+      })
+      .catch(fail);
 
   const down = snapshot?.screen === "FUERA_DE_SERVICIO";
   const lines = snapshot?.lines ?? [];
@@ -96,6 +105,18 @@ export function CajaPanel() {
             <button type="button" className={`pbtn ${down ? "go" : "plain"}`} onClick={recover} disabled={!down}>
               Reactivar quiosco
             </button>
+            {snapshot?.camera && (
+              <>
+                <button type="button" className="pbtn plain" onClick={recalibrate} disabled={calibrating}>
+                  {calibrating ? "Calibrando…" : "Recalibrar cámara"}
+                </button>
+                <p className="muted">
+                  {calibrating
+                    ? "Deja la bandeja vacía unos segundos."
+                    : "Úsalo si la cámara se movió o había algo en la bandeja al encenderla."}
+                </p>
+              </>
+            )}
           </section>
 
           <section className="card">
