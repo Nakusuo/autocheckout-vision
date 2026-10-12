@@ -36,3 +36,6 @@ playwright-report/
 # Capturas de revisión de diseño
 .impeccable/review/
 .impeccable/build/
+
+# Informes generados (Word)
+docs/informe/
