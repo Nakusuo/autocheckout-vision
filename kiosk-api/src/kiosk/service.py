@@ -143,6 +143,13 @@ class KioskService:
     def recover(self) -> None:
         self._do(self.checkout.recover)
 
+    def set_scale(self, scale: ScaleReader | None) -> None:
+        """Conecta o quita la balanza (simulador y pruebas). Solo en W1: no cambia una compra."""
+        if self.checkout.state is not State.IDLE:
+            raise TransitionError("La balanza solo se cambia con el quiosco en W1")
+        self._scale = scale
+        self.checkout = Checkout(require_weight=scale is not None)
+
     def recalibrate(self) -> None:
         """Vuelve a aprender la bandeja vacía (la cámara se movió o había algo al arrancar)."""
         recalibrate = getattr(self._detector, "recalibrate", None)

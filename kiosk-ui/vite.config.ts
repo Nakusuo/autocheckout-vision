@@ -19,5 +19,12 @@ export default defineConfig({
   preview: { port: 5173, strictPort: true },
   // Hilos en vez de procesos: en Windows el primer proceso hijo puede tardar tanto en
   // arrancar que vitest se rinde ("Timeout waiting for worker to respond").
-  test: { environment: "jsdom", globals: true, setupFiles: ["./src/setupTests.ts"], pool: "threads" },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/setupTests.ts"],
+    pool: "threads",
+    // .stryker-tmp: copias que deja Stryker (pruebas de mutación)
+    exclude: ["**/node_modules/**", "e2e/**", ".stryker-tmp/**"],
+  },
 });

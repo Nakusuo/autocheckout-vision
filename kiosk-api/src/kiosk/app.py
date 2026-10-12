@@ -33,6 +33,10 @@ class SkuIn(BaseModel):
     sku: Sku
 
 
+class ScaleIn(BaseModel):
+    enabled: bool
+
+
 class TrapIn(BaseModel):
     offset_g: float = Field(ge=-5000, le=5000)
 
@@ -189,6 +193,10 @@ def create_app(
         @app.get("/sim/tray")
         async def sim_tray_contents() -> dict:
             return {"tray": tray.contents(), "camera": tray.in_view()}
+
+        @app.post("/sim/scale")
+        async def sim_scale(body: ScaleIn) -> dict:
+            return act(lambda: service.set_scale(scale if body.enabled else None))
 
         @app.post("/sim/scan")
         async def sim_scan(body: SkuIn) -> dict:
