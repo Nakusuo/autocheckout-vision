@@ -11,17 +11,31 @@ __pycache__/
 .venv/
 .pytest_cache/
 .ruff_cache/
+*.egg-info/
 
 # Node
 node_modules/
 dist/
 
 # ML: datos y pesos pesados no van a git
-ml/data/raw/
+ml/data/
 ml/runs/
 *.pt
 *.onnx
 
-# Base local
+# Base local y boletas simuladas
 *.sqlite3
 *.db
+boletas.jsonl
+sesiones.jsonl
+
+# Playwright
+test-results/
+playwright-report/
+
+# Capturas de revisión de diseño
+.impeccable/review/
+.impeccable/build/
+
+# Informes generados (Word)
+docs/informe/
