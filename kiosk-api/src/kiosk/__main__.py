@@ -27,12 +27,20 @@ def build_detector(
         tray = SimulatedTray(catalog, scale)
         return tray, tray
     if mode == "camera":
-        model = env.get("KIOSK_MODEL")
-        if not model:
-            sys.exit("Falta KIOSK_MODEL (ruta al modelo .onnx) para el modo cámara")
+        gallery, model = env.get("KIOSK_GALLERY"), env.get("KIOSK_MODEL")
+        if not (gallery or model):
+            sys.exit(
+                "Modo cámara: falta KIOSK_GALLERY (galería de fotos, reconocimiento por parecido)"
+                " o KIOSK_MODEL (YOLOv8 entrenado)"
+            )
         from kiosk.vision import CameraSource, YoloOnnxDetector  # requiere el extra `vision`
 
         source = CameraSource(int(env.get("KIOSK_CAMERA", "0")))
+        if gallery:
+            from kiosk.recognizer import THRESHOLD, SimilarityDetector
+
+            threshold = float(env.get("KIOSK_THRESHOLD", THRESHOLD))
+            return SimilarityDetector.from_files(Path(gallery), source, threshold=threshold), None
         yolo = YoloOnnxDetector.from_model(
             Path(model), source, imgsz=int(env.get("KIOSK_IMGSZ", "416"))
         )

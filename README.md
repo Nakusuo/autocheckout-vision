@@ -1,6 +1,6 @@
 # autocheckout-vision
 
-Quiosco de auto-checkout que reconoce productos con visión computacional (YOLOv8), valida el peso en una balanza y cobra con un QR.
+Quiosco de auto-checkout que reconoce productos con visión computacional (por parecido con una galería de fotos; YOLOv8 cuando haya dataset), opcionalmente valida el peso en una balanza y cobra con un QR.
 
 - Requisitos: [`docs/SRS.md`](docs/SRS.md)
 - Diseño aprobado: [`docs/superpowers/specs/2026-10-03-autocheckout-design.md`](docs/superpowers/specs/2026-10-03-autocheckout-design.md)
@@ -71,7 +71,15 @@ cd kiosk-api
 python -m kiosk.vision --model ../ml/data/models/yolov8n-416.onnx --camera 0
 ```
 
-**Quiosco con cámara** (cuando exista el modelo entrenado con los productos del catálogo):
+**Quiosco con cámara, por parecido (sin entrenar)**: una galería con las fotos de cada producto, DINOv2 y color. Guía completa (modelos a descargar, importar fotos del Drive, capturar fotos con la webcam): [`docs/ml/reconocimiento.md`](docs/ml/reconocimiento.md).
+
+```bash
+python -m kiosk.recognizer galeria          # desde ml/data/raw/<SKU>/
+python -m kiosk.recognizer camara --camera 0 # prueba en vivo
+KIOSK_MODE=camera KIOSK_GALLERY=../ml/data/models/galeria.npz python -m kiosk
+```
+
+**Quiosco con cámara, YOLOv8** (cuando exista el modelo entrenado con los productos del catálogo):
 
 ```bash
 export KIOSK_MODE=camera
@@ -81,7 +89,7 @@ export KIOSK_IMGSZ=416     # tamaño con el que se exportó
 python -m kiosk
 ```
 
-En modo cámara no existen las rutas `/sim` ni el panel de simulación. Mientras no haya balanza física, la balanza simulada pesa lo que la cámara detecta, así que la validación de peso solo es real con una celda de carga (pendiente).
+En modo cámara no existen las rutas `/sim` ni el panel de simulación. Arranca con la bandeja vacía: los primeros cuadros son el fondo.
 
 ## Herramientas del dataset (`ml/`)
 
