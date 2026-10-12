@@ -219,14 +219,22 @@ class BackgroundModel:
     def ready(self) -> bool:
         return self._bg is not None
 
-    def learn(self, frame: np.ndarray) -> None:
-        """Ajusta el fondo poco a poco (cambios de luz) mientras no hay nada en la bandeja."""
+    def learn(self, frame: np.ndarray, foreground: np.ndarray | None = None) -> None:
+        """Ajusta el fondo poco a poco (cambios de luz), nunca donde hay algo a la vista.
+
+        Si se aprendiera también lo que está encima, un producto chico quedaría «dentro» del
+        fondo y dejaría de verse (se iría sin cobrar).
+        """
         current = self._prep(frame)
-        self._bg = (
-            current
-            if self._bg is None
-            else cv2.addWeighted(self._bg, 1 - self._rate, current, self._rate, 0)
-        )
+        if self._bg is None:
+            self._bg = current
+            return
+        blended = cv2.addWeighted(self._bg, 1 - self._rate, current, self._rate, 0)
+        if foreground is None:
+            self._bg = blended
+        else:
+            keep = (foreground > 0.5)[..., None]
+            self._bg = np.where(keep, self._bg, blended)
 
     def foreground(self, frame: np.ndarray) -> np.ndarray:
         if self._bg is None:
@@ -247,14 +255,14 @@ class SimilarityDetector:
         gallery: Gallery,
         source: FrameSource,
         threshold: float = THRESHOLD,
-        min_area: float = 0.015,
+        min_blob: float = 0.004,
         warmup_frames: int = 10,
     ):
         self._embed = embed
         self._gallery = gallery
         self._source = source
         self._threshold = threshold
-        self._min_area = min_area
+        self._min_blob = min_blob
         self._warmup = warmup_frames
         self._background = BackgroundModel()
         self.last: tuple[str, float] | None = None  # para depurar: mejor SKU y parecido
@@ -265,6 +273,12 @@ class SimilarityDetector:
     ) -> "SimilarityDetector":
         return cls(Embedder.from_model(embedder), Gallery.load(gallery), source, **kwargs)
 
+    def _blobs(self, mask: np.ndarray) -> int:
+        """Manchas que no son ruido: cualquier producto, aunque sea chico, cuenta."""
+        n, _, stats, _ = cv2.connectedComponentsWithStats((mask > 0.5).astype(np.uint8))
+        min_px = self._min_blob * mask.size
+        return int((stats[1:, cv2.CC_STAT_AREA] >= min_px).sum()) if n > 1 else 0
+
     def detect(self) -> list[str]:
         frame = self._source.read()
         if self._warmup > 0:  # los primeros cuadros, con la bandeja vacía, son el fondo
@@ -272,10 +286,16 @@ class SimilarityDetector:
             self._background.learn(frame)
             return []
         mask = self._background.foreground(frame)
-        if mask.mean() < self._min_area or (found := isolate(frame, mask)) is None:
-            self._background.learn(frame)
+        blobs = self._blobs(mask)
+        if blobs == 0:
+            self._background.learn(frame, mask)
             self.last = None
             return []
+        # Dos cosas separadas a la vista: no se adivina cuál cobrar; el quiosco avisa y bloquea
+        # PAGAR hasta que quede una sola.
+        if blobs > 1 or (found := isolate(frame, mask)) is None:
+            self.last = None
+            return [UNKNOWN]
         ranking = self._gallery.ranking(fingerprints(self._embed, *found)[0])
         self.last = ranking[0]
         sku, score = ranking[0]

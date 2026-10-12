@@ -70,7 +70,8 @@ Con 10 a 20 fotos por producto tomadas así, el reconocimiento en vivo se parece
 
 ## Límites conocidos
 
-- **Un producto a la vez.** Si hay dos a la vista, se recorta la mancha más grande. Esto calza con el flujo actual (W2 «En vivo»).
+- **Un producto a la vez.** Si hay dos cosas separadas a la vista, el resultado es `DESCONOCIDO`. El quiosco avisa y bloquea PAGAR hasta que quede una sola, así no se cobra de menos.
+- **Productos chicos.** Cuentan aunque ocupen poco de la imagen, y el fondo nunca se reajusta donde hay algo a la vista: un producto no puede «desaparecer» dentro del fondo.
 - **La mano cuenta como parte del producto** si lo sostiene. Conviene dejar el producto sobre la zona de escaneo y retirar la mano.
 - **Fondo.** Si cambia mucho la luz con algo a la vista, el fondo se reajusta solo cuando no hay nada. Si la cámara se mueve, reinicia el quiosco con la bandeja vacía.
 - **Productos parecidos entre sí** (galletas en empaque rojo o blanco): necesitan más fotos del frente.
