@@ -22,11 +22,13 @@
     "break": null
   },
   "coverageAnalysis": "off",
-  "concurrency": 4,
+  "concurrency": 2,
   "jsonReporter": {
     "fileName": "reports/mutation/mutation.json"
   },
   "commandRunner": {
     "command": "npx vitest run src/kiosk src/format.test.ts"
-  }
+  },
+  "timeoutMS": 30000,
+  "timeoutFactor": 3
 }
