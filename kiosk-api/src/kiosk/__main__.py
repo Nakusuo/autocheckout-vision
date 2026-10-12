@@ -31,11 +31,17 @@ def build_detector(
         from kiosk.vision import CameraSource, YoloOnnxDetector  # requiere el extra `vision`
 
         if gallery:
-            from kiosk.recognizer import THRESHOLD, SimilarityDetector
+            from kiosk.recognizer import THRESHOLD, SimilarityDetector, parse_zone
 
             source = CameraSource(int(env.get("KIOSK_CAMERA", "0")))
             threshold = float(env.get("KIOSK_THRESHOLD", THRESHOLD))
-            return SimilarityDetector.from_files(Path(gallery), source, threshold=threshold), None
+            # KIOSK_ZONE=x0,y0,x1,y1 (fracciones): solo se reconoce lo que pasa por ese recuadro
+            zone = parse_zone(env["KIOSK_ZONE"]) if env.get("KIOSK_ZONE") else None
+            hands = env.get("KIOSK_HANDS", "on") != "off"
+            detector = SimilarityDetector.from_files(
+                Path(gallery), source, threshold=threshold, zone=zone, hands=hands
+            )
+            return detector, None
         if not model:
             sys.exit(
                 "Modo cámara: falta KIOSK_GALLERY (galería de fotos, reconocimiento por parecido)"

@@ -57,3 +57,24 @@ class SimulatedPos:
             jsonl.append(self._path, receipt)
         log.info("Boleta simulada %s por %d céntimos", receipt["number"], total_cents)
         return receipt
+
+    def sales_today(self, today: dt.date | None = None, limit: int = 20) -> dict:
+        """Resumen para la caja: ventas del día (hora local) y las últimas boletas."""
+        rows = jsonl.read_rows(self._path) if self._path is not None else self.receipts
+        day = today or dt.datetime.now().astimezone().date()
+        mine = [
+            r for r in rows if dt.datetime.fromisoformat(r["issued_at"]).astimezone().date() == day
+        ]
+        return {
+            "count": len(mine),
+            "total_cents": sum(r["total_cents"] for r in mine),
+            "receipts": [
+                {
+                    "number": r["number"],
+                    "issued_at": r["issued_at"],
+                    "items": sum(line["quantity"] for line in r["lines"]),
+                    "total_cents": r["total_cents"],
+                }
+                for r in reversed(mine[-limit:])
+            ],
+        }
