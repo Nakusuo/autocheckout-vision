@@ -69,10 +69,10 @@ jobs:
           const r = require('./reports/mutation/mutation.json');
           const rows = Object.entries(r.files).map(([f, v]) => {
             const c = s => v.mutants.filter(m => m.status === s).length;
-            const k = c('Killed') + c('Timeout'), t = k + c('Survived') + c('NoCoverage');
-            return '| ' + f + ' | ' + (t ? (100 * k / t).toFixed(1) : '-') + ' % | ' + c('Survived') + ' | ' + c('NoCoverage') + ' |';
+            const k = c('Killed'), t = k + c('Timeout') + c('Survived') + c('NoCoverage');
+            return '| ' + f + ' | ' + (t ? (100 * k / t).toFixed(1) : '-') + ' % | ' + c('Timeout') + ' | ' + c('Survived') + ' | ' + c('NoCoverage') + ' |';
           });
-          console.log(['## Stryker (UI)', '| Archivo | Puntaje | Sobreviven | Sin cubrir |', '|---|---|---|---|', ...rows].join('\n'));
+          console.log(['## Stryker (UI)', '| Archivo | Puntaje (solo muertos) | Tiempo agotado | Sobreviven | Sin cubrir |', '|---|---|---|---|---|', ...rows].join('\n'));
           " >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
