@@ -21,4 +21,4 @@ def test_get_unknown_sku_returns_none():
 def test_repo_seed_catalog_loads():
     seed = Path(__file__).resolve().parents[2] / "catalog" / "products.csv"
     catalog = Catalog.from_csv(seed)
-    assert catalog.get("GASEOSA-500") is not None
+    assert catalog.get("CANCUN-33") is not None
