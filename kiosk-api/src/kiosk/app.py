@@ -20,6 +20,11 @@ ALLOWED_ORIGINS = {"http://localhost:5173", "http://127.0.0.1:5173"}
 
 class TrayIn(BaseModel):
     skus: list[str]
+    hidden: list[str] = []
+
+
+class SkuIn(BaseModel):
+    sku: str
 
 
 class TrapIn(BaseModel):
@@ -79,6 +84,14 @@ def create_app(
     async def confirm() -> dict:
         return act(service.confirm)
 
+    @app.post("/api/cancel")
+    async def cancel() -> dict:
+        return act(service.cancel)
+
+    @app.post("/api/remove")
+    async def remove(body: SkuIn) -> dict:
+        return act(lambda: service.remove(body.sku))
+
     @app.post("/api/correct")
     async def correct() -> dict:
         return act(service.correct)
@@ -131,10 +144,33 @@ def create_app(
         @app.post("/sim/tray")
         async def sim_tray(body: TrayIn) -> dict:
             try:
-                tray.place(body.skus)
+                tray.place(body.skus, body.hidden)
             except ValueError as e:
                 raise HTTPException(status_code=422, detail=str(e)) from e
             return service.snapshot()
+
+        def sim_change(action: Callable[[str], None], sku: str) -> dict:
+            try:
+                action(sku)
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=str(e)) from e
+            return {"tray": tray.contents(), "camera": tray.in_view()}
+
+        @app.get("/sim/tray")
+        async def sim_tray_contents() -> dict:
+            return {"tray": tray.contents(), "camera": tray.in_view()}
+
+        @app.post("/sim/scan")
+        async def sim_scan(body: SkuIn) -> dict:
+            return sim_change(tray.scan, body.sku)
+
+        @app.post("/sim/sneak")
+        async def sim_sneak(body: SkuIn) -> dict:
+            return sim_change(tray.sneak, body.sku)
+
+        @app.post("/sim/take")
+        async def sim_take(body: SkuIn) -> dict:
+            return sim_change(tray.take, body.sku)
 
         @app.post("/sim/trap")
         async def sim_trap(body: TrapIn) -> dict:

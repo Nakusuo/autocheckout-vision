@@ -14,9 +14,10 @@ from kiosk.pos import SimulatedPos
 from kiosk.scale import SimulatedScale
 from kiosk.service import KioskService
 from kiosk.store import init_db, load_catalog
-from kiosk.tray import Detector, ScaleFollowingDetector, SimulatedTray
+from kiosk.tray import Detector, SimulatedTray
 
 REPO = Path(__file__).resolve().parents[3]
+log = logging.getLogger("kiosk")
 
 
 def build_detector(
@@ -35,8 +36,16 @@ def build_detector(
         yolo = YoloOnnxDetector.from_model(
             Path(model), source, imgsz=int(env.get("KIOSK_IMGSZ", "416"))
         )
-        return ScaleFollowingDetector(yolo, catalog, scale), None
+        return yolo, None
     sys.exit(f"KIOSK_MODE desconocido: {mode!r} (usa 'sim' o 'camera')")
+
+
+def scale_enabled(env: Mapping[str, str]) -> bool:
+    """KIOSK_SCALE=off (por defecto): sin balanza, solo la cámara. sim: balanza simulada."""
+    mode = env.get("KIOSK_SCALE", "off")
+    if mode not in ("off", "sim"):
+        sys.exit(f"KIOSK_SCALE desconocido: {mode!r} (usa 'off' o 'sim')")
+    return mode == "sim"
 
 
 def main() -> None:
@@ -59,7 +68,28 @@ def main() -> None:
     verifier = JwtVerifier((keys / "gateway_jwt_public.pem").read_bytes())
     pos = SimulatedPos(REPO / "kiosk-api" / "boletas.jsonl")
     sessions = SessionRecorder(REPO / "kiosk-api" / "sesiones.jsonl")
-    service = KioskService(catalog, detector, scale, gateway, verifier, pos=pos, sessions=sessions)
+    use_scale = scale_enabled(os.environ)
+    if not use_scale:
+        log.info("Sin balanza (KIOSK_SCALE=off): se paga con lo que reconoce la cámara")
+    # Con balanza simulada en modo cámara, la balanza pesa lo que se va escaneando:
+    # la validación de peso (ON-02) NO protege nada en ese modo. Solo para demostrar la visión.
+    follow = None
+    if tray is None and use_scale:
+        log.warning(
+            "Modo cámara con balanza simulada: el peso sigue a la lista y no valida nada. "
+            "Conecta una balanza real antes de usarlo con clientes."
+        )
+        follow = lambda cart: scale.set_load(cart.theoretical_weight_g)
+    service = KioskService(
+        catalog,
+        detector,
+        scale if use_scale else None,
+        gateway,
+        verifier,
+        pos=pos,
+        sessions=sessions,
+        on_cart=follow,
+    )
     app = create_app(service, tray, scale) if tray is not None else create_app(service)
     uvicorn.run(app, host="127.0.0.1", port=8000)
 

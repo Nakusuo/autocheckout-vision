@@ -2,7 +2,7 @@ import pytest
 
 from kiosk.catalog import Catalog, Product
 from kiosk.scale import SimulatedScale
-from kiosk.tray import Detector, ScaleFollowingDetector, SimulatedTray
+from kiosk.tray import Detector, SimulatedTray
 
 CATALOG = Catalog([Product("AGUA", "Agua", 250, 651.0), Product("CHOCO", "Chocolate", 280, 33.0)])
 
@@ -38,23 +38,47 @@ def test_satisfies_detector_protocol():
     assert isinstance(tray, Detector)
 
 
-class FixedDetector:
-    def __init__(self, skus: list[str]):
-        self.skus = skus
-
-    def detect(self) -> list[str]:
-        return list(self.skus)
-
-
-def test_scale_follows_detections():
-    scale = SimulatedScale(noise_g=0)
-    detector = ScaleFollowingDetector(FixedDetector(["AGUA", "CHOCO"]), CATALOG, scale)
-    assert detector.detect() == ["AGUA", "CHOCO"]
+def test_hidden_products_weigh_but_are_not_detected():
+    tray, scale = make()
+    tray.place(["AGUA"], hidden=["CHOCO"])
+    assert tray.detect() == ["AGUA"]
     assert scale.read() == 684.0
 
 
-def test_unknown_detection_weighs_nothing():
+def test_unknown_hidden_sku_is_rejected():
+    tray, _ = make()
+    with pytest.raises(ValueError, match="FANTASMA"):
+        tray.place([], hidden=["FANTASMA"])
+
+
+class Clock:
+    def __init__(self) -> None:
+        self.t = 0.0
+
+    def __call__(self) -> float:
+        return self.t
+
+
+def test_scan_shows_the_product_briefly_and_leaves_it_on_the_tray():
+    clock = Clock()
     scale = SimulatedScale(noise_g=0)
-    detector = ScaleFollowingDetector(FixedDetector(["AGUA", "OTRA"]), CATALOG, scale)
-    detector.detect()
+    tray = SimulatedTray(CATALOG, scale, clock=clock, show_s=1.5)
+    tray.scan("AGUA")
+    assert tray.detect() == ["AGUA"]
+    assert scale.read() == 0.0  # primero pasa por la cámara...
+    assert tray.contents() == []
+    clock.t = 1.6
+    assert tray.detect() == []
+    assert tray.contents() == ["AGUA"]  # ...y después queda en la bandeja
     assert scale.read() == 651.0
+
+
+def test_sneak_weighs_without_being_seen_and_take_removes():
+    tray, scale = make()
+    tray.sneak("CHOCO")
+    assert tray.detect() == []
+    assert scale.read() == 33.0
+    tray.take("CHOCO")
+    assert scale.read() == 0.0
+    with pytest.raises(ValueError, match="CHOCO"):
+        tray.take("CHOCO")

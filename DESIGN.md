@@ -159,6 +159,12 @@ Plano: la profundidad la dan los bordes de tinta, no las sombras. La única somb
 - **Señal de velocidad**: disco blanco con aro rojo y la cifra en negro para los 120 s del pago y los 10 s del ticket.
 - **Fuera de servicio**: octógono rojo de PARE sobre el título.
 
+- **Escaneo en vivo, uno por uno** (W2): la píldora «En vivo» (punto rojo que late) junto al título. El cliente pasa cada producto frente a la cámara y se suma a la lista: la fila nueva se pone amarilla clara, la insignia de cantidad roja y la etiqueta «+ Agregado» flota en el margen superior (no cambia la altura). Cada línea tiene un botón cuadrado «−» para quitar una unidad. Mientras el producto llega a la bandeja se ve «Pesando la bandeja…» (aro que gira) y CONFIRMAR espera; «Revise su bandeja» solo aparece si la diferencia dura más de 2 s.
+- **Cancelar compra** (W2, W3 y QR): la acción más callada, texto subrayado sin placa, debajo de la acción principal. Vuelve al inicio y descarta la lista.
+- **Aviso de cámara** (W1 y W2): una línea pequeña con el ícono de cámara y la Ley 29733.
+
+**Paneles del equipo (`/sim`, `/caja`)**: misma paleta, tipografía y placas, pero a escala de escritorio (`rem`) y en dos columnas: tarjetas blancas con borde de tinta sobre fondo `#f3f1ec`, botones `pbtn` (rojo = acción principal) y el estado del quiosco como disco rojo con el código de pantalla. Estilos en `kiosk-ui/src/panels/panels.css`.
+
 Movimiento: la placa entra en 260 ms (clip de arriba abajo y un desplazamiento de 2cqw, curva de salida exponencial); las líneas nuevas entran desde la izquierda; la línea roja recorre la bandeja mientras se escanea. Con `prefers-reduced-motion` todo queda quieto.
 
 ## Do's and Don'ts

@@ -7,7 +7,7 @@ export function Inicio({ offline }: { offline: boolean }) {
     <section className="screen screen-start">
       <TraySign className="hero-sign" />
       <h1 className="title title-hero"><span className="nowrap">[AUTO-CHECKOUT]</span> Coloca tus productos</h1>
-      <p className="lead">De 1 a 3 productos en la bandeja. La cámara y la balanza hacen el resto.</p>
+      <p className="lead">Pasa de 1 a 3 productos, uno por uno, frente a la cámara. Ella los va sumando.</p>
       {error && <p className="alert" role="alert">{error}</p>}
       <button type="button" className="btn btn-go" disabled={offline || pending} onClick={() => run("/api/start")}>
         INICIAR

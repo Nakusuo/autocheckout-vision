@@ -16,7 +16,7 @@ from pathlib import Path
 
 TARGET_S = 45.0
 TARGET_AUTONOMOUS_PCT = 80.0
-COUNTERS = ("weight_alerts", "corrections", "payment_timeouts")
+COUNTERS = ("weight_alerts", "corrections", "removals", "payment_timeouts")
 DEFAULT_PATH = Path(__file__).resolve().parents[2] / "sesiones.jsonl"
 
 
@@ -32,10 +32,11 @@ class SessionRecorder:
         self._started = 0.0
         self.sessions: list[dict] = []
 
-    def begin(self, now: float) -> None:
+    def begin(self, now: float, weight_checked: bool = True) -> None:
         self._started = now
         self._current = {
             "started_at": self._wall(),
+            "weight_checked": weight_checked,
             "help_requested": False,
             **dict.fromkeys(COUNTERS, 0),
         }
@@ -56,6 +57,7 @@ class SessionRecorder:
         row = {
             "started_at": self._current["started_at"],
             "outcome": outcome,
+            "weight_checked": self._current["weight_checked"],
             "duration_s": round(now - self._started, 1),
             "help_requested": self._current["help_requested"],
             **{k: self._current[k] for k in COUNTERS},
@@ -91,6 +93,8 @@ def summarize(rows: list[dict]) -> dict:
         "autonomous_pct": _pct(len(autonomous), len(rows)),
         "weight_alerts": sum(r["weight_alerts"] for r in rows),
         "corrections": sum(r["corrections"] for r in rows),
+        "removals": sum(r.get("removals", 0) for r in rows),
+        "weight_checked": bool(rows) and all(r.get("weight_checked", True) for r in rows),
         "payment_timeouts": sum(r["payment_timeouts"] for r in rows),
     }
 
@@ -105,10 +109,13 @@ def report(s: dict) -> str:
         f"| ON-03: ≥ 80 % sin ayuda | {s['autonomous_pct']} % "
         f"| {_mark(bool(s['sessions']) and s['autonomous_pct'] >= TARGET_AUTONOMOUS_PCT)} |"
     )
-    on02 = (
-        f"| ON-02: pago solo con peso validado (±5 g) | {s['weight_alerts']} alertas de peso; "
-        "ninguna venta se paga sin validar | ✅ |"
-    )
+    if s["weight_checked"]:
+        on02 = (
+            f"| ON-02: pago solo con peso validado (±5 g) | {s['weight_alerts']} alertas de peso; "
+            "ninguna venta se paga sin validar | ✅ |"
+        )
+    else:
+        on02 = "| ON-02: pago solo con peso validado (±5 g) | No medido (sin balanza) | — |"
     return "\n".join([
         f"Compras registradas: {s['sessions']} (pagadas: {s['paid']})",
         "",
@@ -118,7 +125,10 @@ def report(s: dict) -> str:
         on03,
         on02,
         "",
-        f"Correcciones (CORREGIR): {s['corrections']} · Pagos vencidos (120 s): {s['payment_timeouts']}",
+        (
+            f"Correcciones (CORREGIR): {s['corrections']} · Quitados: {s['removals']} · "
+            f"Pagos vencidos (120 s): {s['payment_timeouts']}"
+        ),
     ])
 
 
