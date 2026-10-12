@@ -14,9 +14,11 @@ Uso (las opciones --galeria y --embedder van antes del comando):
     python -m kiosk.recognizer evaluar
     python -m kiosk.recognizer camara --camera 0
     python -m kiosk.recognizer capturar CANCUN-33 --camera 0   # fotos con la cámara de la demo
+    python -m kiosk.recognizer medir                           # ms por cuadro (RNF-01: ≤ 150)
 """
 
 import argparse
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,6 +41,9 @@ COLOR_WEIGHT = 0.5  # cuánto pesa el color frente a DINOv2 (afinado con las fot
 # muy distinto (una mano sola) queda por debajo. Se ajusta con KIOSK_THRESHOLD mirando `camara`.
 THRESHOLD = 0.95
 IMAGE_EXT = {".jpg", ".jpeg", ".png"}
+# Lado de la imagen que recibe DINOv2 (múltiplo de 14); se guarda en la galería. Con las fotos del
+# dataset: 224 px → 91 % y ~250 ms; 140 px → 88–89 % y ~105 ms (cumple RNF-01, ≤ 150 ms).
+EMBED_SIZE = 140
 _MEAN = np.array([0.485, 0.456, 0.406], np.float32)
 _STD = np.array([0.229, 0.224, 0.225], np.float32)
 
@@ -92,19 +97,22 @@ def color_hist(crop: np.ndarray, mask: np.ndarray) -> np.ndarray:
 class Embedder:
     """DINOv2 en ONNX: devuelve el token CLS normalizado de cada imagen."""
 
-    def __init__(self, session, size: int = 224):
+    def __init__(self, session, size: int = EMBED_SIZE):
         self._session = session
         self._input = session.get_inputs()[0].name
-        self._size = size
+        self.size = size
 
     @classmethod
-    def from_model(cls, path: Path = DEFAULT_EMBEDDER) -> "Embedder":
+    def from_model(cls, path: Path = DEFAULT_EMBEDDER, size: int = EMBED_SIZE) -> "Embedder":
         import onnxruntime as ort
 
-        return cls(ort.InferenceSession(str(path), providers=["CPUExecutionProvider"]))
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = 4  # el mejor en la laptop de desarrollo (8 núcleos)
+        session = ort.InferenceSession(str(path), options, providers=["CPUExecutionProvider"])
+        return cls(session, size)
 
     def __call__(self, images: list[np.ndarray]) -> np.ndarray:
-        batch = np.stack([_normalize(im, self._size) for im in images])
+        batch = np.stack([_normalize(im, self.size) for im in images])
         cls_tokens = self._session.run(None, {self._input: batch})[0][:, 0]
         return cls_tokens / np.linalg.norm(cls_tokens, axis=1, keepdims=True)
 
@@ -143,15 +151,19 @@ class Gallery:
     vectors: np.ndarray  # (n, d)
     labels: np.ndarray  # (n,) SKU de cada huella
     photos: np.ndarray  # (n,) foto de origen (las 4 rotaciones comparten número)
+    size: int = EMBED_SIZE  # el quiosco debe describir los cuadros con el mismo tamaño
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(path, vectors=self.vectors, labels=self.labels, photos=self.photos)
+        np.savez_compressed(
+            path, vectors=self.vectors, labels=self.labels, photos=self.photos, size=self.size
+        )
 
     @classmethod
     def load(cls, path: Path) -> "Gallery":
         with np.load(path, allow_pickle=False) as data:
-            return cls(data["vectors"], data["labels"], data["photos"])
+            size = int(data["size"]) if "size" in data.files else 224
+            return cls(data["vectors"], data["labels"], data["photos"], size)
 
     def ranking(self, vector: np.ndarray, skip_photo: int | None = None) -> list[tuple[str, float]]:
         """Mejor parecido por SKU, de mayor a menor."""
@@ -183,7 +195,8 @@ def build_gallery(
             photo += 1
     if not vectors:
         raise ValueError(f"No hay fotos en {raw}")
-    return Gallery(np.vstack(vectors), np.array(labels), np.array(photos))
+    size = getattr(embed, "size", EMBED_SIZE)
+    return Gallery(np.vstack(vectors), np.array(labels), np.array(photos), size)
 
 
 def leave_one_out(gallery: Gallery) -> tuple[int, int, list[tuple[str, str, float]]]:
@@ -202,18 +215,26 @@ def leave_one_out(gallery: Gallery) -> tuple[int, int, list[tuple[str, str, floa
 
 
 class BackgroundModel:
-    """La cámara está fija: lo que difiere de la bandeja vacía es el producto (y la mano)."""
+    """La cámara está fija: lo que difiere de la bandeja vacía es el producto (y la mano).
+
+    Trabaja a la mitad de resolución: alcanza para encontrar el producto y es ~4 veces más rápido.
+    """
 
     def __init__(self, threshold: int = 30, learn_rate: float = 0.05):
         self._bg: np.ndarray | None = None
         self._threshold = threshold
         self._rate = learn_rate
+        # (cuadro, cuadro preparado): se guarda el cuadro mismo, no su id, que Python reutiliza
+        self._cache: tuple[np.ndarray, np.ndarray] | None = None
 
-    @staticmethod
-    def _prep(frame: np.ndarray) -> np.ndarray:
-        return cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2LAB), (7, 7), 0).astype(
-            np.float32
-        )
+    def _prep(self, frame: np.ndarray) -> np.ndarray:
+        if self._cache is not None and self._cache[0] is frame:
+            return self._cache[1]
+        small = cv2.resize(frame, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+        prepped = cv2.GaussianBlur(cv2.cvtColor(small, cv2.COLOR_BGR2LAB), (5, 5), 0)
+        prepped = prepped.astype(np.float32)
+        self._cache = (frame, prepped)
+        return prepped
 
     @property
     def ready(self) -> bool:
@@ -232,18 +253,21 @@ class BackgroundModel:
         blended = cv2.addWeighted(self._bg, 1 - self._rate, current, self._rate, 0)
         if foreground is None:
             self._bg = blended
-        else:
-            keep = (foreground > 0.5)[..., None]
-            self._bg = np.where(keep, self._bg, blended)
+            return
+        small = cv2.resize(foreground, (current.shape[1], current.shape[0]))
+        keep = cv2.dilate((small > 0).astype(np.uint8), np.ones((3, 3), np.uint8))
+        self._bg = np.where(keep[..., None] > 0, self._bg, blended)
 
     def foreground(self, frame: np.ndarray) -> np.ndarray:
         if self._bg is None:
             raise RuntimeError("Falta aprender la bandeja vacía")
         diff = np.abs(self._prep(frame) - self._bg).max(axis=2)
         mask = (diff > self._threshold).astype(np.uint8)
-        kernel = np.ones((5, 5), np.uint8)
+        kernel = np.ones((3, 3), np.uint8)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-        return cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2).astype(np.float32)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        full = cv2.resize(mask, (frame.shape[1], frame.shape[0]), interpolation=cv2.INTER_NEAREST)
+        return full.astype(np.float32)
 
 
 class SimilarityDetector:
@@ -263,15 +287,18 @@ class SimilarityDetector:
         self._source = source
         self._threshold = threshold
         self._min_blob = min_blob
+        self._warmup_frames = warmup_frames
         self._warmup = warmup_frames
         self._background = BackgroundModel()
+        self._lock = threading.Lock()  # detect corre en otro hilo; recalibrate llega desde la API
         self.last: tuple[str, float] | None = None  # para depurar: mejor SKU y parecido
 
     @classmethod
     def from_files(
         cls, gallery: Path, source: FrameSource, embedder: Path = DEFAULT_EMBEDDER, **kwargs
     ) -> "SimilarityDetector":
-        return cls(Embedder.from_model(embedder), Gallery.load(gallery), source, **kwargs)
+        loaded = Gallery.load(gallery)
+        return cls(Embedder.from_model(embedder, loaded.size), loaded, source, **kwargs)
 
     def _blobs(self, mask: np.ndarray) -> int:
         """Manchas que no son ruido: cualquier producto, aunque sea chico, cuenta."""
@@ -279,7 +306,18 @@ class SimilarityDetector:
         min_px = self._min_blob * mask.size
         return int((stats[1:, cv2.CC_STAT_AREA] >= min_px).sum()) if n > 1 else 0
 
+    def recalibrate(self) -> None:
+        """Olvida el fondo: los próximos cuadros (bandeja vacía) son el nuevo fondo."""
+        with self._lock:
+            self._background = BackgroundModel()
+            self._warmup = self._warmup_frames
+            self.last = None
+
     def detect(self) -> list[str]:
+        with self._lock:
+            return self._detect()
+
+    def _detect(self) -> list[str]:
         frame = self._source.read()
         if self._warmup > 0:  # los primeros cuadros, con la bandeja vacía, son el fondo
             self._warmup -= 1
@@ -300,6 +338,34 @@ class SimilarityDetector:
         self.last = ranking[0]
         sku, score = ranking[0]
         return [sku] if score >= self._threshold else [UNKNOWN]
+
+
+def benchmark(gallery: Path, embedder: Path, raw: Path, frames: int) -> int:
+    """Simula la bandeja (640×480) con una foto real encima y mide cada cuadro completo."""
+    from kiosk.vision import ImageFolderSource
+
+    photo = next((p for p in sorted(raw.rglob("*")) if p.suffix.lower() in IMAGE_EXT), None)
+    if photo is None or (image := imread(photo)) is None:
+        print(f"No hay fotos en {raw}")
+        return 1
+    empty = np.full((480, 640, 3), 200, np.uint8)
+    with_product = empty.copy()
+    with_product[140:340, 245:395] = cv2.resize(image, (150, 200))
+    detector = SimilarityDetector.from_files(
+        gallery, ImageFolderSource([empty] * 10 + [with_product] * (frames + 10)), embedder
+    )
+    for _ in range(20):
+        detector.detect()
+    times = []
+    for _ in range(frames):
+        start = time.perf_counter()
+        detector.detect()
+        times.append((time.perf_counter() - start) * 1000)
+    p50, p95 = np.percentile(times, 50), np.percentile(times, 95)
+    verdict = "cumple" if p95 <= 150 else "NO cumple"
+    print(f"{frames} cuadros: p50 {p50:.0f} ms · p95 {p95:.0f} ms → RNF-01 (p95 ≤ 150 ms) {verdict}")
+    print("Mide con la laptop de la demo enchufada y sin otros programas abiertos.")
+    return 0
 
 
 def capture(sku: str, raw: Path, camera: int, count: int, every_s: float) -> int:
@@ -330,10 +396,14 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--raw", type=Path, default=REPO / "ml" / "data" / "raw")
     build.add_argument("--catalogo", type=Path, default=REPO / "catalog" / "products.csv")
     build.add_argument("--segmenter", type=Path, default=DEFAULT_SEGMENTER)
+    build.add_argument("--tamano", type=int, default=EMBED_SIZE, help="lado para DINOv2 (×14)")
     sub.add_parser("evaluar", help="aciertos dejando cada foto fuera")
     live = sub.add_parser("camara", help="prueba en vivo con la webcam")
     live.add_argument("--camera", type=int, default=0)
     live.add_argument("--frames", type=int, default=100)
+    bench = sub.add_parser("medir", help="ms por cuadro con la galería (RNF-01: ≤ 150 ms)")
+    bench.add_argument("--raw", type=Path, default=REPO / "ml" / "data" / "raw")
+    bench.add_argument("--cuadros", type=int, default=100)
     shoot = sub.add_parser("capturar", help="guarda fotos de un producto con la cámara del quiosco")
     shoot.add_argument("sku")
     shoot.add_argument("--camera", type=int, default=0)
@@ -350,7 +420,10 @@ def main(argv: list[str] | None = None) -> int:
         skus = {p.sku for p in Catalog.from_csv(args.catalogo).all()}
         missing = sorted(skus - {p.name for p in args.raw.iterdir() if p.is_dir()})
         gallery = build_gallery(
-            args.raw, Embedder.from_model(args.embedder), Segmenter.from_model(args.segmenter), skus
+            args.raw,
+            Embedder.from_model(args.embedder, args.tamano),
+            Segmenter.from_model(args.segmenter),
+            skus,
         )
         gallery.save(args.galeria)
         photos, products = len(np.unique(gallery.photos)), len(np.unique(gallery.labels))
@@ -364,6 +437,8 @@ def main(argv: list[str] | None = None) -> int:
         for truth, guess, score in misses:
             print(f"  {truth} → {guess} ({score:.2f})")
         return 0
+    if args.cmd == "medir":
+        return benchmark(args.galeria, args.embedder, args.raw, args.cuadros)
     if args.cmd == "capturar":
         return capture(args.sku, args.raw, args.camera, args.fotos, args.cada)
     source = CameraSource(args.camera)

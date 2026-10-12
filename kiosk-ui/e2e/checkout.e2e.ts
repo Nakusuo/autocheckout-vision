@@ -115,3 +115,27 @@ test("SOLICITAR AYUDA llega al panel de caja y se atiende", async ({ page, conte
   await expect(caja.getByText("Sin solicitudes")).toBeVisible();
   await expect(page.getByText("Ayuda en camino")).toBeHidden();
 });
+
+test("escaneo uno por uno: se suman, se quita uno y se cancela la compra", async ({ page, request }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "INICIAR" }).click();
+  await expect(page.getByText("En vivo")).toBeVisible();
+
+  // Cada producto pasa por la cámara y se suma a la lista
+  for (const sku of ["CANCUN-33", "RITZ-20"]) {
+    expect((await request.post("/sim/scan", { data: { sku } })).ok()).toBeTruthy();
+    await page.waitForTimeout(2_000);
+  }
+  await expect(page.getByText("Bizcocho Cancún 33 g")).toBeVisible();
+  await expect(page.getByText("Galletas Ritz 20 g")).toBeVisible();
+  await expect(page.getByText("S/ 2.80").first()).toBeVisible();
+
+  // «−» quita una unidad (y el producto sale de la bandeja)
+  await page.getByRole("button", { name: "Quitar uno de Galletas Ritz 20 g" }).click();
+  expect((await request.post("/sim/take", { data: { sku: "RITZ-20" } })).ok()).toBeTruthy();
+  await expect(page.getByText("Galletas Ritz 20 g")).toBeHidden();
+  await expect(page.getByText("S/ 1.50").first()).toBeVisible();
+
+  await page.getByRole("button", { name: "CANCELAR COMPRA" }).click();
+  await expect(page.getByText(W1_TEXT)).toBeVisible();
+});
