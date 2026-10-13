@@ -208,11 +208,15 @@ class KioskService:
         # no puede cambiar a espaldas del cliente ni de la cámara.
         if self.checkout.state is State.CONFIRMING:
             self._do(self.checkout.correct)
-        self._scanned.update(arrived)
+        # Solo se acumula lo que está en el catálogo. Un desconocido (una mano, dos productos
+        # juntos) bloquea mientras está a la vista, pero no queda guardado: si se guardara,
+        # bloquearía la compra para siempre sin aparecer en la lista ni poder quitarse.
+        self._scanned.update({sku: n for sku, n in arrived.items() if self.catalog.get(sku)})
         self._cart_changed()
 
     def _cart(self) -> Cart:
-        return build_cart(sorted(self._scanned.elements()), self.catalog)
+        in_view = [sku for sku in self._view.elements() if not self.catalog.get(sku)]
+        return build_cart(sorted([*self._scanned.elements(), *in_view]), self.catalog)
 
     def _cart_changed(self) -> None:
         if self._on_cart is not None:
