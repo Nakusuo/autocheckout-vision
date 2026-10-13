@@ -87,3 +87,75 @@ def test_the_same_unknown_in_view_does_not_pile_up():
     see(svc, [])
     assert svc.snapshot()["alert"] is None
     assert svc.snapshot()["item_count"] == 0
+
+
+# ---------- alerta a la caja ----------
+
+
+def test_unknown_sends_one_alert_per_sale_and_tracks_the_outcome():
+    svc = kiosk()
+    see(svc, [UNKNOWN])
+    see(svc, [])
+    see(svc, [UNKNOWN])  # vuelve a aparecer: la misma alerta, una vez más
+    see(svc, ["VIZZIO-19"])
+    see(svc, [])
+    assert svc.security_alerts == [
+        {
+            "id": 1,
+            "reason": "Producto no reconocido frente a la cámara",
+            "screen": "W2",
+            "at": svc.security_alerts[0]["at"],
+            "times": 2,
+            "outcome": "en curso",
+        }
+    ]
+    svc.confirm()
+    svc.pay()
+    svc._gateway.paid = True
+    svc.tick()
+    assert svc.security_alerts[0]["outcome"] == "pagada"
+
+
+def test_alert_on_cancel_and_next_sale_gets_a_new_one():
+    svc = kiosk()
+    see(svc, [UNKNOWN])
+    svc.cancel()
+    assert svc.security_alerts[0]["outcome"] == "cancelada"
+    svc.start()
+    see(svc, ["OTRA-COSA"])
+    assert [a["id"] for a in svc.security_alerts] == [1, 2]
+
+
+def test_alert_in_w3_records_the_screen():
+    svc = kiosk()
+    see(svc, ["VIZZIO-19"])
+    see(svc, [])
+    svc.confirm()
+    see(svc, [UNKNOWN])
+    assert svc.security_alerts[0]["screen"] == "W3"
+
+
+def test_no_alert_for_known_products():
+    svc = kiosk()
+    see(svc, ["VIZZIO-19"])
+    assert svc.security_alerts == []
+
+
+def test_alert_closes_when_the_kiosk_fails():
+    svc = kiosk()
+    see(svc, [UNKNOWN])
+    svc.tick(RuntimeError("cámara"))
+    assert svc.security_alerts[0]["outcome"] == "quiosco fuera de servicio"
+
+
+def test_api_lists_and_resolves_alerts():
+    from fastapi.testclient import TestClient
+
+    from kiosk.app import create_app
+
+    svc = kiosk()
+    see(svc, [UNKNOWN])
+    client = TestClient(create_app(svc, run_loop=False))
+    assert [a["id"] for a in client.get("/api/alerts").json()] == [1]
+    assert client.delete("/api/alerts/1").json() == []
+    assert client.delete("/api/alerts/1").status_code == 404

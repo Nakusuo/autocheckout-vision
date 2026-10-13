@@ -156,6 +156,16 @@ def create_app(
             raise HTTPException(status_code=404, detail="Esa solicitud de ayuda no existe")
         return service.help_requests
 
+    @app.get("/api/alerts")
+    async def list_alerts() -> list[dict]:
+        return service.security_alerts
+
+    @app.delete("/api/alerts/{alert_id}")
+    async def resolve_alert(alert_id: int) -> list[dict]:
+        if not service.resolve_alert(alert_id):
+            raise HTTPException(status_code=404, detail="Esa alerta no existe")
+        return service.security_alerts
+
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
         origin = websocket.headers.get("origin")

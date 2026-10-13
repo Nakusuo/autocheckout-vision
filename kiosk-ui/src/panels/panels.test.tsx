@@ -46,6 +46,8 @@ const snap: Snapshot = {
 
 type Route = (method: string, path: string) => unknown;
 
+const alertRoutes = new WeakSet<Route>();
+
 function stubFetch(route: Route) {
   const calls: string[] = [];
   vi.stubGlobal(
@@ -53,7 +55,9 @@ function stubFetch(route: Route) {
     vi.fn((url: string, init?: RequestInit) => {
       const method = init?.method ?? "GET";
       calls.push(`${method} ${url}`);
-      return Promise.resolve(new Response(JSON.stringify(route(method, url) ?? {})));
+      // Las alertas solo las responde quien las pide; las demás pruebas no tienen ninguna
+      const body = url.startsWith("/api/alerts") && !alertRoutes.has(route) ? [] : route(method, url);
+      return Promise.resolve(new Response(JSON.stringify(body ?? {})));
     }),
   );
   return calls;
@@ -242,5 +246,62 @@ describe("SimPanel", () => {
 
     ws.send({ ...snap, weight_enabled: true });
     expect(screen.getByRole("button", { name: "Sin escanear" })).toBeInTheDocument();
+  });
+});
+
+describe("CajaPanel alertas de seguridad", () => {
+  const noSales = { count: 0, total_cents: 0, receipts: [] };
+  const alert = { id: 9, reason: "Producto no reconocido frente a la cámara", screen: "W2", at: 0, times: 2, outcome: "pagada" };
+
+  function stubAudio() {
+    const starts = { n: 0 };
+    class FakeAudio {
+      currentTime = 0;
+      destination = {};
+      createOscillator() {
+        return { type: "", frequency: { value: 0 }, connect() {}, start: () => starts.n++, stop() {} };
+      }
+      createGain() {
+        return { gain: { value: 0 }, connect() {} };
+      }
+      close() {
+        return Promise.resolve();
+      }
+    }
+    vi.stubGlobal("AudioContext", FakeAudio);
+    return starts;
+  }
+
+  it("muestra la alerta, pita y se marca como revisada", async () => {
+    localStorage.removeItem("caja.sound"); // otra prueba lo dejó apagado
+    const starts = stubAudio();
+    let alerts = [alert];
+    const route: Route = (method, path) => {
+      if (path === "/api/sales") return noSales;
+      if (path.startsWith("/api/alerts")) {
+        if (method === "DELETE") alerts = [];
+        return alerts;
+      }
+      return [];
+    };
+    alertRoutes.add(route);
+    const calls = stubFetch(route);
+    render(<CajaPanel />);
+    expect(await screen.findByText(/Producto no reconocido frente a la cámara/)).toBeInTheDocument();
+    expect(screen.getByText(/2 veces/)).toBeInTheDocument();
+    expect(screen.getByText(/compra pagada/)).toBeInTheDocument();
+    expect(starts.n).toBe(2);
+    fireEvent.click(screen.getByRole("button", { name: "Revisado" }));
+    expect(await screen.findByText(/Sin alertas/)).toBeInTheDocument();
+    expect(calls).toContain("DELETE /api/alerts/9");
+  });
+
+  it("una sola vez se escribe en singular", async () => {
+    const route: Route = (_m, path) =>
+      path === "/api/sales" ? noSales : path === "/api/alerts" ? [{ ...alert, times: 1, outcome: "en curso" }] : [];
+    alertRoutes.add(route);
+    stubFetch(route);
+    render(<CajaPanel />);
+    expect(await screen.findByText(/1 vez/)).toBeInTheDocument();
   });
 });

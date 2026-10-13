@@ -8,6 +8,13 @@ import { SCREEN_NAME } from "./screens";
 type HelpRequest = { id: number; screen: keyof typeof SCREEN_NAME; at: number };
 type Receipt = { number: string; issued_at: string; items: number; total_cents: number };
 type Sales = { count: number; total_cents: number; receipts: Receipt[] };
+type SecurityAlert = {
+  id: number;
+  reason: string;
+  screen: keyof typeof SCREEN_NAME;
+  times: number;
+  outcome: string;
+};
 
 const SOUND_KEY = "caja.sound";
 
@@ -58,6 +65,8 @@ export function CajaPanel() {
   const [sound, setSound] = useState(readSound);
   const soundRef = useRef(sound);
   const known = useRef(new Set<number>());
+  const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
+  const knownAlerts = useRef(new Set<number>());
 
   const toggleSound = () => {
     const next = !sound;
@@ -117,6 +126,31 @@ export function CajaPanel() {
     return () => clearInterval(poll);
   }, []);
 
+  const applyAlerts = useCallback((list: SecurityAlert[]) => {
+    let fresh = false;
+    for (const a of list) {
+      if (!knownAlerts.current.has(a.id)) {
+        knownAlerts.current.add(a.id);
+        fresh = true;
+      }
+    }
+    if (fresh && soundRef.current) beep();
+    setAlerts(list);
+  }, []);
+
+  useEffect(() => {
+    const load = () =>
+      request<SecurityAlert[]>("GET", "/api/alerts")
+        .then(applyAlerts)
+        .catch(fail);
+    load();
+    const poll = setInterval(load, 2000);
+    return () => clearInterval(poll);
+  }, [applyAlerts]);
+
+  const review = (id: number) =>
+    request<SecurityAlert[]>("DELETE", `/api/alerts/${id}`).then(applyAlerts).catch(fail);
+
   const resolve = (id: number) =>
     request<HelpRequest[]>("DELETE", `/api/help/${id}`).then(apply).catch(fail);
   const recover = () => request("POST", "/api/recover").then(() => setError(null)).catch(fail);
@@ -168,6 +202,29 @@ export function CajaPanel() {
               </li>
             ))}
           </ul>
+
+          <div className="card-head alerts-head">
+            <h2 className="card-title">Alertas de seguridad</h2>
+            {alerts.length > 0 && <span className="count">{alerts.length}</span>}
+          </div>
+          {alerts.length === 0 ? (
+            <p className="muted">Sin alertas. Aparece una si pasa frente a la cámara algo que no se reconoce.</p>
+          ) : (
+            <ul className="requests">
+              {alerts.map((a) => (
+                <li key={a.id} className="request request-alert">
+                  <StopOctagon className="request-icon" />
+                  <div className="request-info">
+                    <span className="request-title">Quiosco 1<span className="sep">–</span>{a.screen}<span className="sep">–</span>{a.reason}</span>
+                    <span className="muted">
+                      Alerta #{a.id}<span className="sep">–</span>{a.times === 1 ? "1 vez" : `${a.times} veces`}<span className="sep">–</span>compra {a.outcome}
+                    </span>
+                  </div>
+                  <button type="button" className="pbtn go" onClick={() => review(a.id)}>Revisado</button>
+                </li>
+              ))}
+            </ul>
+          )}
         </main>
 
         <aside className="caja-side">

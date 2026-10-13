@@ -76,6 +76,10 @@ class KioskService:
         self._entered_at = clock()
         self.help_requests: list[dict] = []
         self._next_help_id = 1
+        # Alertas de seguridad para la caja: nadie vigila todo el tiempo; se avisa si pasa algo raro
+        self.security_alerts: list[dict] = []
+        self._next_alert_id = 1
+        self._sale_alert: dict | None = None  # una alerta por compra; se actualiza, no se repite
         self._charge: Charge | None = None
         self._reference = ""
         self._last_poll = float("-inf")
@@ -95,6 +99,7 @@ class KioskService:
         self._do(self.checkout.start)
         self.sessions.begin(self._clock(), weight_checked=self._scale is not None)
         self._weight_alerted = False
+        self._sale_alert = None
         self._scanned = Counter()
         self._view = Counter()
         self._cart_changed()
@@ -109,6 +114,7 @@ class KioskService:
         self._scanned = Counter()
         self._view = Counter()
         self._cart_changed()
+        self._close_alert("cancelada")
         self.sessions.finish(self._clock(), "cancelled", screen=screen)
 
     def remove(self, sku: str) -> None:
@@ -192,6 +198,7 @@ class KioskService:
         if isinstance(reading, Exception):
             log.error("Fallo de sensor; quiosco fuera de servicio", exc_info=reading)
             self._do(self.checkout.fault)
+            self._close_alert("quiosco fuera de servicio")
             self.sessions.finish(self._clock(), "fault")
             return
         stable = self._stability.push(reading.skus)
@@ -204,6 +211,7 @@ class KioskService:
         self._view = view
         if not arrived:
             return
+        screen = SCREEN[self.checkout.state]  # antes de reabrir el escaneo
         # Un producto que entra a la vista en W3 reabre el escaneo: la lista confirmada
         # no puede cambiar a espaldas del cliente ni de la cámara.
         if self.checkout.state is State.CONFIRMING:
@@ -212,7 +220,38 @@ class KioskService:
         # juntos) bloquea mientras está a la vista, pero no queda guardado: si se guardara,
         # bloquearía la compra para siempre sin aparecer en la lista ni poder quitarse.
         self._scanned.update({sku: n for sku, n in arrived.items() if self.catalog.get(sku)})
+        if any(not self.catalog.get(sku) for sku in arrived):
+            self._raise_alert(screen)
         self._cart_changed()
+
+    def _raise_alert(self, screen: str) -> None:
+        """Algo que no se reconoce pasó frente a la cámara: puede salir sin pagar (no hay balanza)."""
+        if self._sale_alert is not None:
+            self._sale_alert["times"] += 1
+            self._sale_alert["screen"] = screen
+            return
+        self._sale_alert = {
+            "id": self._next_alert_id,
+            "reason": "Producto no reconocido frente a la cámara",
+            "screen": screen,
+            "at": self._clock(),
+            "times": 1,
+            "outcome": "en curso",
+        }
+        self._next_alert_id += 1
+        self.security_alerts.append(self._sale_alert)
+        log.warning("Alerta de seguridad #%d: producto no reconocido", self._sale_alert["id"])
+
+    def _close_alert(self, outcome: str) -> None:
+        if self._sale_alert is not None:
+            self._sale_alert["outcome"] = outcome
+            self._sale_alert = None
+
+    def resolve_alert(self, alert_id: int) -> bool:
+        """La caja revisó la alerta. False si no existía."""
+        before = len(self.security_alerts)
+        self.security_alerts = [a for a in self.security_alerts if a["id"] != alert_id]
+        return len(self.security_alerts) < before
 
     def _cart(self) -> Cart:
         in_view = [sku for sku in self._view.elements() if not self.catalog.get(sku)]
@@ -264,6 +303,7 @@ class KioskService:
         charge_id = self._charge.id
         self._do(self.checkout.payment_confirmed)
         self.pos.issue_receipt(self._reference, charge_id, cart.lines, cart.total_cents)
+        self._close_alert("pagada")
         self.sessions.finish(self._clock(), "paid", cart.item_count, cart.total_cents)
 
     def request_help(self) -> dict:
