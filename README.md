@@ -104,7 +104,7 @@ export KIOSK_ZONE=0.25,0.1,0.75,0.9                  # x0,y0,x1,y1 en fracciones
 export KIOSK_HANDS=off                               # opcional: por defecto se quita la piel que entra por el borde de la zona
 ```
 
-**Lo que no se reconoce:** solo se suman productos del catálogo. Un desconocido (una mano, dos productos juntos) bloquea CONFIRMAR y PAGAR solo mientras está a la vista; en W3 reabre W2. Si tapa un producto ya visto, ese producto no se cuenta dos veces. Cada compra con un desconocido genera una alerta en `/caja`.
+**Lo que no se reconoce:** solo se suman productos del catálogo. Un desconocido (una mano, dos productos juntos) bloquea CONFIRMAR y PAGAR solo mientras está a la vista; en W3 reabre W2. Si tapa un producto ya visto, al destaparlo se cuenta otra vez: ante la duda se cobra de más (se ve en la lista y se quita con «−»), nunca de menos. Cada compra con un desconocido genera una alerta en `/caja`.
 
 **Riesgo aceptado:** sin balanza, un producto que no se reconoce puede salir sin pagar. La alerta de seguridad (que termina en «pagada») es la mitigación: la caja revisa esa compra.
 

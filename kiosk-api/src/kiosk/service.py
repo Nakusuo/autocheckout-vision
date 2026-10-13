@@ -210,12 +210,6 @@ class KioskService:
         self._refresh(reading.grams)
 
     def _register_view(self, view: Counter[str]) -> None:
-        if any(not self.catalog.get(sku) for sku in view):
-            # Algo desconocido a la vista (p. ej. una mano) puede tapar lo que ya se veía: se
-            # da por presente, así no se cuenta otra vez cuando vuelve a verse.
-            for sku, n in self._view.items():
-                if self.catalog.get(sku):
-                    view[sku] = max(view[sku], n)
         arrived = {sku: n - self._view[sku] for sku, n in view.items() if n > self._view[sku]}
         self._view = view
         if not arrived:
@@ -249,12 +243,23 @@ class KioskService:
         }
         self._next_alert_id += 1
         self.security_alerts.append(self._sale_alert)
-        del self.security_alerts[:-MAX_PENDING]
+        self._trim_alerts()
         log.warning("Alerta de seguridad #%d: producto no reconocido", self._sale_alert["id"])
+
+    def _trim_alerts(self) -> None:
+        """Tope de memoria sin borrar evidencia: nunca se descarta una alerta de compra pagada
+        o en curso (si no, bastaría con abrir y cancelar compras para tapar una)."""
+        extra = len(self.security_alerts) - MAX_PENDING
+        if extra <= 0:
+            return
+        disposable = [a for a in self.security_alerts if a["outcome"] not in ("pagada", "en curso")]
+        drop = {id(a) for a in disposable[:extra]}
+        self.security_alerts = [a for a in self.security_alerts if id(a) not in drop]
 
     def _close_alert(self, outcome: str) -> None:
         if self._sale_alert is not None:
             self._sale_alert["outcome"] = outcome
+            log.warning("Alerta de seguridad #%d: compra %s", self._sale_alert["id"], outcome)
             self._sale_alert = None
 
     def resolve_alert(self, alert_id: int) -> bool:
