@@ -46,6 +46,8 @@ const snap: Snapshot = {
 
 type Route = (method: string, path: string) => unknown;
 
+const alertRoutes = new WeakSet<Route>();
+
 function stubFetch(route: Route) {
   const calls: string[] = [];
   vi.stubGlobal(
@@ -53,7 +55,9 @@ function stubFetch(route: Route) {
     vi.fn((url: string, init?: RequestInit) => {
       const method = init?.method ?? "GET";
       calls.push(`${method} ${url}`);
-      return Promise.resolve(new Response(JSON.stringify(route(method, url) ?? {})));
+      // Las alertas solo las responde quien las pide; las demás pruebas no tienen ninguna
+      const body = url.startsWith("/api/alerts") && !alertRoutes.has(route) ? [] : route(method, url);
+      return Promise.resolve(new Response(JSON.stringify(body ?? {})));
     }),
   );
   return calls;
@@ -99,10 +103,96 @@ describe("useKioskState", () => {
   });
 });
 
+const noSales = { count: 0, total_cents: 0, receipts: [] };
+
+/** AudioContext falso: cuenta los osciladores que arrancan. */
+function stubAudio() {
+  const starts = { n: 0 };
+  class FakeAudio {
+    currentTime = 0;
+    destination = {};
+    createOscillator() {
+      return { type: "", frequency: { value: 0 }, connect() {}, start: () => void starts.n++, stop() {} };
+    }
+    createGain() {
+      return { gain: { value: 0 }, connect() {} };
+    }
+    close() {
+      return Promise.resolve();
+    }
+  }
+  vi.stubGlobal("AudioContext", FakeAudio);
+  return starts;
+}
+
+describe("CajaPanel ventas y sonido", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("muestra las ventas del día", async () => {
+    stubFetch((_m, path) =>
+      path === "/api/sales"
+        ? {
+            count: 2,
+            total_cents: 1250,
+            receipts: [
+              { number: "B001-00000002", issued_at: new Date(2026, 9, 12, 15, 4).toISOString(), items: 3, total_cents: 1000 },
+              { number: "B001-00000001", issued_at: new Date(2026, 9, 12, 9, 30).toISOString(), items: 1, total_cents: 250 },
+            ],
+          }
+        : [],
+    );
+    render(<CajaPanel />);
+    expect(await screen.findByText("B001-00000002", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("2 ventas")).toBeInTheDocument();
+    expect(screen.getByText(/15:04/)).toHaveTextContent("3 productos");
+    expect(screen.getByText(/09:30/)).toHaveTextContent("1 producto");
+  });
+
+  it("sin ventas muestra el estado vacío", async () => {
+    stubFetch((_m, path) => (path === "/api/sales" ? noSales : []));
+    render(<CajaPanel />);
+    expect(await screen.findByText("Aún no hay ventas hoy.")).toBeInTheDocument();
+  });
+
+  it("pita cuando llega una solicitud nueva", async () => {
+    const starts = stubAudio();
+    let pending: { id: number; screen: string; at: number }[] = [];
+    stubFetch((_m, path) => (path === "/api/sales" ? noSales : pending));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<CajaPanel />);
+    await screen.findByText("Sin solicitudes");
+    expect(starts.n).toBe(0);
+    pending = [{ id: 3, screen: "W2", at: 0 }];
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(await screen.findByText(/Solicitud #3/)).toBeInTheDocument();
+    expect(starts.n).toBe(2);
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(starts.n).toBe(2);
+  });
+
+  it("con el sonido apagado no pita y recuerda la elección", async () => {
+    const starts = stubAudio();
+    let pending: { id: number; screen: string; at: number }[] = [];
+    stubFetch((_m, path) => (path === "/api/sales" ? noSales : pending));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { unmount } = render(<CajaPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Sonido: sí" }));
+    expect(localStorage.getItem("caja.sound")).toBe("off");
+    pending = [{ id: 4, screen: "W2", at: 0 }];
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(await screen.findByText(/Solicitud #4/)).toBeInTheDocument();
+    expect(starts.n).toBe(0);
+    unmount();
+    render(<CajaPanel />);
+    expect(screen.getByRole("button", { name: "Sonido: no" })).toBeInTheDocument();
+  });
+});
+
 describe("CajaPanel", () => {
   it("lista la ayuda pendiente y la marca como atendida", async () => {
     let pending = [{ id: 7, screen: "W2", at: 0 }];
-    const calls = stubFetch((method) => {
+    const calls = stubFetch((method, path) => {
+      if (path === "/api/sales") return noSales;
       if (method === "DELETE") pending = [];
       return pending;
     });
@@ -114,7 +204,7 @@ describe("CajaPanel", () => {
   });
 
   it("«Recalibrar cámara» solo aparece con cámara y llama a la API", async () => {
-    const calls = stubFetch(() => []);
+    const calls = stubFetch((_m, path) => (path === "/api/sales" ? noSales : []));
     render(<CajaPanel />);
     const ws = FakeSocket.all[0];
     ws.open();
@@ -128,7 +218,7 @@ describe("CajaPanel", () => {
   });
 
   it("«Reactivar quiosco» solo se habilita fuera de servicio", async () => {
-    stubFetch(() => []);
+    stubFetch((_m, path) => (path === "/api/sales" ? noSales : []));
     render(<CajaPanel />);
     const ws = FakeSocket.all[0];
     ws.open();
@@ -141,6 +231,24 @@ describe("CajaPanel", () => {
 
 describe("SimPanel", () => {
   const catalog = [{ sku: "AGUA", name: "Agua", price_cents: 250, weight_g: 651 }];
+
+  it("en modo cámara (sin rutas /sim) avisa y deja de consultar la bandeja", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        calls.push(url);
+        return Promise.resolve(new Response(JSON.stringify({ detail: "Not Found" }), { status: 404 }));
+      }),
+    );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<SimPanel />);
+    expect(await screen.findByText("El quiosco está en modo cámara")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    const before = calls.length;
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(calls.length).toBe(before);
+  });
 
   it("sin balanza oculta «Sin escanear»; pasar por la cámara llama a /sim/scan", async () => {
     const calls = stubFetch((_m, path) =>
@@ -156,5 +264,62 @@ describe("SimPanel", () => {
 
     ws.send({ ...snap, weight_enabled: true });
     expect(screen.getByRole("button", { name: "Sin escanear" })).toBeInTheDocument();
+  });
+});
+
+describe("CajaPanel alertas de seguridad", () => {
+  const noSales = { count: 0, total_cents: 0, receipts: [] };
+  const alert = { id: 9, reason: "Producto no reconocido frente a la cámara", screen: "W2", at: 0, times: 2, outcome: "pagada" };
+
+  function stubAudio() {
+    const starts = { n: 0 };
+    class FakeAudio {
+      currentTime = 0;
+      destination = {};
+      createOscillator() {
+        return { type: "", frequency: { value: 0 }, connect() {}, start: () => starts.n++, stop() {} };
+      }
+      createGain() {
+        return { gain: { value: 0 }, connect() {} };
+      }
+      close() {
+        return Promise.resolve();
+      }
+    }
+    vi.stubGlobal("AudioContext", FakeAudio);
+    return starts;
+  }
+
+  it("muestra la alerta, pita y se marca como revisada", async () => {
+    localStorage.removeItem("caja.sound"); // otra prueba lo dejó apagado
+    const starts = stubAudio();
+    let alerts = [alert];
+    const route: Route = (method, path) => {
+      if (path === "/api/sales") return noSales;
+      if (path.startsWith("/api/alerts")) {
+        if (method === "DELETE") alerts = [];
+        return alerts;
+      }
+      return [];
+    };
+    alertRoutes.add(route);
+    const calls = stubFetch(route);
+    render(<CajaPanel />);
+    expect(await screen.findByText(/Producto no reconocido frente a la cámara/)).toBeInTheDocument();
+    expect(screen.getByText(/2 veces/)).toBeInTheDocument();
+    expect(screen.getByText(/compra pagada/)).toBeInTheDocument();
+    expect(starts.n).toBe(2);
+    fireEvent.click(screen.getByRole("button", { name: "Revisado" }));
+    expect(await screen.findByText(/Sin alertas/)).toBeInTheDocument();
+    expect(calls).toContain("DELETE /api/alerts/9");
+  });
+
+  it("una sola vez se escribe en singular", async () => {
+    const route: Route = (_m, path) =>
+      path === "/api/sales" ? noSales : path === "/api/alerts" ? [{ ...alert, times: 1, outcome: "en curso" }] : [];
+    alertRoutes.add(route);
+    stubFetch(route);
+    render(<CajaPanel />);
+    expect(await screen.findByText(/1 vez/)).toBeInTheDocument();
   });
 });

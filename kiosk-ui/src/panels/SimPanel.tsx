@@ -35,6 +35,8 @@ export function SimPanel() {
   const [trap, setTrap] = useState(0);
   const [running, setRunning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // En modo cámara la API no tiene rutas /sim: el panel no sirve y lo dice
+  const [cameraMode, setCameraMode] = useState(false);
   const unmounted = useRef(false);
 
   const call = useCallback(async <T,>(method: string, path: string, body?: unknown): Promise<T | null> => {
@@ -56,11 +58,18 @@ export function SimPanel() {
           setCamera(r.camera);
         })
         .catch(() => undefined);
+    const poll = setInterval(refreshTray, 500);
     request<Product[]>("GET", "/sim/catalog")
       .then(setCatalog)
-      .catch((e) => setError(e instanceof Error ? e.message : "Error desconocido"));
+      .catch((e) => {
+        if (e instanceof Error && e.message === "Not Found") {
+          clearInterval(poll);
+          setCameraMode(true);
+          return;
+        }
+        setError(e instanceof Error ? e.message : "Error desconocido");
+      });
     refreshTray();
-    const poll = setInterval(refreshTray, 500);
     return () => {
       unmounted.current = true;
       clearInterval(poll);
@@ -119,6 +128,21 @@ export function SimPanel() {
 
   const actions = snapshot ? (KIOSK_ACTIONS[snapshot.screen] ?? []) : [];
   const count = (sku: string) => tray.filter((s) => s === sku).length;
+
+  if (cameraMode) {
+    return (
+      <div className="panel">
+        <PanelHeader role="Simulador para la presentación" connected={connected} />
+        <section className="card">
+          <h1 className="card-title">El quiosco está en modo cámara</h1>
+          <p className="muted">
+            Este panel solo funciona en modo simulado. Con la webcam, usa la pantalla del quiosco y /caja.
+          </p>
+          <KioskStatus snapshot={snapshot} />
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="panel">

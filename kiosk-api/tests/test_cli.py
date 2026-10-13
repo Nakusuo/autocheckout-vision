@@ -33,6 +33,7 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.setattr(entry, "HttpGateway", lambda *a, **k: SimpleNamespace())
     started = {}
     monkeypatch.setattr(entry.uvicorn, "run", lambda app, **kw: started.update(app=app, **kw))
+    monkeypatch.setattr(entry, "setup_logging", lambda path: None)  # no tocar el log global
     monkeypatch.setenv("GATEWAY_API_KEY", "clave")
     monkeypatch.delenv("KIOSK_MODE", raising=False)
     monkeypatch.delenv("KIOSK_SCALE", raising=False)
@@ -61,6 +62,17 @@ def test_main_without_keys_exits(repo):
         entry.main()
 
 
+@pytest.mark.parametrize("error", [OSError("No se pudo abrir la cámara 3"), ValueError("abc")])
+def test_main_camera_that_does_not_open_exits_cleanly(repo, monkeypatch, error):
+    def broken(*a):
+        raise error
+
+    monkeypatch.setattr(entry, "build_detector", broken)
+    monkeypatch.setenv("KIOSK_MODE", "camera")
+    with pytest.raises(SystemExit, match="No se pudo preparar la cámara"):
+        entry.main()
+
+
 def test_main_camera_mode_with_simulated_scale_warns_and_has_no_sim_routes(
     repo, monkeypatch, caplog
 ):
@@ -82,8 +94,24 @@ def test_build_detector_camera_with_gallery_uses_similarity(monkeypatch, tmp_pat
     detector, tray_ = entry.build_detector(
         "camera", None, None, {"KIOSK_GALLERY": str(tmp_path / "g.npz"), "KIOSK_THRESHOLD": "1.1"}
     )
-    assert detector == ("similar", {"threshold": 1.1})
+    assert detector == ("similar", {"threshold": 1.1, "zone": None, "hands": True})
     assert tray_ is None
+
+
+def test_build_detector_camera_with_zone_and_without_hand_filter(monkeypatch, tmp_path):
+    monkeypatch.setattr(vision, "CameraSource", lambda index: ImageFolderSource([tray()]))
+    monkeypatch.setattr(
+        rec.SimilarityDetector, "from_files", classmethod(lambda cls, g, s, **kw: kw)
+    )
+    env = {
+        "KIOSK_GALLERY": str(tmp_path / "g.npz"),
+        "KIOSK_ZONE": "0.25,0.1,0.75,0.9",
+        "KIOSK_HANDS": "off",
+    }
+    kw, _ = entry.build_detector("camera", None, None, env)
+    assert (kw["zone"], kw["hands"]) == ((0.25, 0.1, 0.75, 0.9), False)
+    with pytest.raises(ValueError, match="Zona inválida"):
+        entry.build_detector("camera", None, None, {**env, "KIOSK_ZONE": "1,1,0,0"})
 
 
 def test_build_detector_camera_with_yolo_model(monkeypatch, tmp_path):
@@ -268,3 +296,42 @@ def test_vision_cli_without_camera_fails(monkeypatch, capsys):
     monkeypatch.setattr(vision, "CameraSource", no_camera)
     assert vision.main(["--model", "m.onnx"]) == 1
     assert "No se pudo abrir" in capsys.readouterr().out
+
+
+def test_cli_zone_saves_a_photo_with_the_rectangle(tmp_path, fake_models, capsys):
+    out = tmp_path / "zona.jpg"
+    assert rec.main(["zona", "0.25,0.25,0.75,0.75", "--salida", str(out)]) == 0
+    assert tuple(rec.imread(out)[30, 80]) != (235, 235, 235)  # el recuadro se dibujó
+    assert "KIOSK_ZONE=0.25,0.25,0.75,0.75" in capsys.readouterr().out
+
+
+def test_cli_live_camera_with_zone(tmp_path, fake_models, capsys):
+    raw, gallery = tmp_path / "raw", tmp_path / "g.npz"
+    rec.main(
+        ["--galeria", str(gallery), "galeria", "--raw", str(raw), "--catalogo", str(photos(raw))]
+    )
+    args = ["--galeria", str(gallery), "camara", "--frames", "15", "--zona", "0,0,1,1"]
+    assert rec.main(args) == 0
+    assert "['ROJO']" in capsys.readouterr().out
+
+
+def test_setup_logging_writes_a_rotating_file(tmp_path):
+    import logging
+    from logging.handlers import RotatingFileHandler
+
+    log_path = tmp_path / "kiosk.log"
+    before = list(logging.getLogger().handlers)
+    try:
+        entry.setup_logging(log_path)
+        logging.getLogger("kiosk.prueba").info("hola")
+        handlers = logging.getLogger().handlers
+        rotating = [h for h in handlers if isinstance(h, RotatingFileHandler)]
+        assert rotating and rotating[0].maxBytes == 1_000_000 and rotating[0].backupCount == 3
+        for h in handlers:
+            h.flush()
+        assert "INFO kiosk.prueba: hola" in log_path.read_text(encoding="utf-8")
+    finally:
+        for h in logging.getLogger().handlers[:]:
+            if h not in before:
+                h.close()
+                logging.getLogger().removeHandler(h)

@@ -15,9 +15,7 @@ CREATE TABLE IF NOT EXISTS products (
 
 
 def init_db(db_path: Path, seed_csv: Path) -> None:
-    rows = [
-        (p.sku, p.name, p.price_cents, p.weight_g) for p in Catalog.from_csv(seed_csv).all()
-    ]
+    rows = [(p.sku, p.name, p.price_cents, p.weight_g) for p in Catalog.from_csv(seed_csv).all()]
     with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.execute(SCHEMA)
         # El CSV manda: los productos que ya no están se borran (en la misma transacción).

@@ -36,7 +36,13 @@ npm run dev
 |---|---|
 | http://localhost:5173/ | Quiosco (cliente), formato vertical |
 | http://localhost:5173/sim | Simulador para la presentación: pasar cada producto por la cámara (o ponerlo «sin escanear»), escenarios paso a paso, balanza, acciones del quiosco, enlace al «celular» que paga y vista en vivo del quiosco |
-| http://localhost:5173/caja | Panel de caja: solicitudes de ayuda y reactivar el quiosco |
+| http://localhost:5173/caja | Panel de caja: solicitudes de ayuda, alertas de seguridad, ventas de hoy, reactivar el quiosco y recalibrar la cámara |
+
+**Panel de caja (`/caja`):**
+- **Alertas de seguridad** (`GET /api/alerts`, `DELETE /api/alerts/{id}` al marcarla revisada): una por compra cuando pasa algo no reconocido frente a la cámara («Producto no reconocido frente a la cámara»). Cuenta las veces (`times`) y dice cómo terminó la compra: en curso, pagada, cancelada o quiosco fuera de servicio. Si la caja la marca revisada y vuelve a pasar en la misma compra, se crea otra.
+- **Ventas de hoy** (`GET /api/sales`): cantidad y total del día y las últimas 20 boletas.
+- Pitido (880 Hz) con cada ayuda o alerta nueva; el botón «Sonido: sí/no» se recuerda en el navegador.
+- Se guardan hasta 50 ayudas y 50 alertas sin atender.
 
 Para pagar: en la pantalla del QR, abre en `/sim` el enlace «Abrir el celular simulado» y pulsa «Pagar con Yape/Plin (simulado)». El quiosco consulta la pasarela por HTTPS (TLS 1.3), verifica la firma RS256 y muestra el ticket.
 
@@ -46,7 +52,7 @@ La API escucha en 127.0.0.1:8000 y solo acepta peticiones desde http://localhost
 
 Cada venta pagada emite una boleta simulada del POS (serie `B001`) que se guarda en `kiosk-api/boletas.jsonl` (fuera de git).
 
-Cada compra queda registrada en `kiosk-api/sesiones.jsonl` (duración de INICIAR a W4, ayuda pedida, alertas de peso). `python -m kiosk.metrics` en `kiosk-api` resume esos datos frente a las metas del SRS (ON-01/02/03, RNF-02); se usa en la demo, ver [`docs/superpowers/plans/2026-10-10-m5-demo.md`](docs/superpowers/plans/2026-10-10-m5-demo.md).
+Cada compra queda registrada en `kiosk-api/sesiones.jsonl` (duración de INICIAR a W4, ayuda pedida, alertas de peso). `python -m kiosk.metrics` en `kiosk-api` resume esos datos frente a las metas del SRS (ON-01/02/03, RNF-02) e imprime las cancelaciones por pantalla; se usa en la demo, ver [`docs/superpowers/plans/2026-10-10-m5-demo.md`](docs/superpowers/plans/2026-10-10-m5-demo.md). Ambos archivos rotan al pasar 5 MB a `<nombre>.1.jsonl` (se guarda una sola copia anterior).
 
 ### Pruebas de punta a punta (Playwright)
 
@@ -89,7 +95,20 @@ export KIOSK_IMGSZ=416     # tamaño con el que se exportó
 python -m kiosk
 ```
 
-En modo cámara no existen las rutas `/sim` ni el panel de simulación. Arranca con la bandeja vacía: los primeros cuadros son el fondo.
+**Zona de escaneo y mano:**
+
+```bash
+python -m kiosk.recognizer zona 0.25,0.1,0.75,0.9   # guarda zona.jpg con el recuadro dibujado
+python -m kiosk.recognizer camara --camera 0 --zona 0.25,0.1,0.75,0.9
+export KIOSK_ZONE=0.25,0.1,0.75,0.9                  # x0,y0,x1,y1 en fracciones; fuera del recuadro no cuenta
+export KIOSK_HANDS=off                               # opcional: por defecto se quita la piel que entra por el borde de la zona
+```
+
+**Lo que no se reconoce:** solo se suman productos del catálogo. Un desconocido (una mano, dos productos juntos) bloquea CONFIRMAR y PAGAR solo mientras está a la vista; en W3 reabre W2. Si tapa un producto ya visto, al destaparlo se cuenta otra vez: ante la duda se cobra de más (se ve en la lista y se quita con «−»), nunca de menos. Cada compra con un desconocido genera una alerta en `/caja`.
+
+**Riesgo aceptado:** sin balanza, un producto que no se reconoce puede salir sin pagar. La alerta de seguridad (que termina en «pagada») es la mitigación: la caja revisa esa compra.
+
+En modo cámara no existen las rutas `/sim`; el panel `/sim` solo muestra un aviso. Arranca con la bandeja vacía: los primeros cuadros son el fondo. Si la cámara no abre o `KIOSK_CAMERA`/`KIOSK_ZONE` no son válidos, el quiosco termina con un mensaje claro.
 
 ## Herramientas del dataset (`ml/`)
 

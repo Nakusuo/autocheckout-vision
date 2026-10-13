@@ -1,6 +1,6 @@
 # Estado del proyecto — AutoCaja (auto-checkout por visión)
 
-> Traspaso para la próxima sesión. Actualizado: **2026-10-12**.
+> Traspaso para la próxima sesión. Actualizado: **2026-10-13**.
 >
 > **Decisión (2026-10-12): reconocimiento por parecido, sin entrenar.** Con las 56 fotos del Drive (11 productos) no alcanza para YOLOv8; el modo cámara usa una galería de fotos + DINOv2 + color (91 % de aciertos, 98 % sin reversos). Ver [`ml/reconocimiento.md`](ml/reconocimiento.md). El **catálogo** pasó a esos 11 productos, con precios de bodega fijados para la demo (aprobados por el equipo; se cambian en `catalog/products.csv`).
 >
@@ -12,8 +12,9 @@
 | | |
 |---|---|
 | `main` | **v0.1.0** etiquetada (PR #31): la versión de la demo. |
-| `develop` | `main` + plan de calidad (auditoría y fases 1–3, PRs #39–#44). No hay PR abiertos. |
-| Pruebas | kiosk-api 210 (cobertura de ramas 96 %, mínimo 90 % en CI) · kiosk-ui 84 · ml 39 · mock-gateway 13 · e2e Playwright 4 — todo en verde; CI con 6 jobs |
+| `develop` | `main` + plan de calidad (auditoría y fases 1–3), hasta el PR #44. |
+| `feature/demo-final` | PR #46 (incluye #45): zona de escaneo, mano, alertas de seguridad, ventas del día, aviso sonoro. Pendiente de merge; siguiente versión **v0.1.1**. |
+| Pruebas | kiosk-api 247 (cobertura de ramas 96 %, mínima 90 % en CI) · kiosk-ui 91 · ml 39 · mock-gateway 13 · e2e Playwright 4 — todo en verde; CI con 6 jobs (incluye mypy y cobertura) |
 | Mutación | Semanal (`.github/workflows/mutation.yml`): mutmut **90 %** (checkout, fusion, service) · Stryker **84 %** (pantallas W2/W3/QR, `format`) |
 | Informe en Word | `docs/informe/Informe-AutoCaja.docx` (fuera de git; generado con capturas reales, diagramas y gráficos) |
 
@@ -28,7 +29,8 @@
 - **M2** FastAPI + WebSocket, SQLite (RNF-03), temporizadores 10 s / 120 s, UI 1080×1920 (RNF-06), panel de caja.
 - **M3** `mock-gateway`: QR, «celular» simulado, JWT RS256 con `jti` anti-reenvío, TLS 1.3 (RNF-04/05).
 - **M4** detector YOLOv8 ONNX + `KIOSK_MODE=camera`; **Playwright W1→W4** en CI (modo simulado).
-- **M5 (código)**: registro de sesiones (`kiosk-api/sesiones.jsonl`) y `python -m kiosk.metrics` (tabla frente a ON-01/02/03 y RNF-02); boleta POS simulada (`kiosk-api/boletas.jsonl`); aviso Ley 29733 en W1/W2; plan de M5 y plantilla del informe.
+- **M5 (código)**: registro de sesiones (`kiosk-api/sesiones.jsonl`) y `python -m kiosk.metrics` (tabla frente a ON-01/02/03 y RNF-02); boleta POS simulada (`kiosk-api/boletas.jsonl`); aviso Ley 29733 en W1/W2; plan de M5 y plantilla del informe. `kiosk.metrics` guarda la pantalla de cada cancelación e imprime «Cancelaciones por pantalla».
+- **Cierre para la demo** (PR #45/#46): zona de escaneo (`KIOSK_ZONE=x0,y0,x1,y1` en fracciones; `python -m kiosk.recognizer zona …` guarda `zona.jpg`; `camara --zona`), filtro de mano (`KIOSK_HANDS`, encendido por defecto; `off` lo apaga: quita la piel de las manchas que tocan el borde de la zona), alertas de seguridad y ventas de hoy en `/caja`, pitido de 880 Hz con «Sonido: sí/no». Errores al arrancar la cámara (no abre, `KIOSK_CAMERA`/`KIOSK_ZONE` inválidos) terminan con un mensaje claro. El log va a consola y a `kiosk-api/kiosk.log` con hora (rota a 1 MB, guarda 3 anteriores).
 
 **Interfaz**: identidad **AutoCaja** «señalética vial» en rojo/amarillo/blanco, sin nombre ni logo OXXO (ver `DESIGN.md`). Overpass empaquetada (funciona sin internet).
 
@@ -44,7 +46,11 @@
 - Un producto se suma cuando **entra** a la vista de la cámara (estable 3 cuadros); no se cuenta dos veces mientras sigue a la vista.
 - **Balanza opcional** (`KIOSK_SCALE`, ver `__main__.scale_enabled`): con `off` (por defecto) `KioskService` recibe `scale=None`, no lee peso y PAGAR depende solo de lo escaneado; el snapshot trae `weight_enabled: false` y la UI oculta todo lo de peso.
 - Con balanza: «Revise su bandeja» solo si el peso no coincide **más de 2 s** (`WEIGHT_GRACE_S`); PAGAR exige peso correcto.
-- En W3, un producto nuevo frente a la cámara **reabre W2** (antifraude, tras una revisión de seguridad).
+- En W3, un producto nuevo (o un desconocido) frente a la cámara **reabre W2** (antifraude, tras una revisión de seguridad).
+- **Desconocidos**: solo se acumulan SKU del catálogo. Un desconocido bloquea CONFIRMAR/PAGAR solo mientras está a la vista; si tapa un producto ya visto (p. ej. una mano), al destaparlo se cuenta otra vez (ante la duda, de más y visible; nunca de menos). El tope de 50 alertas nunca descarta una de compra pagada o en curso.
+- **Alertas de seguridad** (`GET /api/alerts`, `DELETE /api/alerts/{id}`): una por compra («Producto no reconocido frente a la cámara»), `times` cuenta las veces y `outcome` es en curso / pagada / cancelada / quiosco fuera de servicio. Si la caja la marca revisada y se repite en la misma compra, se crea otra. Ayudas y alertas pendientes: máximo 50.
+- **Compromiso explícito**: sin balanza, un producto no reconocido puede salir sin pagar; la alerta (con resultado «pagada») es la mitigación.
+- `GET /api/sales`: cantidad y total de hoy y las últimas 20 boletas.
 
 **Plan de calidad** (tras la auditoría del equipo, 2026-10-12):
 - Auditoría: validación de entradas (SKU, listas ≤ 20), `/docs` desactivado, mypy en CI, cobertura ≥ 90 %.
@@ -53,7 +59,7 @@
 - Fase 3: `boletas.jsonl`/`sesiones.jsonl` rotan a `*.1.jsonl` al pasar 5 MB (`kiosk/jsonl.py`; la numeración de boletas no se reinicia); la UI descarta estados del WebSocket mal formados (`isSnapshot`); TypeScript estricto; bandit sobre todo el paquete.
 - **TypeScript se queda en 6**: Stryker 10 no funciona con TypeScript 7 (Dependabot ignora esa versión mayor).
 
-**Paneles**: `/sim` (presentación: pasar por la cámara / sin escanear / sacar, escenarios paso a paso, balanza, acciones del quiosco, vista en vivo) y `/caja` (ayuda, estado del quiosco, compra en curso).
+**Paneles**: `/sim` (presentación: pasar por la cámara / sin escanear / sacar, escenarios paso a paso, balanza, acciones del quiosco, vista en vivo) y `/caja` (ayuda, alertas de seguridad, ventas de hoy, estado del quiosco, compra en curso, «Recalibrar cámara»). `/sim` es solo para el modo simulado; en modo cámara muestra un aviso.
 
 ## 3. Qué falta
 
@@ -73,16 +79,17 @@
 
 **Riesgos**
 - **Sin balanza no hay antifraude por peso**: un producto que no pasa por la cámara no se detecta. Es aceptable para la demo; para un piloto real hace falta una balanza (HX711 + `SerialScale`, aún no implementada). Si se usa `KIOSK_SCALE=sim` en modo cámara, la balanza simulada sigue a la lista y tampoco valida nada (el log lo avisa).
-- **Escaneo uno por uno con la cámara real**: la cámara cenital ve la bandeja entera; para «uno por uno» conviene una **zona de escaneo** separada de la bandeja (o recortar la imagen a esa zona) y ajustar `StabilityFilter` (3 cuadros) y el umbral de confianza con datos reales.
+- **Calibrar con datos reales**: `KIOSK_ZONE`, `StabilityFilter` (3 cuadros) y `KIOSK_THRESHOLD` se ajustaron sin la webcam y la bandeja de la demo.
+- **Campo `camera` del snapshot**: en modo cámara significa «el detector puede recalibrar», no «hay cámara conectada».
+- **Dependencias Python sin lockfile**: las versiones pueden cambiar entre instalaciones.
 - **Vitest en Windows**: algunas primeras corridas terminan en «no tests» por arranque lento del worker (`pool: "threads"` ya puesto). Al repetir pasan; en CI (Linux) nunca falló. Si vuelve, probar `poolOptions` / más tiempo de arranque.
 
 **Mejoras posibles**
 - Mutación: quedan 51 mutantes vivos en el backend y 30 en la UI (la mayoría en Pago y Escaneo); ver el reporte del workflow.
-- Reconocimiento: zona de escaneo fija (recortar la imagen), más fotos del frente de los productos parecidos (galletas en empaque rojo/blanco), y descartar la mano antes del recorte.
+- Reconocimiento: más fotos del frente de los productos parecidos (galletas en empaque rojo/blanco).
+- E2E del modo cámara con imágenes grabadas.
 - `SerialScale` (pyserial) para una balanza real.
-- La etiqueta «+ Agregado» de la **primera** fila roza el borde superior del tablero en W2 (detalle visual menor).
-- `/caja`: historial de ventas del día (leer `boletas.jsonl`) y avisos sonoros de ayuda.
-- Métricas: guardar también qué pantalla generó cada cancelación para el informe.
+- Hechas: e2e sin balanza; zona de escaneo y filtro de mano; etiqueta «+ Agregado» de la primera fila; ventas del día y aviso sonoro en `/caja`; pantalla de cada cancelación en las métricas; desconocido que dejaba la compra bloqueada (reportado por el equipo en la prueba con webcam del 2026-10-13).
 - Diseño: el agente de revisión final de la skill de diseño no corrió (la pasada se hizo en el mismo hilo); hay una versión nueva de la skill Impeccable (v4.5.2) sin instalar.
 
 ## 5. Cómo correrlo (modo simulado)

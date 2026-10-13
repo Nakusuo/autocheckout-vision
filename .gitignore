@@ -40,3 +40,4 @@ playwright-report/
 # Informes generados (Word)
 docs/informe/
 .coverage
+kiosk.log*
