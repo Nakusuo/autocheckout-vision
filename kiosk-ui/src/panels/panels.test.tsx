@@ -232,6 +232,24 @@ describe("CajaPanel", () => {
 describe("SimPanel", () => {
   const catalog = [{ sku: "AGUA", name: "Agua", price_cents: 250, weight_g: 651 }];
 
+  it("en modo cámara (sin rutas /sim) avisa y deja de consultar la bandeja", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        calls.push(url);
+        return Promise.resolve(new Response(JSON.stringify({ detail: "Not Found" }), { status: 404 }));
+      }),
+    );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<SimPanel />);
+    expect(await screen.findByText("El quiosco está en modo cámara")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    const before = calls.length;
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(calls.length).toBe(before);
+  });
+
   it("sin balanza oculta «Sin escanear»; pasar por la cámara llama a /sim/scan", async () => {
     const calls = stubFetch((_m, path) =>
       path === "/sim/catalog" ? catalog : path.startsWith("/sim/") ? { tray: [], camera: [] } : snap,

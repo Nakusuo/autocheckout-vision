@@ -98,7 +98,9 @@ class HttpGateway:
             raise PaymentError(f"Error con la pasarela: {e}") from e
 
     def create_charge(self, amount_cents: int, reference: str) -> Charge:
-        data = self._call("POST", "/charges", json={"amount_cents": amount_cents, "reference": reference})
+        data = self._call(
+            "POST", "/charges", json={"amount_cents": amount_cents, "reference": reference}
+        )
         return Charge(data["charge_id"], data["qr_payload"])
 
     def poll(self, charge_id: str) -> str | None:

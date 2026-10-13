@@ -33,6 +33,7 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.setattr(entry, "HttpGateway", lambda *a, **k: SimpleNamespace())
     started = {}
     monkeypatch.setattr(entry.uvicorn, "run", lambda app, **kw: started.update(app=app, **kw))
+    monkeypatch.setattr(entry, "setup_logging", lambda path: None)  # no tocar el log global
     monkeypatch.setenv("GATEWAY_API_KEY", "clave")
     monkeypatch.delenv("KIOSK_MODE", raising=False)
     monkeypatch.delenv("KIOSK_SCALE", raising=False)
@@ -58,6 +59,17 @@ def test_main_without_keys_exits(repo):
     root, _ = repo
     (root / "keys" / "ca.pem").unlink()
     with pytest.raises(SystemExit, match="devkeys"):
+        entry.main()
+
+
+@pytest.mark.parametrize("error", [OSError("No se pudo abrir la cámara 3"), ValueError("abc")])
+def test_main_camera_that_does_not_open_exits_cleanly(repo, monkeypatch, error):
+    def broken(*a):
+        raise error
+
+    monkeypatch.setattr(entry, "build_detector", broken)
+    monkeypatch.setenv("KIOSK_MODE", "camera")
+    with pytest.raises(SystemExit, match="No se pudo preparar la cámara"):
         entry.main()
 
 
@@ -301,3 +313,25 @@ def test_cli_live_camera_with_zone(tmp_path, fake_models, capsys):
     args = ["--galeria", str(gallery), "camara", "--frames", "15", "--zona", "0,0,1,1"]
     assert rec.main(args) == 0
     assert "['ROJO']" in capsys.readouterr().out
+
+
+def test_setup_logging_writes_a_rotating_file(tmp_path):
+    import logging
+    from logging.handlers import RotatingFileHandler
+
+    log_path = tmp_path / "kiosk.log"
+    before = list(logging.getLogger().handlers)
+    try:
+        entry.setup_logging(log_path)
+        logging.getLogger("kiosk.prueba").info("hola")
+        handlers = logging.getLogger().handlers
+        rotating = [h for h in handlers if isinstance(h, RotatingFileHandler)]
+        assert rotating and rotating[0].maxBytes == 1_000_000 and rotating[0].backupCount == 3
+        for h in handlers:
+            h.flush()
+        assert "INFO kiosk.prueba: hola" in log_path.read_text(encoding="utf-8")
+    finally:
+        for h in logging.getLogger().handlers[:]:
+            if h not in before:
+                h.close()
+                logging.getLogger().removeHandler(h)
