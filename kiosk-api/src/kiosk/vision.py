@@ -2,6 +2,7 @@
 
 import argparse
 import ast
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -68,18 +69,35 @@ class FrameSource(Protocol):
 
 class CameraSource:
     def __init__(self, index: int = 0):
-        self._cap = cv2.VideoCapture(index)
-        if not self._cap.isOpened():
-            raise OSError(f"No se pudo abrir la cámara {index}")
+        self._index = index
+        self._cap = None
+        self._lock = threading.Lock()
+        self.open()
+
+    def open(self) -> None:
+        with self._lock:
+            if self._cap is not None:
+                return
+            cap = cv2.VideoCapture(self._index)
+            if not cap.isOpened():
+                cap.release()
+                raise OSError(f"No se pudo abrir la cámara {self._index}")
+            self._cap = cap
 
     def read(self) -> np.ndarray:
-        ok, frame = self._cap.read()
-        if not ok:
-            raise OSError("La cámara no entregó imagen")
-        return frame
+        with self._lock:
+            if self._cap is None:
+                raise OSError("La cámara está apagada")
+            ok, frame = self._cap.read()
+            if not ok:
+                raise OSError("La cámara no entregó imagen")
+            return frame
 
     def close(self) -> None:
-        self._cap.release()
+        with self._lock:
+            if self._cap is not None:
+                self._cap.release()
+                self._cap = None
 
 
 class ImageFolderSource:
@@ -140,6 +158,16 @@ class YoloOnnxDetector:
         frame = self._source.read()
         output = self._session.run(None, {self._input: letterbox(frame, self._imgsz)})[0]
         return [self._names[d.class_id] for d in decode_yolov8(output, self._conf, self._iou)]
+
+    def open(self) -> None:
+        open_source = getattr(self._source, "open", None)
+        if open_source is not None:
+            open_source()
+
+    def close(self) -> None:
+        close_source = getattr(self._source, "close", None)
+        if close_source is not None:
+            close_source()
 
 
 def main(argv: list[str] | None = None) -> int:

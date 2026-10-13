@@ -368,6 +368,18 @@ class SimilarityDetector:
         with self._lock:
             return self._detect()
 
+    def open(self) -> None:
+        with self._lock:
+            open_source = getattr(self._source, "open", None)
+            if open_source is not None:
+                open_source()
+
+    def close(self) -> None:
+        with self._lock:
+            close_source = getattr(self._source, "close", None)
+            if close_source is not None:
+                close_source()
+
     def _detect(self) -> list[str]:
         frame = crop_zone(self._source.read(), self._zone)
         if self._warmup > 0:  # los primeros cuadros, con la bandeja vacía, son el fondo
@@ -381,8 +393,7 @@ class SimilarityDetector:
             self._background.learn(frame, seen)  # tampoco aprende donde está la mano
             self.last = None
             return []
-        # Dos cosas separadas a la vista: no se adivina cuál cobrar; el quiosco avisa y bloquea
-        # PAGAR hasta que quede una sola.
+        # Dos cosas separadas a la vista: no se adivina cuál cobrar.
         if blobs > 1 or (found := isolate(frame, mask)) is None:
             self.last = None
             return [UNKNOWN]
