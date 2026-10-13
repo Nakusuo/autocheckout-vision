@@ -173,12 +173,16 @@ def test_resolved_alert_comes_back_if_it_happens_again_in_the_same_sale():
     assert [a["id"] for a in svc.security_alerts] == [2]
 
 
-def test_hand_covering_a_product_does_not_count_it_twice():
+def test_hand_covering_a_product_may_count_it_twice_never_zero():
+    # Ante la duda se prefiere contar de más (se ve en la lista y el cliente lo quita con «−»)
+    # que de menos: dar por presente lo tapado permitía cambiar un producto por otro sin cobrar.
     svc = kiosk()
     see(svc, ["VIZZIO-19"])
     see(svc, [UNKNOWN])  # la mano tapa el producto
-    see(svc, ["VIZZIO-19"])  # se retira la mano
+    see(svc, ["VIZZIO-19"])  # ¿el mismo u otro? no se sabe: se cuenta
     see(svc, [])
+    assert svc.snapshot()["item_count"] == 2
+    svc.remove("VIZZIO-19")
     assert svc.snapshot()["item_count"] == 1
 
 
@@ -203,3 +207,27 @@ def test_pending_alerts_and_help_are_capped():
     assert len(svc.help_requests) == service.MAX_PENDING
     assert len(svc.security_alerts) == service.MAX_PENDING
     assert svc.security_alerts[-1]["id"] == service.MAX_PENDING + 5
+
+
+def test_flooding_alerts_never_hides_a_paid_one():
+    from kiosk import service
+
+    svc = kiosk()
+    see(svc, [UNKNOWN])
+    see(svc, [])
+    see(svc, ["VIZZIO-19"])
+    see(svc, [])
+    svc.confirm()
+    svc.pay()
+    svc._gateway.paid = True
+    svc.tick()
+    assert svc.security_alerts[0]["outcome"] == "pagada"
+    svc.tick()  # W4
+    svc._clock = lambda: 1e9  # pasa el tiempo: vuelve a W1
+    svc.tick()
+    for _ in range(service.MAX_PENDING + 10):  # intento de tapar la alerta con compras canceladas
+        svc.start()
+        see(svc, [UNKNOWN])
+        svc.cancel()
+    assert svc.security_alerts[0]["id"] == 1
+    assert len(svc.security_alerts) == service.MAX_PENDING
