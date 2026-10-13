@@ -12,8 +12,9 @@
 | | |
 |---|---|
 | `main` | **v0.1.0** etiquetada (PR #31): la versión de la demo. |
-| `develop` | Igual que `main`; todo fusionado (PRs #17–#31). No hay PR abiertos. |
-| Pruebas | kiosk-api 146 · kiosk-ui 25 · ml 39 · mock-gateway 13 · e2e Playwright 3 — todo en verde; CI con 6 jobs |
+| `develop` | `main` + plan de calidad (auditoría y fases 1–3, PRs #39–#44). No hay PR abiertos. |
+| Pruebas | kiosk-api 210 (cobertura de ramas 96 %, mínimo 90 % en CI) · kiosk-ui 84 · ml 39 · mock-gateway 13 · e2e Playwright 4 — todo en verde; CI con 6 jobs |
+| Mutación | Semanal (`.github/workflows/mutation.yml`): mutmut **90 %** (checkout, fusion, service) · Stryker **84 %** (pantallas W2/W3/QR, `format`) |
 | Informe en Word | `docs/informe/Informe-AutoCaja.docx` (fuera de git; generado con capturas reales, diagramas y gráficos) |
 
 **Ya no hay bloqueo de modelo:** el modo cámara reconoce los 11 productos con la galería de fotos (`KIOSK_GALLERY`). Falta probarlo con la webcam y la bandeja de la demo y sumar fotos tomadas ahí (`python -m kiosk.recognizer capturar SKU`).
@@ -45,6 +46,13 @@
 - Con balanza: «Revise su bandeja» solo si el peso no coincide **más de 2 s** (`WEIGHT_GRACE_S`); PAGAR exige peso correcto.
 - En W3, un producto nuevo frente a la cámara **reabre W2** (antifraude, tras una revisión de seguridad).
 
+**Plan de calidad** (tras la auditoría del equipo, 2026-10-12):
+- Auditoría: validación de entradas (SKU, listas ≤ 20), `/docs` desactivado, mypy en CI, cobertura ≥ 90 %.
+- Fase 1: e2e sin balanza, pruebas del modo cámara de punta a punta (`test_integration.py`) y de concurrencia.
+- Fase 2: pruebas de mutación (mutmut + Stryker) y pruebas de valores exactos (`test_exact.py`, `screens.test.tsx`, `pago.test.tsx`).
+- Fase 3: `boletas.jsonl`/`sesiones.jsonl` rotan a `*.1.jsonl` al pasar 5 MB (`kiosk/jsonl.py`; la numeración de boletas no se reinicia); la UI descarta estados del WebSocket mal formados (`isSnapshot`); TypeScript estricto; bandit sobre todo el paquete.
+- **TypeScript se queda en 6**: Stryker 10 no funciona con TypeScript 7 (Dependabot ignora esa versión mayor).
+
 **Paneles**: `/sim` (presentación: pasar por la cámara / sin escanear / sacar, escenarios paso a paso, balanza, acciones del quiosco, vista en vivo) y `/caja` (ayuda, estado del quiosco, compra en curso).
 
 ## 3. Qué falta
@@ -69,8 +77,7 @@
 - **Vitest en Windows**: algunas primeras corridas terminan en «no tests» por arranque lento del worker (`pool: "threads"` ya puesto). Al repetir pasan; en CI (Linux) nunca falló. Si vuelve, probar `poolOptions` / más tiempo de arranque.
 
 **Mejoras posibles**
-- E2E en el modo por defecto **sin balanza** (las e2e corren con `KIOSK_SCALE=sim`; el flujo uno por uno, quitar y CANCELAR ya tienen e2e).
-- E2E en **modo cámara** con imágenes grabadas (`ImageFolderSource` + `SimilarityDetector`).
+- Mutación: quedan 51 mutantes vivos en el backend y 30 en la UI (la mayoría en Pago y Escaneo); ver el reporte del workflow.
 - Reconocimiento: zona de escaneo fija (recortar la imagen), más fotos del frente de los productos parecidos (galletas en empaque rojo/blanco), y descartar la mano antes del recorte.
 - `SerialScale` (pyserial) para una balanza real.
 - La etiqueta «+ Agregado» de la **primera** fila roza el borde superior del tablero en W2 (detalle visual menor).
