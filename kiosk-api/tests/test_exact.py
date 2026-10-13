@@ -333,3 +333,10 @@ def test_check_weight_rounds_the_difference():
     assert check_weight(100.0, 105.04) == check_weight(100.0, 104.96)
     assert check_weight(100.0, 105.04).diff_g == 5.0
     assert check_weight(100.0, 94.9).ok is False
+
+
+def test_weight_tolerance_edge_is_inclusive():
+    assert check_weight(100.0, 105.0).ok is True  # justo en ±5 g
+    assert check_weight(100.0, 95.0).ok is True
+    assert check_weight(100.0, 105.1).ok is False  # apenas fuera
+    assert check_weight(100.0, 94.9).ok is False

@@ -12,7 +12,7 @@
    - Un histograma de color (tono × saturación) aporta los colores. El color pesa 0,5.
 3. **Comparación con la galería**, que guarda cada foto de referencia en 4 rotaciones.
    - Gana el producto más parecido.
-   - Si el parecido no llega al umbral (0,95, configurable con `KIOSK_THRESHOLD`), el resultado es `DESCONOCIDO` y el quiosco muestra «Hay un producto que no reconocemos».
+   - Si el parecido no llega al umbral (0,95, configurable con `KIOSK_THRESHOLD`), el resultado es `DESCONOCIDO` y el quiosco muestra «Hay un producto que no reconocemos» y levanta una alerta de seguridad en `/caja` (una por compra).
 
 **Agregar un producto** es agregar sus fotos y volver a generar la galería. No hay que entrenar.
 

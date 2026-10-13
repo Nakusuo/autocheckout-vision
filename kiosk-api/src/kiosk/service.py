@@ -32,6 +32,9 @@ class Reading:
     skus: list[str]
     grams: float | None
 
+
+MAX_PENDING = 50  # ayudas y alertas sin atender que se guardan
+
 SCREEN = {
     State.IDLE: "W1",
     State.SCANNING: "W2",
@@ -99,7 +102,7 @@ class KioskService:
         self._do(self.checkout.start)
         self.sessions.begin(self._clock(), weight_checked=self._scale is not None)
         self._weight_alerted = False
-        self._sale_alert = None
+        self._close_alert("sin cerrar")  # no debería quedar ninguna; si queda, no se pierde
         self._scanned = Counter()
         self._view = Counter()
         self._cart_changed()
@@ -207,6 +210,12 @@ class KioskService:
         self._refresh(reading.grams)
 
     def _register_view(self, view: Counter[str]) -> None:
+        if any(not self.catalog.get(sku) for sku in view):
+            # Algo desconocido a la vista (p. ej. una mano) puede tapar lo que ya se veía: se
+            # da por presente, así no se cuenta otra vez cuando vuelve a verse.
+            for sku, n in self._view.items():
+                if self.catalog.get(sku):
+                    view[sku] = max(view[sku], n)
         arrived = {sku: n - self._view[sku] for sku, n in view.items() if n > self._view[sku]}
         self._view = view
         if not arrived:
@@ -240,6 +249,7 @@ class KioskService:
         }
         self._next_alert_id += 1
         self.security_alerts.append(self._sale_alert)
+        del self.security_alerts[:-MAX_PENDING]
         log.warning("Alerta de seguridad #%d: producto no reconocido", self._sale_alert["id"])
 
     def _close_alert(self, outcome: str) -> None:
@@ -251,6 +261,8 @@ class KioskService:
         """La caja revisó la alerta. False si no existía."""
         before = len(self.security_alerts)
         self.security_alerts = [a for a in self.security_alerts if a["id"] != alert_id]
+        if self._sale_alert is not None and self._sale_alert["id"] == alert_id:
+            self._sale_alert = None  # si vuelve a pasar en esta compra, la caja recibe otra alerta
         return len(self.security_alerts) < before
 
     def _cart(self) -> Cart:
@@ -297,7 +309,11 @@ class KioskService:
             log.warning("Pasarela no disponible o pago inválido", exc_info=True)
             return
         cart = self.checkout.cart
-        if event.charge_id != self._charge.id or cart is None or event.amount_cents != cart.total_cents:
+        if (
+            event.charge_id != self._charge.id
+            or cart is None
+            or event.amount_cents != cart.total_cents
+        ):
             log.warning("El pago recibido no coincide con el cobro en curso")
             return
         charge_id = self._charge.id
@@ -314,6 +330,7 @@ class KioskService:
         }
         self._next_help_id += 1
         self.help_requests.append(req)
+        del self.help_requests[:-MAX_PENDING]
         self.sessions.note("help_requested")
         return req
 

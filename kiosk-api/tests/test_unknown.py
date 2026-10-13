@@ -159,3 +159,47 @@ def test_api_lists_and_resolves_alerts():
     assert [a["id"] for a in client.get("/api/alerts").json()] == [1]
     assert client.delete("/api/alerts/1").json() == []
     assert client.delete("/api/alerts/1").status_code == 404
+
+
+# ---------- revisión (2026-10-13) ----------
+
+
+def test_resolved_alert_comes_back_if_it_happens_again_in_the_same_sale():
+    svc = kiosk()
+    see(svc, [UNKNOWN])
+    see(svc, [])
+    assert svc.resolve_alert(1)
+    see(svc, [UNKNOWN])
+    assert [a["id"] for a in svc.security_alerts] == [2]
+
+
+def test_hand_covering_a_product_does_not_count_it_twice():
+    svc = kiosk()
+    see(svc, ["VIZZIO-19"])
+    see(svc, [UNKNOWN])  # la mano tapa el producto
+    see(svc, ["VIZZIO-19"])  # se retira la mano
+    see(svc, [])
+    assert svc.snapshot()["item_count"] == 1
+
+
+def test_product_taken_away_while_something_unknown_stays_leaves_the_view():
+    svc = kiosk()
+    see(svc, ["VIZZIO-19"])
+    see(svc, [UNKNOWN])
+    see(svc, [])
+    see(svc, ["VIZZIO-19"])  # otra unidad, pasada después
+    assert svc.snapshot()["item_count"] == 2
+
+
+def test_pending_alerts_and_help_are_capped():
+    from kiosk import service
+
+    svc = kiosk()
+    for _ in range(service.MAX_PENDING + 5):
+        svc.request_help()
+        see(svc, [UNKNOWN])
+        svc.cancel()
+        svc.start()
+    assert len(svc.help_requests) == service.MAX_PENDING
+    assert len(svc.security_alerts) == service.MAX_PENDING
+    assert svc.security_alerts[-1]["id"] == service.MAX_PENDING + 5

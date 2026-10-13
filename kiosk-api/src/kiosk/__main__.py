@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 from collections.abc import Mapping
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import uvicorn
@@ -63,8 +64,21 @@ def scale_enabled(env: Mapping[str, str]) -> bool:
     return mode == "sim"
 
 
+def setup_logging(path: Path) -> None:
+    """Consola y archivo con hora; el archivo rota a 1 MB y guarda 3 anteriores (~4 MB)."""
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    to_file = RotatingFileHandler(path, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
+    to_console = logging.StreamHandler()
+    for handler in (to_file, to_console):
+        handler.setFormatter(fmt)
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.addHandler(to_console)
+    root.addHandler(to_file)
+
+
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    setup_logging(REPO / "kiosk-api" / "kiosk.log")
     keys = REPO / "keys"
     api_key = os.environ.get("GATEWAY_API_KEY")
     if not api_key:
@@ -76,7 +90,12 @@ def main() -> None:
     init_db(db, REPO / "catalog" / "products.csv")
     catalog = load_catalog(db)
     scale = SimulatedScale()
-    detector, tray = build_detector(os.environ.get("KIOSK_MODE", "sim"), catalog, scale, os.environ)
+    try:
+        detector, tray = build_detector(
+            os.environ.get("KIOSK_MODE", "sim"), catalog, scale, os.environ
+        )
+    except (OSError, ValueError) as e:  # cámara que no abre, KIOSK_CAMERA/KIOSK_ZONE inválidos
+        sys.exit(f"No se pudo preparar la cámara: {e}")
     gateway = HttpGateway(
         os.environ.get("GATEWAY_URL", "https://localhost:8443"), api_key, ca_file=keys / "ca.pem"
     )
