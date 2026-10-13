@@ -270,6 +270,53 @@ class BackgroundModel:
         return full.astype(np.float32)
 
 
+Zone = tuple[float, float, float, float]  # x0, y0, x1, y1 en fracciones del cuadro
+
+
+def parse_zone(text: str) -> Zone:
+    """«0.2,0.1,0.8,0.9» → zona de escaneo. Falla con un mensaje claro si no tiene sentido."""
+    try:
+        x0, y0, x1, y1 = (float(v) for v in text.split(","))
+    except ValueError:
+        raise ValueError(f"Zona inválida «{text}»: se esperan 4 números x0,y0,x1,y1") from None
+    if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
+        raise ValueError(f"Zona inválida «{text}»: deben cumplir 0 ≤ x0 < x1 ≤ 1 y 0 ≤ y0 < y1 ≤ 1")
+    return x0, y0, x1, y1
+
+
+def crop_zone(frame: np.ndarray, zone: Zone | None) -> np.ndarray:
+    if zone is None:
+        return frame
+    rows, cols = frame.shape[:2]
+    x0, y0, x1, y1 = zone
+    return frame[int(y0 * rows) : int(y1 * rows), int(x0 * cols) : int(x1 * cols)]
+
+
+def skin_mask(frame: np.ndarray) -> np.ndarray:
+    """Piel (rango clásico en YCrCb): sirve para quitar la mano que sostiene el producto."""
+    ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
+    return cv2.inRange(ycrcb, (0, 133, 77), (255, 173, 127)) > 0
+
+
+def remove_hands(frame: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Quita la piel solo de las manchas que tocan el borde: una mano siempre entra desde fuera.
+
+    Un producto que descansa en medio de la zona no se toca aunque su empaque sea color piel,
+    así nunca se «borra» algo que hay que cobrar.
+    """
+    binary = (mask > 0.5).astype(np.uint8)
+    n, labels = cv2.connectedComponents(binary)
+    if n <= 1:
+        return mask
+    edge = np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]]))
+    touching = np.isin(labels, edge[edge > 0])
+    cleaned = binary.copy()
+    cleaned[touching & skin_mask(frame)] = 0
+    # Lo que queda de la muñeca o la manga es una tira fina: la apertura la borra
+    opened = cv2.morphologyEx(cleaned, cv2.MORPH_OPEN, np.ones((7, 7), np.uint8))
+    return np.where(touching, opened, binary).astype(np.float32)
+
+
 class SimilarityDetector:
     """Detector del quiosco: un producto a la vez frente a la cámara → [SKU], nada → []."""
 
@@ -281,6 +328,8 @@ class SimilarityDetector:
         threshold: float = THRESHOLD,
         min_blob: float = 0.004,
         warmup_frames: int = 10,
+        zone: Zone | None = None,
+        hands: bool = True,
     ):
         self._embed = embed
         self._gallery = gallery
@@ -289,6 +338,8 @@ class SimilarityDetector:
         self._min_blob = min_blob
         self._warmup_frames = warmup_frames
         self._warmup = warmup_frames
+        self._zone = zone  # solo se mira este recuadro: la zona de escaneo, no toda la bandeja
+        self._hands = hands
         self._background = BackgroundModel()
         self._lock = threading.Lock()  # detect corre en otro hilo; recalibrate llega desde la API
         self.last: tuple[str, float] | None = None  # para depurar: mejor SKU y parecido
@@ -318,15 +369,16 @@ class SimilarityDetector:
             return self._detect()
 
     def _detect(self) -> list[str]:
-        frame = self._source.read()
+        frame = crop_zone(self._source.read(), self._zone)
         if self._warmup > 0:  # los primeros cuadros, con la bandeja vacía, son el fondo
             self._warmup -= 1
             self._background.learn(frame)
             return []
-        mask = self._background.foreground(frame)
+        seen = self._background.foreground(frame)
+        mask = remove_hands(frame, seen) if self._hands else seen
         blobs = self._blobs(mask)
         if blobs == 0:
-            self._background.learn(frame, mask)
+            self._background.learn(frame, seen)  # tampoco aprende donde está la mano
             self.last = None
             return []
         # Dos cosas separadas a la vista: no se adivina cuál cobrar; el quiosco avisa y bloquea
@@ -363,7 +415,9 @@ def benchmark(gallery: Path, embedder: Path, raw: Path, frames: int) -> int:
         times.append((time.perf_counter() - start) * 1000)
     p50, p95 = np.percentile(times, 50), np.percentile(times, 95)
     verdict = "cumple" if p95 <= 150 else "NO cumple"
-    print(f"{frames} cuadros: p50 {p50:.0f} ms · p95 {p95:.0f} ms → RNF-01 (p95 ≤ 150 ms) {verdict}")
+    print(
+        f"{frames} cuadros: p50 {p50:.0f} ms · p95 {p95:.0f} ms → RNF-01 (p95 ≤ 150 ms) {verdict}"
+    )
     print("Mide con la laptop de la demo enchufada y sin otros programas abiertos.")
     return 0
 
@@ -389,6 +443,29 @@ def capture(sku: str, raw: Path, camera: int, count: int, every_s: float) -> int
     return 0
 
 
+def draw_zone(frame: np.ndarray, zone: Zone) -> np.ndarray:
+    out = frame.copy()
+    rows, cols = frame.shape[:2]
+    x0, y0, x1, y1 = zone
+    p0, p1 = (int(x0 * cols), int(y0 * rows)), (int(x1 * cols) - 1, int(y1 * rows) - 1)
+    cv2.rectangle(out, p0, p1, (0, 220, 255), 3)
+    return out
+
+
+def show_zone(zone: Zone, camera: int, out: Path) -> int:
+    """Foto de la cámara con el recuadro: sirve para elegir KIOSK_ZONE sin adivinar."""
+    source = CameraSource(camera)
+    try:
+        frame = source.read()
+    finally:
+        source.close()
+    ok, data = cv2.imencode(".jpg", draw_zone(frame, zone))
+    if ok:
+        data.tofile(out)
+    print(f"Zona dibujada en {out}. Si está bien: KIOSK_ZONE={','.join(f'{v:g}' for v in zone)}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Reconocimiento por parecido (galería de fotos).")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -401,6 +478,13 @@ def main(argv: list[str] | None = None) -> int:
     live = sub.add_parser("camara", help="prueba en vivo con la webcam")
     live.add_argument("--camera", type=int, default=0)
     live.add_argument("--frames", type=int, default=100)
+    live.add_argument("--zona", type=parse_zone, default=None, help="x0,y0,x1,y1 (KIOSK_ZONE)")
+    frame_zone = sub.add_parser("zona", help="guarda una foto con la zona de escaneo dibujada")
+    frame_zone.add_argument(
+        "zona", type=parse_zone, help="x0,y0,x1,y1 en fracciones, p. ej. 0.25,0.1,0.75,0.9"
+    )
+    frame_zone.add_argument("--camera", type=int, default=0)
+    frame_zone.add_argument("--salida", type=Path, default=Path("zona.jpg"))
     bench = sub.add_parser("medir", help="ms por cuadro con la galería (RNF-01: ≤ 150 ms)")
     bench.add_argument("--raw", type=Path, default=REPO / "ml" / "data" / "raw")
     bench.add_argument("--cuadros", type=int, default=100)
@@ -441,14 +525,18 @@ def main(argv: list[str] | None = None) -> int:
         return benchmark(args.galeria, args.embedder, args.raw, args.cuadros)
     if args.cmd == "capturar":
         return capture(args.sku, args.raw, args.camera, args.fotos, args.cada)
+    if args.cmd == "zona":
+        return show_zone(args.zona, args.camera, args.salida)
     source = CameraSource(args.camera)
     try:
-        detector = SimilarityDetector.from_files(args.galeria, source, args.embedder)
+        detector = SimilarityDetector.from_files(
+            args.galeria, source, args.embedder, zone=args.zona
+        )
         for _ in range(args.frames):
             start = time.perf_counter()
-            skus = detector.detect()
+            seen = detector.detect()
             best = f"{detector.last[0]} {detector.last[1]:.2f}" if detector.last else "—"
-            print(f"{(time.perf_counter() - start) * 1000:6.1f} ms  {skus}  (mejor: {best})")
+            print(f"{(time.perf_counter() - start) * 1000:6.1f} ms  {seen}  (mejor: {best})")
     finally:
         source.close()
     return 0

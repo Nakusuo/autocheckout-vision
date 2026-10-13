@@ -8,11 +8,13 @@ Uso: python -m kiosk.metrics [kiosk-api/sesiones.jsonl]
 """
 
 import datetime as dt
-import json
 import statistics
 import sys
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
+
+from kiosk import jsonl
 
 TARGET_S = 45.0
 TARGET_AUTONOMOUS_PCT = 80.0
@@ -51,7 +53,14 @@ class SessionRecorder:
         else:
             raise ValueError(f"Métrica desconocida: {field}")
 
-    def finish(self, now: float, outcome: str, items: int = 0, total_cents: int = 0) -> None:
+    def finish(
+        self,
+        now: float,
+        outcome: str,
+        items: int = 0,
+        total_cents: int = 0,
+        screen: str | None = None,
+    ) -> None:
         if self._current is None:
             return
         row = {
@@ -64,11 +73,13 @@ class SessionRecorder:
             "items": items,
             "total_cents": total_cents,
         }
+        if screen is not None:
+            row["screen"] = screen  # dónde se canceló: muestra en qué paso se rinde la gente
         self._current = None
         self.sessions.append(row)
+        del self.sessions[: -jsonl.KEEP_IN_MEMORY]
         if self._path is not None:
-            with self._path.open("a", encoding="utf-8") as f:
-                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            jsonl.append(self._path, row)
 
 
 def _pct(part: int, whole: int) -> float:
@@ -96,6 +107,9 @@ def summarize(rows: list[dict]) -> dict:
         "removals": sum(r.get("removals", 0) for r in rows),
         "weight_checked": bool(rows) and all(r.get("weight_checked", True) for r in rows),
         "payment_timeouts": sum(r["payment_timeouts"] for r in rows),
+        "cancelled_on": dict(
+            sorted(Counter(r.get("screen", "?") for r in rows if r["outcome"] == "cancelled").items())
+        ),
     }
 
 
@@ -129,6 +143,8 @@ def report(s: dict) -> str:
             f"Correcciones (CORREGIR): {s['corrections']} · Quitados: {s['removals']} · "
             f"Pagos vencidos (120 s): {s['payment_timeouts']}"
         ),
+        "Cancelaciones por pantalla: "
+        + (" · ".join(f"{k} {v}" for k, v in s["cancelled_on"].items()) or "ninguna"),
     ])
 
 
@@ -140,8 +156,7 @@ def main(argv: list[str] | None = None) -> int:
     if not path.exists():
         print(f"No existe {path}: arranca el quiosco y haz algunas compras primero")
         return 1
-    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    print(report(summarize(rows)))
+    print(report(summarize(jsonl.read_rows(path))))
     return 0
 
 

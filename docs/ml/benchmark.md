@@ -21,3 +21,13 @@ Comando para repetirla (desde `ml/`):
 ```bash
 python -m mltools.bench --model data/models/yolov8n-416.onnx --imgsz 416
 ```
+
+## Reconocimiento por parecido
+
+El modo cámara usa la galería de fotos (ver [`reconocimiento.md`](reconocimiento.md)), no YOLOv8. Se mide desde `kiosk-api` con:
+
+```bash
+python -m kiosk.recognizer medir
+```
+
+En la laptop de desarrollo: huella DINOv2 ~105 ms (p50) a 140 px (~250 ms a 224 px); cuadro completo ~110–150 ms según la carga. **Pendiente: medir en la laptop de la demo**, enchufada y con los demás programas cerrados, y anotar aquí el p95.

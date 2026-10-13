@@ -8,7 +8,7 @@ web
 
 ## Users
 
-Clientes de una tienda de conveniencia (OXXO, Av. Túpac Amaru, Comas, Lima) con una compra rápida de 1 a 3 productos, a menudo en hora punta (7–9 a. m., 12–2 p. m., 7–10 p. m.), que quieren pagar sin hacer la cola de la caja. Usan el quiosco de pie y sin instrucciones previas. El cajero solo interviene cuando el cliente pulsa SOLICITAR AYUDA.
+Clientes de una tienda de conveniencia (OXXO, Av. Túpac Amaru, Comas, Lima) con una compra rápida de 1 a 3 productos, a menudo en hora punta (7–9 a. m., 12–2 p. m., 7–10 p. m.), que quieren pagar sin hacer la cola de la caja. Usan el quiosco de pie y sin instrucciones previas. El cajero interviene cuando el cliente pulsa SOLICITAR AYUDA y cuando el panel de caja muestra una alerta de seguridad automática (algo no reconocido pasó frente a la cámara).
 
 ## Product Purpose
 
@@ -39,7 +39,7 @@ El cliente no escanea nada: deja los productos en la bandeja y la visión más e
 
 ## Evidence on Hand
 
-- Catálogo real de 5 productos en `catalog/products.csv` (nombre, precio, peso). No hay fotos de producto para la interfaz ni testimonios o métricas de uso todavía; no se inventan.
+- Catálogo real de 11 productos en `catalog/products.csv` (nombre, precio, peso). No hay fotos de producto para la interfaz ni testimonios o métricas de uso todavía; no se inventan.
 
 ## Product Principles
 

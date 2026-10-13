@@ -139,3 +139,37 @@ test("escaneo uno por uno: se suman, se quita uno y se cancela la compra", async
   await page.getByRole("button", { name: "CANCELAR COMPRA" }).click();
   await expect(page.getByText(W1_TEXT)).toBeVisible();
 });
+
+test.describe("sin balanza (modo de la demo)", () => {
+  test.beforeEach(async ({ request }) => {
+    expect((await request.post("/sim/scale", { data: { enabled: false } })).ok()).toBeTruthy();
+  });
+  test.afterEach(async ({ request }) => {
+    // Las demás pruebas usan balanza; se espera a W1 para poder volver a conectarla.
+    await expect.poll(async () => (await kioskState(request)).screen, { timeout: 15_000 }).toBe("W1");
+    expect((await request.post("/sim/scale", { data: { enabled: true } })).ok()).toBeTruthy();
+  });
+
+  test("compra de W1 a W4 solo con la cámara", async ({ page, context, request }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "INICIAR" }).click();
+    for (const sku of ["GUARANA-450", "CHOCMAN-39"]) {
+      expect((await request.post("/sim/scan", { data: { sku } })).ok()).toBeTruthy();
+      await page.waitForTimeout(2_000);
+    }
+    await expect(page.getByText("Pesando la bandeja…")).toBeHidden();
+    await page.getByRole("button", { name: "CONFIRMAR" }).click();
+    await page.getByRole("button", { name: "PAGAR" }).click();
+    await expect(page.getByRole("img", { name: "Código QR de pago" })).toBeVisible();
+
+    const { qr_payload } = await kioskState(request);
+    const phone = await context.newPage();
+    await phone.goto(qr_payload!);
+    await phone.getByRole("button", { name: /Pagar con Yape\/Plin/ }).click();
+    await expect(phone.getByText("Pago realizado")).toBeVisible();
+    await phone.close();
+
+    await expect(page.getByRole("heading", { name: "Gracias por su compra" })).toBeVisible();
+    await expect(page.getByText("S/ 4.50").first()).toBeVisible();
+  });
+});

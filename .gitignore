@@ -26,8 +26,8 @@ ml/runs/
 # Base local y boletas simuladas
 *.sqlite3
 *.db
-boletas.jsonl
-sesiones.jsonl
+boletas*.jsonl
+sesiones*.jsonl
 
 # Playwright
 test-results/
@@ -39,3 +39,5 @@ playwright-report/
 
 # Informes generados (Word)
 docs/informe/
+.coverage
+kiosk.log*

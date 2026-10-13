@@ -163,7 +163,8 @@ body:has(.kiosk) {
 .lines {
   list-style: none;
   margin: 0;
-  padding: 0;
+  /* Hueco arriba para que la etiqueta «+ Agregado» de la primera fila no choque con el borde. */
+  padding: 1.4cqw 0 0;
   min-height: 0;
   overflow-y: auto;
 }

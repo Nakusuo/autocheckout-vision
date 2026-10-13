@@ -3,9 +3,10 @@ import logging
 import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
+from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 from starlette.responses import JSONResponse
 
 from kiosk.checkout import TransitionError
@@ -19,13 +20,21 @@ TICK_S = 0.2
 ALLOWED_ORIGINS = {"http://localhost:5173", "http://127.0.0.1:5173"}
 
 
+# Un SKU del catálogo: mayúsculas, dígitos, punto y guion (p. ej. KRPINA-3.03L).
+Sku = Annotated[str, StringConstraints(min_length=1, max_length=32, pattern=r"^[A-Z0-9.-]+$")]
+
+
 class TrayIn(BaseModel):
-    skus: list[str]
-    hidden: list[str] = []
+    skus: list[Sku] = Field(max_length=20)
+    hidden: list[Sku] = Field(default=[], max_length=20)
 
 
 class SkuIn(BaseModel):
-    sku: str
+    sku: Sku
+
+
+class ScaleIn(BaseModel):
+    enabled: bool
 
 
 class TrapIn(BaseModel):
@@ -73,7 +82,10 @@ def create_app(
         if task:
             task.cancel()
 
-    app = FastAPI(title="kiosk-api", lifespan=lifespan)
+    # Sin /docs ni /redoc: el quiosco no publica la descripción de su API.
+    app = FastAPI(
+        title="kiosk-api", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
+    )
 
     @app.middleware("http")
     async def check_origin(request: Request, call_next):
@@ -130,14 +142,29 @@ def create_app(
         service.request_help()
         return service.snapshot()
 
+    @app.get("/api/sales")
+    async def sales() -> dict:
+        return service.pos.sales_today()
+
     @app.get("/api/help")
     async def list_help() -> list[dict]:
         return service.help_requests
 
     @app.delete("/api/help/{help_id}")
     async def resolve_help(help_id: int) -> list[dict]:
-        service.resolve_help(help_id)
+        if not service.resolve_help(help_id):
+            raise HTTPException(status_code=404, detail="Esa solicitud de ayuda no existe")
         return service.help_requests
+
+    @app.get("/api/alerts")
+    async def list_alerts() -> list[dict]:
+        return service.security_alerts
+
+    @app.delete("/api/alerts/{alert_id}")
+    async def resolve_alert(alert_id: int) -> list[dict]:
+        if not service.resolve_alert(alert_id):
+            raise HTTPException(status_code=404, detail="Esa alerta no existe")
+        return service.security_alerts
 
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
@@ -180,6 +207,10 @@ def create_app(
         @app.get("/sim/tray")
         async def sim_tray_contents() -> dict:
             return {"tray": tray.contents(), "camera": tray.in_view()}
+
+        @app.post("/sim/scale")
+        async def sim_scale(body: ScaleIn) -> dict:
+            return act(lambda: service.set_scale(scale if body.enabled else None))
 
         @app.post("/sim/scan")
         async def sim_scan(body: SkuIn) -> dict:

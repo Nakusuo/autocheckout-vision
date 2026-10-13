@@ -16,14 +16,16 @@ jobs:
       run:
         working-directory: kiosk-api
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev,vision]"
       - run: ruff check .
-      - run: bandit -r src -q
-      - run: python -m pytest -q
+      - run: bandit -c pyproject.toml -r . -q
+      - run: mypy src
+      # Cobertura de ramas mínima del 90 % (hoy ~95 %)
+      - run: python -m pytest -q --cov=kiosk --cov-branch --cov-report=term --cov-fail-under=90
 
   kiosk-ui:
     runs-on: ubuntu-latest
@@ -31,8 +33,8 @@ jobs:
       run:
         working-directory: kiosk-ui
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -49,13 +51,13 @@ jobs:
       run:
         working-directory: mock-gateway
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: ruff check .
-      - run: bandit -r src -q
+      - run: bandit -c pyproject.toml -r . -q
       - run: python -m pytest -q
 
   ml:
@@ -64,23 +66,23 @@ jobs:
       run:
         working-directory: ml
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: ruff check .
-      - run: bandit -r src -q
+      - run: bandit -c pyproject.toml -r . -q
       - run: python -m pytest -q
 
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -92,7 +94,7 @@ jobs:
         working-directory: kiosk-ui
       - run: npm run e2e
         working-directory: kiosk-ui
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
@@ -104,9 +106,9 @@ jobs:
   secretos:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

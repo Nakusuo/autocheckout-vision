@@ -1,4 +1,6 @@
 import ssl
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -36,9 +38,12 @@ class PaymentGateway(Protocol):
 class JwtVerifier:
     """Valida la confirmación firmada RS256 de la pasarela y rechaza reenvíos (jti)."""
 
-    def __init__(self, public_key_pem: bytes):
+    def __init__(self, public_key_pem: bytes, wall: Callable[[], float] = time.time):
         self._key = public_key_pem
-        self._seen: set[str] = set()
+        self._wall = wall
+        # jti → exp. Un token vencido ya lo rechaza jwt.decode, así que se puede olvidar:
+        # el registro no crece sin límite en un quiosco encendido por semanas.
+        self._seen: dict[str, float] = {}
 
     def verify(self, token: str) -> PaymentEvent:
         try:
@@ -54,9 +59,11 @@ class JwtVerifier:
             raise PaymentError(f"Token de pago inválido: {e}") from e
         if claims.get("status") != "PAID":
             raise PaymentError("El pago no figura como realizado")
+        now = self._wall()
+        self._seen = {jti: exp for jti, exp in self._seen.items() if exp >= now}
         if claims["jti"] in self._seen:
             raise PaymentError("Token de pago reutilizado")
-        self._seen.add(claims["jti"])
+        self._seen[claims["jti"]] = float(claims["exp"])
         return PaymentEvent(str(claims["charge_id"]), int(claims["amount_cents"]))
 
 
@@ -91,7 +98,9 @@ class HttpGateway:
             raise PaymentError(f"Error con la pasarela: {e}") from e
 
     def create_charge(self, amount_cents: int, reference: str) -> Charge:
-        data = self._call("POST", "/charges", json={"amount_cents": amount_cents, "reference": reference})
+        data = self._call(
+            "POST", "/charges", json={"amount_cents": amount_cents, "reference": reference}
+        )
         return Charge(data["charge_id"], data["qr_payload"])
 
     def poll(self, charge_id: str) -> str | None:

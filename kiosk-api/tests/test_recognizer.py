@@ -152,7 +152,7 @@ def small_product() -> np.ndarray:
 def test_small_product_is_seen_and_never_absorbed_into_the_background():
     d = detector([tray(), tray()] + [small_product()] * 30)
     results = [d.detect() for _ in range(32)]
-    assert results[2] != []
+    assert results[2] == ["ROJO"]
     assert results[-1] == results[2]  # sigue a la vista: el fondo no se lo «tragó»
 
 
@@ -171,3 +171,108 @@ def test_recalibrate_learns_the_current_view_as_background():
     assert [d.detect() for _ in range(3)] == [[], [], ["AZUL"]]
     d.recalibrate()
     assert [d.detect() for _ in range(3)] == [[], [], []]  # lo que había quedó como fondo
+
+
+# ---------- zona de escaneo y mano ----------
+
+SKIN = (120, 150, 210)  # BGR dentro del rango de piel en YCrCb
+
+
+def with_hand(color=RED) -> np.ndarray:
+    """Producto en el centro sostenido por una «mano» que entra desde el borde derecho."""
+    img = tray(color)
+    cv2.rectangle(img, (100, 45), (159, 75), SKIN, -1)
+    return img
+
+
+def test_parse_zone_accepts_fractions_and_rejects_nonsense():
+    from kiosk.recognizer import parse_zone
+
+    assert parse_zone("0.25,0.1,0.75,0.9") == (0.25, 0.1, 0.75, 0.9)
+    for bad in ("0.2,0.1,0.8", "a,b,c,d", "0.8,0.1,0.2,0.9", "0,0,1.5,1", "0.2,0.5,0.8,0.5"):
+        with pytest.raises(ValueError, match="Zona inválida"):
+            parse_zone(bad)
+
+
+def test_crop_zone_cuts_the_frame():
+    from kiosk.recognizer import crop_zone
+
+    frame = np.arange(10 * 20 * 3, dtype=np.uint8).reshape(10, 20, 3)
+    assert crop_zone(frame, None) is frame
+    assert crop_zone(frame, (0.5, 0.0, 1.0, 0.5)).shape == (5, 10, 3)
+    assert (crop_zone(frame, (0.5, 0.0, 1.0, 0.5)) == frame[0:5, 10:20]).all()
+
+
+def test_products_outside_the_zone_are_ignored():
+    # Zona: mitad izquierda. Un producto a la derecha no cuenta; uno a la izquierda sí.
+    right, left = tray(), tray()
+    cv2.rectangle(right, (110, 40), (150, 80), RED, -1)
+    cv2.rectangle(left, (15, 40), (55, 80), RED, -1)
+    gallery = gallery_of(("ROJO", [RED]), ("AZUL", [BLUE]))
+    d = SimilarityDetector(
+        fake_embed,
+        gallery,
+        ImageFolderSource([tray(), tray(), right, left]),
+        threshold=1.2,
+        warmup_frames=2,
+        zone=(0.0, 0.0, 0.5, 1.0),
+    )
+    assert [d.detect() for _ in range(4)] == [[], [], [], ["ROJO"]]
+
+
+def test_skin_mask_finds_skin_not_products():
+    from kiosk.recognizer import skin_mask
+
+    img = with_hand()
+    skin = skin_mask(img)
+    assert skin[60, 130] and not skin[60, 80] and not skin[5, 5]
+
+
+def test_hand_holding_a_product_is_removed():
+    from kiosk.recognizer import remove_hands
+
+    img = with_hand()
+    mask = product_mask(img)
+    cleaned = remove_hands(img, mask)
+    assert cleaned[60, 80] == 1  # el producto sigue
+    assert cleaned[60, 140] == 0  # la mano no
+
+
+def test_skin_colored_product_in_the_middle_is_kept():
+    from kiosk.recognizer import remove_hands
+
+    img = tray(SKIN)  # empaque color piel, sin tocar el borde
+    assert (remove_hands(img, product_mask(img)) == product_mask(img)).all()
+
+
+def test_empty_mask_passes_through():
+    from kiosk.recognizer import remove_hands
+
+    empty = np.zeros((120, 160), np.float32)
+    assert remove_hands(tray(), empty) is empty
+
+
+def test_detector_recognizes_a_product_held_by_hand():
+    def make(hands: bool) -> SimilarityDetector:
+        return SimilarityDetector(
+            fake_embed,
+            gallery_of(("ROJO", [RED]), ("AZUL", [BLUE])),
+            ImageFolderSource([tray(), tray(), with_hand(BLUE)]),
+            threshold=1.2,
+            warmup_frames=2,
+            hands=hands,
+        )
+
+    with_filter, without = make(True), make(False)
+    assert [with_filter.detect() for _ in range(3)][-1] == ["AZUL"]
+    assert [without.detect() for _ in range(3)][-1] == [UNKNOWN]  # la mano tiñe el color
+
+
+def test_draw_zone_marks_the_rectangle():
+    from kiosk.recognizer import draw_zone
+
+    frame = tray()
+    out = draw_zone(frame, (0.25, 0.25, 0.75, 0.75))
+    assert (frame == tray()).all()  # no toca el original
+    assert tuple(out[30, 80]) == (0, 220, 255)
+    assert tuple(out[60, 80]) == (235, 235, 235)

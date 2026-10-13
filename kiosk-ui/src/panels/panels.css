@@ -271,6 +271,9 @@ body:has(.panel) { background: #f3f1ec; }
 
 .sale { display: flex; flex-direction: column; }
 .sale-line { display: flex; justify-content: space-between; gap: 1rem; padding: 0.5rem 0; border-bottom: 1px solid var(--rule); font-weight: 700; }
+.card-head-tools { display: flex; align-items: center; gap: 0.6rem; }
+.sound-toggle { min-height: 0; padding: 0.3rem 0.7rem 0.2rem; font-size: 0.9rem; }
+.receipt-line { font-weight: 600; font-size: 0.95rem; }
 .sale-total { border-bottom: 0; padding-top: 0.7rem; font-size: 1.2rem; font-weight: 900; }
 
 @media (max-width: 900px) {

@@ -12,7 +12,7 @@
    - Un histograma de color (tono × saturación) aporta los colores. El color pesa 0,5.
 3. **Comparación con la galería**, que guarda cada foto de referencia en 4 rotaciones.
    - Gana el producto más parecido.
-   - Si el parecido no llega al umbral (0,95, configurable con `KIOSK_THRESHOLD`), el resultado es `DESCONOCIDO` y el quiosco muestra «Hay un producto que no reconocemos».
+   - Si el parecido no llega al umbral (0,95, configurable con `KIOSK_THRESHOLD`), el resultado es `DESCONOCIDO` y el quiosco muestra «Hay un producto que no reconocemos» y levanta una alerta de seguridad en `/caja` (una por compra).
 
 **Agregar un producto** es agregar sus fotos y volver a generar la galería. No hay que entrenar.
 
@@ -78,10 +78,21 @@ Con 10 a 20 fotos por producto tomadas así, el reconocimiento en vivo se parece
 - revisa con `camara` qué parecido dan los aciertos;
 - ajusta `KIOSK_THRESHOLD` justo por debajo de ese valor.
 
+**Zona de escaneo.** La cámara ve toda la bandeja; para escanear de verdad uno por uno, marca un recuadro (cinta en la mesa) y dile al quiosco que solo mire ahí:
+
+```bash
+python -m kiosk.recognizer zona 0.25,0.1,0.75,0.9   # guarda zona.jpg con el recuadro dibujado
+KIOSK_ZONE=0.25,0.1,0.75,0.9                         # al arrancar el quiosco (x0,y0,x1,y1 en fracciones)
+```
+
+Lo que está fuera del recuadro (la bolsa, la canasta, lo ya escaneado) no cuenta. Prueba la zona en vivo con `camara --zona 0.25,0.1,0.75,0.9`.
+
+**La mano.** Por defecto se quita la piel de las manchas que entran desde el borde de la zona: una mano siempre entra desde fuera. Un producto que descansa en medio de la zona no se toca aunque su empaque sea color piel. Si con la luz de la demo da problemas, se apaga con `KIOSK_HANDS=off`.
+
 ## Límites conocidos
 
 - **Un producto a la vez.** Si hay dos cosas separadas a la vista, el resultado es `DESCONOCIDO`. El quiosco avisa y bloquea PAGAR hasta que quede una sola, así no se cobra de menos.
 - **Productos chicos.** Cuentan aunque ocupen poco de la imagen, y el fondo nunca se reajusta donde hay algo a la vista: un producto no puede «desaparecer» dentro del fondo.
-- **La mano cuenta como parte del producto** si lo sostiene. Conviene dejar el producto sobre la zona de escaneo y retirar la mano.
+- **La mano** se quita por color de piel; con guantes, mangas largas en la zona o luz muy cálida puede quedar parte. Lo más seguro sigue siendo dejar el producto en la zona y retirar la mano.
 - **Fondo.** Si cambia mucho la luz con algo a la vista, el fondo se reajusta solo cuando no hay nada. La cámara sigue aprendiendo la bandeja vacía en W1. Si la cámara se movió, o si había algo en la bandeja al encender, pulsa **«Recalibrar cámara»** en `/caja` con la bandeja vacía.
 - **Productos parecidos entre sí** (galletas en empaque rojo o blanco): necesitan más fotos del frente.

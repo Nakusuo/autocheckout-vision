@@ -12,6 +12,7 @@ def test_noise_stays_within_bounds():
     s.set_load(500.0)
     readings = [s.read() for _ in range(1000)]
     assert all(498.0 <= r <= 502.0 for r in readings)
+    assert min(readings) < 499.0 and max(readings) > 501.0  # hay ruido de verdad, no un valor fijo
 
 
 def test_trap_adds_hidden_weight():

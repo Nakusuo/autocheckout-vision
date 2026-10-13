@@ -1,0 +1,81 @@
+name: Mutación
+
+# Pruebas de mutación: cambian el código a propósito (p. ej. `<=` por `<`) y comprueban que
+# alguna prueba falle. No bloquean los PR: corren cada semana y a pedido.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # lunes 06:00 UTC
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/mutation.yml
+      - kiosk-ui/stryker.config.json
+      # Pruebas escritas para matar mutantes: al cambiar, se vuelve a medir
+      - kiosk-api/tests/test_exact.py
+      - kiosk-ui/src/kiosk/screens/screens.test.tsx
+
+permissions:
+  contents: read
+
+jobs:
+  mutmut:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: kiosk-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev,vision]" "mutmut>=3.3,<4"
+      - run: mutmut run --max-children 4 || true
+      - name: Resumen
+        run: |
+          mutmut results > mutmut-results.txt || true
+          {
+            echo "## mutmut (checkout, fusion, service)"
+            echo '```'
+            mutmut export-cicd-stats >/dev/null 2>&1 && cat mutants/mutmut-cicd-stats.json || true
+            echo
+            grep -E "survived|no tests" mutmut-results.txt | head -60 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mutmut
+          path: kiosk-api/mutmut-results.txt
+
+  stryker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: kiosk-ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: kiosk-ui/package-lock.json
+      - run: npm ci
+      - run: npx stryker run
+      - name: Resumen
+        if: always()
+        run: |
+          node -e "
+          const r = require('./reports/mutation/mutation.json');
+          const rows = Object.entries(r.files).map(([f, v]) => {
+            const c = s => v.mutants.filter(m => m.status === s).length;
+            const k = c('Killed'), t = k + c('Timeout') + c('Survived') + c('NoCoverage');
+            return '| ' + f + ' | ' + (t ? (100 * k / t).toFixed(1) : '-') + ' % | ' + c('Timeout') + ' | ' + c('Survived') + ' | ' + c('NoCoverage') + ' |';
+          });
+          console.log(['## Stryker (UI)', '| Archivo | Puntaje (solo muertos) | Tiempo agotado | Sobreviven | Sin cubrir |', '|---|---|---|---|---|', ...rows].join('\n'));
+          " >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stryker
+          path: kiosk-ui/reports/mutation/
