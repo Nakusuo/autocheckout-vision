@@ -14,7 +14,9 @@
 
 **Commit base de las correcciones:** `5eafc4f09b1896e743b0e091f69c820f51b4b150`
 
-**Estado de entrega:** correcciones conservadas en una rama local independiente; no publicadas en GitHub.
+**Base remota integrada posteriormente:** `origin/main`, commit `58b063b00446cbbc8c3dd7b1a37266ede1682663`, que contiene `origin/develop` (`0da1210aafdbf53f01dce88ac2b5ea5d0e527122`).
+
+**Estado de entrega:** correcciones guardadas en commits de una rama local independiente e integradas con la actualización remota; no publicadas en GitHub. Ver el apartado 12 para las pruebas posteriores a esta integración.
 
 ## 1. Resumen para el equipo
 
@@ -26,7 +28,7 @@ El comportamiento final solicitado para la prueba es el siguiente:
 2. Al iniciar la compra, la lista está vacía y CONFIRMAR permanece deshabilitado.
 3. Solo se acumulan productos reconocidos que existen en el catálogo.
 4. Después del primer producto registrado, se permite confirmar, siempre que se respeten el máximo de tres productos y la validación de peso si se activa una balanza.
-5. En modo cámara real, las detecciones desconocidas se ignoran: no se guardan, no generan la alerta de producto desconocido y no bloquean lo ya reconocido.
+5. En modo cámara real, las detecciones desconocidas no se guardan en el carrito, no generan la alerta bloqueante del cliente y no bloquean lo ya reconocido. Después de integrar la actualización del equipo, se conserva su alerta de seguridad en `/caja`, sin impedir la confirmación del cliente.
 6. CONFIRMAR libera físicamente la webcam y mantiene fija la lista durante la confirmación, el pago y la pantalla del ticket.
 7. CORREGIR vuelve a abrir la cámara para seguir escaneando. Cancelar o regresar al inicio después del ticket también la vuelve a abrir.
 
@@ -246,7 +248,7 @@ Los modelos, la galería, las fotografías, los entornos virtuales, las claves d
 
 ## 7. Verificación realizada
 
-### 7.1. Pruebas automatizadas de la implementación final
+### 7.1. Pruebas automatizadas antes de integrar la actualización remota
 
 | Comprobación | Resultado registrado en la sesión de implementación |
 |---|---|
@@ -411,7 +413,7 @@ Para esta prueba de pago real en la interfaz con webcam, la pasarela sigue siend
 - Sin balanza y con desconocidos ignorados, no hay garantía de que todo producto físico sea cobrado. La lista debe revisarse y esta política debe evaluarse antes de cualquier uso con clientes.
 - En cámara real se eliminó la vigilancia de nuevos productos durante W3: después de confirmar, se requiere CORREGIR para añadirlos. Es una modificación deliberada del comportamiento anterior, no un detalle técnico sin efecto funcional.
 - La prueba de CORREGIR cubre que no se vuelva a sumar inmediatamente la misma vista conservada. No es una garantía general contra duplicados cuando cambia la clasificación al girar o retirar un producto; eso requiere pruebas físicas adicionales.
-- No se añadió previsualización de video en React ni un recorte fijo de zona de escaneo. La pantalla muestra la lista reconocida, no los cuadros de la webcam.
+- La corrección local no añadió previsualización de video en React ni un recorte fijo de zona de escaneo. La actualización remota integrada sí incorpora `KIOSK_ZONE` para configurar un recorte y `KIOSK_HANDS` para filtrar manos. La pantalla sigue mostrando la lista reconocida, no los cuadros de la webcam.
 - No se implementó una balanza física. La configuración utilizada es `KIOSK_SCALE=off`; la lógica de peso disponible se conserva.
 - No se ejecutó un benchmark completo de latencia en vivo ni una campaña de pruebas con usuarios después del último cambio.
 - No se publicaron los cambios en `main` o `develop`. La versión remota no recibe estas modificaciones por enviar este informe.
@@ -423,3 +425,49 @@ El equipo debe recibir el diff de los archivos indicados, además de este inform
 Los recursos de `ml/data/` necesitan una entrega separada o un procedimiento de descarga y generación. La galería debe corresponder al catálogo y al tamaño de entrada del modelo. No subir al repositorio las claves de `keys/`, valores reales de API ni fotografías fuera del alcance acordado para el dataset.
 
 **Resultado de la intervención:** la laptop quedó preparada para reconocimiento por parecido con webcam y el flujo de confirmación solicitado quedó implementado y probado a nivel de servicio, API, interfaz y ciclo físico del dispositivo. La aceptación final del reconocimiento de productos en vivo queda pendiente de la prueba del usuario/equipo.
+
+## 12. Guardado en rama aparte e integración de main/develop
+
+### 12.1. Protección y trazabilidad de los cambios
+
+Por solicitud del usuario, se guardó la intervención en `fix/webcam-confirmacion-laptop`, sin mover la rama local `main` ni modificar o publicar cambios sobre `main` o `develop` en GitHub. La identidad de los commits se configuró únicamente en este repositorio, con nombre `walter-11` y el correo proporcionado por el usuario; no se cambió la configuración global de Git.
+
+Se creó el commit de respaldo `8ea85d1a3f9eb987df58dd0dcceacf8bcab5289b` y se conservó mediante la rama local `backup/webcam-antes-actualizacion-2026-10-13`. Esa rama permite recuperar la intervención anterior a la actualización.
+
+Se descargaron las referencias remotas de `main` y `develop`. El `main` descargado ya contiene todo `develop`, por lo que se usó como base de integración sin hacer una segunda mezcla redundante. El commit local de cámara se reaplicó sobre esta base exclusivamente en la rama de entrega. El hash del commit cambia al reaplicarlo; el original permanece en la rama de respaldo.
+
+### 12.2. Resolución de incompatibilidades
+
+La integración presentó conflictos en `README.md`, `docs/ESTADO.md`, `docs/ml/reconocimiento.md`, `service.py`, `test_app.py` y `test_service.py`. Se combinaron manualmente los cambios, conservando tanto las correcciones locales como las mejoras remotas:
+
+- Zona de escaneo configurable y filtrado de manos del reconocedor.
+- Validación de entradas HTTP, límites de solicitudes, historial de ventas y rotación de registros.
+- Alertas de seguridad para caja: un desconocido puede quedar registrado para revisión, aunque no bloquee al cliente en modo webcam.
+- Cámara cerrada desde CONFIRMAR y carrito congelado durante confirmación, pago y ticket; reapertura al corregir, cancelar o volver al inicio.
+- Validación de desconocidos y reapertura de W2 conservadas en el simulador, que no tiene los hooks físicos de cámara.
+- Ordenamiento estable de las líneas del carrito.
+- Pruebas del equipo y pruebas locales conservadas, sin sustituir un archivo completo por una de las versiones.
+
+Se añadió el tipo explícito `cv2.VideoCapture | None` para que el cierre y reapertura de la cámara pasen el nuevo control de tipos. Las pruebas de integración usan una cámara grabada con estado abierto/cerrado y comprueban el bloqueo antes del primer producto, la confirmación después de reconocerlo aunque aparezca un desconocido, la lista congelada y la reapertura por corrección/cancelación. Estas pruebas no sustituyen una prueba física de reconocimiento con los productos de la tienda.
+
+### 12.3. Verificación después de integrar
+
+| Verificación | Resultado |
+|---|---|
+| Suite de API con cobertura de ramas | 261 pruebas aprobadas; cobertura total 96,37 %, superior al mínimo del CI de 90 %. |
+| Suite de interfaz | 91 pruebas aprobadas. |
+| Suite de pasarela simulada | 13 pruebas aprobadas. |
+| Suite de herramientas ML | 39 pruebas aprobadas. |
+| Playwright de punta a punta, modo simulado | 4 pruebas aprobadas. |
+| Ruff sobre código y pruebas de API | Sin errores. |
+| Mypy sobre los 17 archivos de la API | Sin errores. |
+| Bandit con la configuración del paquete | Sin hallazgos. |
+| Lint y compilación de la interfaz | Correctos. |
+
+Total de las suites anteriores: **408 pruebas aprobadas**. Playwright arranca sus servicios locales de prueba en modo simulado y verifica compra, peso, ayuda, cancelación y pago por QR, también sin balanza. No es una validación del reconocimiento de productos por webcam física. En Windows se observaron mensajes `ConnectionResetError` al cerrar conexiones y avisos sobre variables de color de consola, sin fallos en las cuatro pruebas. Pytest conserva los avisos de deprecación de Starlette/httpx y de clave corta usados en una prueba deliberada de rechazo de un token inseguro.
+
+Se reinstalaron las dependencias de la interfaz desde el lockfile actualizado usando `npm ci --ignore-scripts`, y se actualizaron los extras de desarrollo/visión de la API dentro de su entorno virtual. No se aplicó `npm audit fix` ni se cambió el lockfile del equipo automáticamente.
+
+La auditoría completa de npm reportó dos paquetes con vulnerabilidades moderadas: `qs@6.15.1` y su consumidor `typed-rest-client@2.3.1`, incorporados transitivamente por `@stryker-mutator/core@10.0.0`, una herramienta de desarrollo. `npm audit --omit=dev` no reportó vulnerabilidades de producción y el umbral de CI `npm audit --audit-level=high` pasó. Los avisos moderados siguen pendientes de revisión por el equipo; no equivalen a una certificación de ausencia de malware.
+
+La integración no publica la rama en GitHub ni incorpora modelos, fotos o claves al historial. Para compartir el código con el equipo hace falta publicar esta rama o entregar su diff; no se realizó un push a las ramas compartidas.

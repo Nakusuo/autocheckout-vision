@@ -70,7 +70,7 @@ class FrameSource(Protocol):
 class CameraSource:
     def __init__(self, index: int = 0):
         self._index = index
-        self._cap = None
+        self._cap: cv2.VideoCapture | None = None
         self._lock = threading.Lock()
         self.open()
 

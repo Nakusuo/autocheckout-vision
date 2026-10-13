@@ -364,7 +364,7 @@ class KioskService:
             return None
         if cart.item_count > MAX_ITEMS:
             return "Para más de 3 productos use la caja"
-        if cart.unknown_skus and cart.item_count > 0:
+        if cart.unknown_skus:
             return "Hay un producto que no reconocemos"
         if weight is not None and not weight.ok and self._weight_alarm():
             return "Revise su bandeja"
