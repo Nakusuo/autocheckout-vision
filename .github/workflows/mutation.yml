@@ -42,7 +42,7 @@ jobs:
             grep -E "survived|no tests" mutmut-results.txt | head -60 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mutmut
           path: kiosk-api/mutmut-results.txt
@@ -74,7 +74,7 @@ jobs:
           });
           console.log(['## Stryker (UI)', '| Archivo | Puntaje (solo muertos) | Tiempo agotado | Sobreviven | Sin cubrir |', '|---|---|---|---|---|', ...rows].join('\n'));
           " >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: stryker
