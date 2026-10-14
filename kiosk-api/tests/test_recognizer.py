@@ -143,6 +143,25 @@ def test_two_products_in_view_are_not_guessed():
     assert [d.detect() for _ in range(3)] == [[], [], [UNKNOWN]]
 
 
+def test_fragments_with_overlapping_bounds_are_one_product():
+    # Un empaque con una zona del mismo color que el fondo queda dividido en dos manchas.
+    frame = tray()
+    cv2.rectangle(frame, (55, 35), (105, 50), RED, -1)
+    cv2.rectangle(frame, (55, 35), (68, 85), RED, -1)
+    cv2.rectangle(frame, (85, 65), (105, 85), RED, -1)
+    d = detector([tray(), tray(), frame])
+    assert [d.detect() for _ in range(3)] == [[], [], ["ROJO"]]
+
+
+@pytest.mark.parametrize("second_color", [RED, BLUE])
+def test_separate_product_bounds_are_not_merged(second_color):
+    frame = tray()
+    cv2.rectangle(frame, (10, 40), (50, 80), RED, -1)
+    cv2.rectangle(frame, (90, 40), (130, 80), second_color, -1)
+    d = detector([tray(), tray(), frame])
+    assert [d.detect() for _ in range(3)] == [[], [], [UNKNOWN]]
+
+
 def small_product() -> np.ndarray:
     img = tray()
     cv2.rectangle(img, (70, 50), (79, 59), RED, -1)  # 100 px: 0,5 % de la imagen

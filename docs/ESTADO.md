@@ -46,8 +46,8 @@
 - Un producto se suma cuando **entra** a la vista de la cámara (estable 3 cuadros); no se cuenta dos veces mientras sigue a la vista.
 - **Balanza opcional** (`KIOSK_SCALE`, ver `__main__.scale_enabled`): con `off` (por defecto) `KioskService` recibe `scale=None`, no lee peso y PAGAR depende solo de lo escaneado; el snapshot trae `weight_enabled: false` y la UI oculta todo lo de peso.
 - Con balanza: «Revise su bandeja» solo si el peso no coincide **más de 2 s** (`WEIGHT_GRACE_S`); PAGAR exige peso correcto.
-- En W3, un producto nuevo (o un desconocido) frente a la cámara **reabre W2** (antifraude, tras una revisión de seguridad).
-- **Desconocidos**: solo se acumulan SKU del catálogo. Un desconocido bloquea CONFIRMAR/PAGAR solo mientras está a la vista; si tapa un producto ya visto (p. ej. una mano), al destaparlo se cuenta otra vez (ante la duda, de más y visible; nunca de menos). El tope de 50 alertas nunca descarta una de compra pagada o en curso.
+- En modo cámara, CONFIRMAR cierra físicamente la webcam y congela la lista en W3/QR/W4; CORREGIR, cancelar o volver a W1 la abren. En modo simulado, un producto nuevo o desconocido en W3 sigue reabriendo W2.
+- **Desconocidos**: solo se acumulan SKU del catálogo. En modo cámara no bloquean CONFIRMAR/PAGAR, pero se conserva su alerta de seguridad para `/caja`. En modo simulado bloquean mientras están a la vista. Si tapan un producto ya visto, al destaparlo puede contarse otra vez; revisa duplicados con «−». El tope de 50 alertas nunca descarta una de compra pagada o en curso.
 - **Alertas de seguridad** (`GET /api/alerts`, `DELETE /api/alerts/{id}`): una por compra («Producto no reconocido frente a la cámara»), `times` cuenta las veces y `outcome` es en curso / pagada / cancelada / quiosco fuera de servicio. Si la caja la marca revisada y se repite en la misma compra, se crea otra. Ayudas y alertas pendientes: máximo 50.
 - **Compromiso explícito**: sin balanza, un producto no reconocido puede salir sin pagar; la alerta (con resultado «pagada») es la mitigación.
 - `GET /api/sales`: cantidad y total de hoy y las últimas 20 boletas.

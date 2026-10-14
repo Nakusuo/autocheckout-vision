@@ -59,14 +59,19 @@ def _normalize(bgr: np.ndarray, size: int) -> np.ndarray:
     return x.transpose(2, 0, 1)
 
 
-def isolate(bgr: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
-    """Recorta la mancha más grande de la máscara, con el fondo en gris, en un cuadrado."""
+def isolate(
+    bgr: np.ndarray, mask: np.ndarray, *, merge_components: bool = False
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Recorta la mancha principal (o los fragmentos ya agrupados), con fondo gris."""
     binary = (mask > 0.5).astype(np.uint8)
     n, _, stats, _ = cv2.connectedComponentsWithStats(binary)
     if n <= 1:
         return None
-    i = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-    x, y, w, h = stats[i, :4]
+    if merge_components:
+        x, y, w, h = cv2.boundingRect(binary)
+    else:
+        i = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        x, y, w, h = stats[i, :4]
     pad = int(0.05 * max(w, h))
     rows, cols = bgr.shape[:2]
     x0, y0, x1, y1 = (
@@ -317,6 +322,38 @@ def remove_hands(frame: np.ndarray, mask: np.ndarray) -> np.ndarray:
     return np.where(touching, opened, binary).astype(np.float32)
 
 
+def foreground_regions(mask: np.ndarray, min_fraction: float) -> list[tuple[int, int, int, int]]:
+    """Agrupa manchas cuyos recuadros se solapan: pueden ser partes del mismo empaque.
+
+    No dilata ni une manchas separadas por distancia. Conserva el rechazo de dos objetos
+    con recuadros separados y no inventa píxeles de producto entre fragmentos.
+    """
+    _, _, stats, _ = cv2.connectedComponentsWithStats((mask > 0.5).astype(np.uint8))
+    boxes = [
+        (int(x), int(y), int(x + w), int(y + h))
+        for x, y, w, h, area in stats[1:]
+        if area >= min_fraction * mask.size
+    ]
+    parents = list(range(len(boxes)))
+
+    def root(i: int) -> int:
+        while parents[i] != i:
+            i = parents[i]
+        return i
+
+    for i, (x0, y0, x1, y1) in enumerate(boxes):
+        for j in range(i):
+            a0, b0, a1, b1 = boxes[j]
+            if x0 < a1 and a0 < x1 and y0 < b1 and b0 < y1:
+                parents[root(i)] = root(j)
+    groups: dict[int, tuple[int, int, int, int]] = {}
+    for i, (x0, y0, x1, y1) in enumerate(boxes):
+        key = root(i)
+        a0, b0, a1, b1 = groups.get(key, (x0, y0, x1, y1))
+        groups[key] = min(x0, a0), min(y0, b0), max(x1, a1), max(y1, b1)
+    return list(groups.values())
+
+
 class SimilarityDetector:
     """Detector del quiosco: un producto a la vez frente a la cámara → [SKU], nada → []."""
 
@@ -352,10 +389,7 @@ class SimilarityDetector:
         return cls(Embedder.from_model(embedder, loaded.size), loaded, source, **kwargs)
 
     def _blobs(self, mask: np.ndarray) -> int:
-        """Manchas que no son ruido: cualquier producto, aunque sea chico, cuenta."""
-        n, _, stats, _ = cv2.connectedComponentsWithStats((mask > 0.5).astype(np.uint8))
-        min_px = self._min_blob * mask.size
-        return int((stats[1:, cv2.CC_STAT_AREA] >= min_px).sum()) if n > 1 else 0
+        return len(foreground_regions(mask, self._min_blob))
 
     def recalibrate(self) -> None:
         """Olvida el fondo: los próximos cuadros (bandeja vacía) son el nuevo fondo."""
@@ -368,6 +402,18 @@ class SimilarityDetector:
         with self._lock:
             return self._detect()
 
+    def open(self) -> None:
+        with self._lock:
+            open_source = getattr(self._source, "open", None)
+            if open_source is not None:
+                open_source()
+
+    def close(self) -> None:
+        with self._lock:
+            close_source = getattr(self._source, "close", None)
+            if close_source is not None:
+                close_source()
+
     def _detect(self) -> list[str]:
         frame = crop_zone(self._source.read(), self._zone)
         if self._warmup > 0:  # los primeros cuadros, con la bandeja vacía, son el fondo
@@ -376,14 +422,19 @@ class SimilarityDetector:
             return []
         seen = self._background.foreground(frame)
         mask = remove_hands(frame, seen) if self._hands else seen
-        blobs = self._blobs(mask)
-        if blobs == 0:
+        regions = foreground_regions(mask, self._min_blob)
+        if not regions:
             self._background.learn(frame, seen)  # tampoco aprende donde está la mano
             self.last = None
             return []
-        # Dos cosas separadas a la vista: no se adivina cuál cobrar; el quiosco avisa y bloquea
-        # PAGAR hasta que quede una sola.
-        if blobs > 1 or (found := isolate(frame, mask)) is None:
+        # Dos cosas separadas a la vista: no se adivina cuál cobrar.
+        if len(regions) > 1:
+            self.last = None
+            return [UNKNOWN]
+        x0, y0, x1, y1 = regions[0]
+        product_mask = np.zeros_like(mask)
+        product_mask[y0:y1, x0:x1] = mask[y0:y1, x0:x1]
+        if (found := isolate(frame, product_mask, merge_components=True)) is None:
             self.last = None
             return [UNKNOWN]
         ranking = self._gallery.ranking(fingerprints(self._embed, *found)[0])

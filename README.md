@@ -104,7 +104,9 @@ export KIOSK_ZONE=0.25,0.1,0.75,0.9                  # x0,y0,x1,y1 en fracciones
 export KIOSK_HANDS=off                               # opcional: por defecto se quita la piel que entra por el borde de la zona
 ```
 
-**Lo que no se reconoce:** solo se suman productos del catálogo. Un desconocido (una mano, dos productos juntos) bloquea CONFIRMAR y PAGAR solo mientras está a la vista; en W3 reabre W2. Si tapa un producto ya visto, al destaparlo se cuenta otra vez: ante la duda se cobra de más (se ve en la lista y se quita con «−»), nunca de menos. Cada compra con un desconocido genera una alerta en `/caja`.
+**Lo que no se reconoce:** solo se suman productos del catálogo. En modo cámara, las detecciones desconocidas no bloquean CONFIRMAR ni PAGAR y no se agregan a la lista. Cada compra con un desconocido sigue generando una alerta de seguridad en `/caja`. En modo simulado, un desconocido a la vista sigue bloqueando el pago y reabre W2 desde W3. Si tapa un producto ya visto, al destaparlo se puede contar otra vez: revisa la lista y quita duplicados con «−».
+
+**Confirmación con webcam:** CONFIRMAR se habilita desde el primer producto reconocido (máximo 3); cierra físicamente la webcam y congela la lista hasta CORREGIR, cancelar o volver al inicio después del ticket. Con balanza, PAGAR sigue exigiendo peso correcto.
 
 **Riesgo aceptado:** sin balanza, un producto que no se reconoce puede salir sin pagar. La alerta de seguridad (que termina en «pagada») es la mitigación: la caja revisa esa compra.
 

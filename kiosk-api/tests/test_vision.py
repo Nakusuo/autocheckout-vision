@@ -7,6 +7,7 @@ import pytest
 
 from kiosk.tray import Detector
 from kiosk.vision import (
+    CameraSource,
     ImageFolderSource,
     YoloOnnxDetector,
     class_names_from_metadata,
@@ -106,3 +107,32 @@ def test_detector_maps_classes_to_skus():
     assert detector.detect() == ["AGUA", "TAKIS"]
     assert session.shapes == [(1, 3, 416, 416)]
     assert isinstance(detector, Detector)
+
+
+def test_camera_can_be_closed_and_explicitly_reopened(monkeypatch):
+    image = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    class Capture:
+        def __init__(self, index):
+            self.active = True
+
+        def isOpened(self):
+            return self.active
+
+        def read(self):
+            return self.active, image
+
+        def release(self):
+            self.active = False
+
+    monkeypatch.setattr(cv2, "VideoCapture", Capture)
+    source = CameraSource(0)
+    assert source.read().shape == (8, 8, 3)
+    source.close()
+    source.close()
+    with pytest.raises(OSError):
+        source.read()
+    assert callable(getattr(source, "open", None))
+    source.open()
+    assert source.read().shape == (8, 8, 3)
+    source.close()

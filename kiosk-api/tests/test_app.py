@@ -7,7 +7,7 @@ from kiosk.app import create_app, safe_tick
 from kiosk.catalog import Catalog, Product
 from kiosk.payments import JwtVerifier
 from kiosk.scale import SimulatedScale
-from kiosk.service import KioskService
+from kiosk.service import KioskService, Reading
 from kiosk.tray import SimulatedTray
 
 CATALOG = Catalog([Product("AGUA", "Agua", 250, 651.0)])
@@ -185,3 +185,18 @@ def test_api_docs_are_not_published():
 def test_resolving_unknown_help_is_404():
     _, client, _ = make()
     assert client.delete("/api/help/999").status_code == 404
+
+
+def test_http_confirmation_recovers_from_a_transient_unknown_detection():
+    svc, client, _ = make(with_sims=False)
+    client.post("/api/start")
+    assert client.post("/api/confirm").status_code == 409
+    assert client.post("/api/pay").status_code == 409
+    for skus, grams in ((["DESCONOCIDO"], 0), (["AGUA"], 651), ([], 651)):
+        for _ in range(3):
+            svc.tick(Reading(skus, grams))
+    snap = client.get("/api/state").json()
+    assert snap["item_count"] == 1
+    assert snap["alert"] is None
+    assert client.post("/api/confirm").status_code == 200
+    assert client.post("/api/pay").json()["screen"] == "QR"

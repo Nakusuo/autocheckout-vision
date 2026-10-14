@@ -60,6 +60,8 @@ class KioskService:
     ):
         self.catalog = catalog
         self._detector = detector
+        self._open_camera = getattr(detector, "open", None)
+        self._close_camera = getattr(detector, "close", None)
         self._scale = scale
         self._gateway = gateway
         self._verifier = verifier
@@ -97,6 +99,10 @@ class KioskService:
                 self._stability.reset()
             if self.checkout.state is not State.PAYING:
                 self._charge = None
+            if self._close_camera is not None:
+                camera_action = self._open_camera if self.wants_reading() else self._close_camera
+                if camera_action is not None:
+                    camera_action()
 
     def start(self) -> None:
         self._do(self.checkout.start)
@@ -169,11 +175,13 @@ class KioskService:
 
     def wants_reading(self) -> bool:
         """En W1 también se lee: la cámara sigue aprendiendo la bandeja vacía."""
-        return self.checkout.state in (State.IDLE, State.SCANNING, State.CONFIRMING)
+        return self.checkout.state in (State.IDLE, State.SCANNING) or (
+            self.checkout.state is State.CONFIRMING and self._close_camera is None
+        )
 
     def read_sensors(self) -> Reading:
         """La parte lenta (cámara + reconocimiento): puede correr en otro hilo, no toca el estado."""
-        skus = self._detector.detect()
+        skus = self._detector.detect() if self.wants_reading() else list(self._view.elements())
         grams = self._scale.read() if self._scale is not None else None
         return Reading(skus, grams)
 
@@ -193,6 +201,8 @@ class KioskService:
             return
         if state not in (State.SCANNING, State.CONFIRMING):
             return
+        if state is State.CONFIRMING and self._close_camera is not None:
+            reading = None  # descarta cuadros que terminaron después de apagar la cámara
         if reading is None:
             try:
                 reading = self.read_sensors()
@@ -219,12 +229,12 @@ class KioskService:
         # no puede cambiar a espaldas del cliente ni de la cámara.
         if self.checkout.state is State.CONFIRMING:
             self._do(self.checkout.correct)
-        # Solo se acumula lo que está en el catálogo. Un desconocido (una mano, dos productos
-        # juntos) bloquea mientras está a la vista, pero no queda guardado: si se guardara,
-        # bloquearía la compra para siempre sin aparecer en la lista ni poder quitarse.
-        self._scanned.update({sku: n for sku, n in arrived.items() if self.catalog.get(sku)})
-        if any(not self.catalog.get(sku) for sku in arrived):
-            self._raise_alert(screen)
+        # Solo se acumulan productos registrados; los desconocidos no quedan en la lista.
+        self._scanned.update(
+            {sku: n for sku, n in arrived.items() if self.catalog.get(sku) is not None}
+        )
+        if any(self.catalog.get(sku) is None for sku in arrived):
+            self._raise_alert(screen)  # conserva la auditoría para /caja, sin bloquear la webcam
         self._cart_changed()
 
     def _raise_alert(self, screen: str) -> None:
@@ -271,8 +281,11 @@ class KioskService:
         return len(self.security_alerts) < before
 
     def _cart(self) -> Cart:
-        in_view = [sku for sku in self._view.elements() if not self.catalog.get(sku)]
-        return build_cart(sorted([*self._scanned.elements(), *in_view]), self.catalog)
+        # En la prueba con cámara solo se cobran los productos registrados que se reconocieron.
+        unknown = [] if self._close_camera is not None else [
+            sku for sku in self._view.elements() if self.catalog.get(sku) is None
+        ]
+        return build_cart(sorted([*self._scanned.elements(), *unknown]), self.catalog)
 
     def _cart_changed(self) -> None:
         if self._on_cart is not None:
