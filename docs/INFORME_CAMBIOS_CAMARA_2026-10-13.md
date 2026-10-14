@@ -426,48 +426,24 @@ Los recursos de `ml/data/` necesitan una entrega separada o un procedimiento de 
 
 **Resultado de la intervención:** la laptop quedó preparada para reconocimiento por parecido con webcam y el flujo de confirmación solicitado quedó implementado y probado a nivel de servicio, API, interfaz y ciclo físico del dispositivo. La aceptación final del reconocimiento de productos en vivo queda pendiente de la prueba del usuario/equipo.
 
-## 12. Guardado en rama aparte e integración de main/develop
+## 12. Corrección local del falso rechazo de Vizzio
 
-### 12.1. Protección y trazabilidad de los cambios
+Después de restaurar la versión anterior a la actualización remota, se reprodujo un rechazo
+en `AR_vizzio_003.jpeg`: el flujo de cámara encontró dos manchas de un mismo empaque y devolvió
+`DESCONOCIDO` antes de comparar con la galería. Se corrigió en `fix/webcam-local-restaurada`,
+sin modificar `main` ni `develop`.
 
-Por solicitud del usuario, se guardó la intervención en `fix/webcam-confirmacion-laptop`, sin mover la rama local `main` ni modificar o publicar cambios sobre `main` o `develop` en GitHub. La identidad de los commits se configuró únicamente en este repositorio, con nombre `walter-11` y el correo proporcionado por el usuario; no se cambió la configuración global de Git.
+`foreground_regions()` agrupa componentes cuyos recuadros se solapan. El recorte usa todos
+los fragmentos de esa región y conserva sus píxeles originales, sin rellenar puentes ni unir
+objetos por una distancia arbitraria. Dos regiones con recuadros separados siguen produciendo
+`DESCONOCIDO`. No se bajó el umbral de 0,95 ni se regeneraron la galería o los modelos.
 
-Se creó el commit de respaldo `8ea85d1a3f9eb987df58dd0dcceacf8bcab5289b` y se conservó mediante la rama local `backup/webcam-antes-actualizacion-2026-10-13`. Esa rama permite recuperar la intervención anterior a la actualización.
+Verificación: una regresión falló antes del cambio y pasó después; la suite completa de API
+aprobó 161 pruebas, incluyendo dos casos de objetos separados (del mismo SKU y de SKU distintos).
+Ruff y Bandit no reportaron errores. En una prueba controlada con las cinco fotos de referencia
+de Vizzio, modelos ONNX reales y fondo uniforme, el resultado pasó de 4/5 a 5/5. La foto que
+fallaba dio `VIZZIO-19` con parecido 1,037 después de agrupar sus fragmentos.
 
-Se descargaron las referencias remotas de `main` y `develop`. El `main` descargado ya contiene todo `develop`, por lo que se usó como base de integración sin hacer una segunda mezcla redundante. El commit local de cámara se reaplicó sobre esta base exclusivamente en la rama de entrega. El hash del commit cambia al reaplicarlo; el original permanece en la rama de respaldo.
-
-### 12.2. Resolución de incompatibilidades
-
-La integración presentó conflictos en `README.md`, `docs/ESTADO.md`, `docs/ml/reconocimiento.md`, `service.py`, `test_app.py` y `test_service.py`. Se combinaron manualmente los cambios, conservando tanto las correcciones locales como las mejoras remotas:
-
-- Zona de escaneo configurable y filtrado de manos del reconocedor.
-- Validación de entradas HTTP, límites de solicitudes, historial de ventas y rotación de registros.
-- Alertas de seguridad para caja: un desconocido puede quedar registrado para revisión, aunque no bloquee al cliente en modo webcam.
-- Cámara cerrada desde CONFIRMAR y carrito congelado durante confirmación, pago y ticket; reapertura al corregir, cancelar o volver al inicio.
-- Validación de desconocidos y reapertura de W2 conservadas en el simulador, que no tiene los hooks físicos de cámara.
-- Ordenamiento estable de las líneas del carrito.
-- Pruebas del equipo y pruebas locales conservadas, sin sustituir un archivo completo por una de las versiones.
-
-Se añadió el tipo explícito `cv2.VideoCapture | None` para que el cierre y reapertura de la cámara pasen el nuevo control de tipos. Las pruebas de integración usan una cámara grabada con estado abierto/cerrado y comprueban el bloqueo antes del primer producto, la confirmación después de reconocerlo aunque aparezca un desconocido, la lista congelada y la reapertura por corrección/cancelación. Estas pruebas no sustituyen una prueba física de reconocimiento con los productos de la tienda.
-
-### 12.3. Verificación después de integrar
-
-| Verificación | Resultado |
-|---|---|
-| Suite de API con cobertura de ramas | 261 pruebas aprobadas; cobertura total 96,37 %, superior al mínimo del CI de 90 %. |
-| Suite de interfaz | 91 pruebas aprobadas. |
-| Suite de pasarela simulada | 13 pruebas aprobadas. |
-| Suite de herramientas ML | 39 pruebas aprobadas. |
-| Playwright de punta a punta, modo simulado | 4 pruebas aprobadas. |
-| Ruff sobre código y pruebas de API | Sin errores. |
-| Mypy sobre los 17 archivos de la API | Sin errores. |
-| Bandit con la configuración del paquete | Sin hallazgos. |
-| Lint y compilación de la interfaz | Correctos. |
-
-Total de las suites anteriores: **408 pruebas aprobadas**. Playwright arranca sus servicios locales de prueba en modo simulado y verifica compra, peso, ayuda, cancelación y pago por QR, también sin balanza. No es una validación del reconocimiento de productos por webcam física. En Windows se observaron mensajes `ConnectionResetError` al cerrar conexiones y avisos sobre variables de color de consola, sin fallos en las cuatro pruebas. Pytest conserva los avisos de deprecación de Starlette/httpx y de clave corta usados en una prueba deliberada de rechazo de un token inseguro.
-
-Se reinstalaron las dependencias de la interfaz desde el lockfile actualizado usando `npm ci --ignore-scripts`, y se actualizaron los extras de desarrollo/visión de la API dentro de su entorno virtual. No se aplicó `npm audit fix` ni se cambió el lockfile del equipo automáticamente.
-
-La auditoría completa de npm reportó dos paquetes con vulnerabilidades moderadas: `qs@6.15.1` y su consumidor `typed-rest-client@2.3.1`, incorporados transitivamente por `@stryker-mutator/core@10.0.0`, una herramienta de desarrollo. `npm audit --omit=dev` no reportó vulnerabilidades de producción y el umbral de CI `npm audit --audit-level=high` pasó. Los avisos moderados siguen pendientes de revisión por el equipo; no equivalen a una certificación de ausencia de malware.
-
-La integración no publica la rama en GitHub ni incorpora modelos, fotos o claves al historial. Para compartir el código con el equipo hace falta publicar esta rama o entregar su diff; no se realizó un push a las ramas compartidas.
+Esta comprobación usa fotos y no certifica reconocimiento en vivo con la mano. Dos objetos
+reales con recuadros solapados pueden confundirse como una región; la demo sigue requiriendo
+un producto por presentación, revisión de la lista y pruebas físicas con distintas condiciones.
