@@ -1,4 +1,5 @@
 from pathlib import Path
+from collections import deque
 
 import cv2
 import numpy as np
@@ -59,10 +60,12 @@ def test_verified_yolo_requires_gallery_agreement(gallery_sku, expected):
     detector._segment = lambda frame: np.ones(frame.shape[:2], np.float32)
     detector._threshold = 0.90
     detector._imgsz = 416
+    detector._votes = deque(maxlen=12)
     detector._yolo = type("Yolo", (), {
         "class_names": ["MOROCHAS-30"],
         "detections": lambda self, frame: [Detection(0, 0.8, (169, 169, 78, 78))],
     })()
+    assert detector.detect() == []
     assert detector.detect() == expected
 
 

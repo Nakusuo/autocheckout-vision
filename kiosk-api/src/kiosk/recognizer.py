@@ -20,6 +20,7 @@ Uso (las opciones --galeria y --embedder van antes del comando):
 import argparse
 import threading
 import time
+from collections import Counter, deque
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -462,12 +463,13 @@ class VerifiedYoloDetector:
         segmenter: Path = DEFAULT_SEGMENTER,
     ):
         self._source = source
-        self._yolo = YoloOnnxDetector.from_model(model, source, imgsz=imgsz)
+        self._yolo = YoloOnnxDetector.from_model(model, source, imgsz=imgsz, conf=0.35)
         self._gallery = Gallery.load(gallery)
         self._embed = Embedder.from_model(embedder, self._gallery.size)
         self._segment = Segmenter.from_model(segmenter)
         self._threshold = threshold
         self._imgsz = imgsz
+        self._votes: deque[str | None] = deque(maxlen=12)
         self.last: tuple[str, float] | None = None
 
     def _crop(self, frame: np.ndarray, detection: Detection) -> np.ndarray | None:
@@ -494,6 +496,7 @@ class VerifiedYoloDetector:
     def detect(self) -> list[str]:
         frame = self._source.read()
         self.last = None
+        vote = None
         for detection in self._yolo.detections(frame):
             sku = self._yolo.class_names[detection.class_id]
             crop = self._crop(frame, detection)
@@ -502,8 +505,16 @@ class VerifiedYoloDetector:
             ranking = self._gallery.ranking(fingerprints(self._embed, *found)[0])
             if ranking:
                 self.last = ranking[0]
-                if ranking[0][0] == sku and ranking[0][1] >= self._threshold:
-                    return [sku]
+                gallery_score = next((score for label, score in ranking if label == sku), -1.0)
+                if gallery_score >= self._threshold and ranking[0][1] - gallery_score <= 0.03:
+                    vote = sku
+                    break
+        self._votes.append(vote)
+        counts = Counter(label for label in self._votes if label is not None)
+        if counts:
+            sku, hits = counts.most_common(1)[0]
+            if hits >= 2:
+                return [sku]
         return []
 
     def open(self) -> None:
