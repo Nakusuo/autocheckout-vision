@@ -156,8 +156,16 @@ class YoloOnnxDetector:
 
     def detect(self) -> list[str]:
         frame = self._source.read()
+        return [self._names[d.class_id] for d in self.detections(frame)]
+
+    def detections(self, frame: np.ndarray) -> list[Detection]:
+        """Devuelve las propuestas del modelo para un cuadro ya leído."""
         output = self._session.run(None, {self._input: letterbox(frame, self._imgsz)})[0]
-        return [self._names[d.class_id] for d in decode_yolov8(output, self._conf, self._iou)]
+        return decode_yolov8(output, self._conf, self._iou)
+
+    @property
+    def class_names(self) -> list[str]:
+        return self._names
 
     def open(self) -> None:
         open_source = getattr(self._source, "open", None)

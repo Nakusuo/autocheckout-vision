@@ -26,7 +26,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from kiosk.vision import CameraSource, FrameSource
+from kiosk.vision import CameraSource, Detection, FrameSource, YoloOnnxDetector
 
 REPO = Path(__file__).resolve().parents[3]
 MODELS = REPO / "ml" / "data" / "models"
@@ -441,6 +441,79 @@ class SimilarityDetector:
         self.last = ranking[0]
         sku, score = ranking[0]
         return [sku] if score >= self._threshold else [UNKNOWN]
+
+
+class VerifiedYoloDetector:
+    """Cobra solo cuando YOLO y la galería identifican el mismo empaque.
+
+    YOLO propone una zona aunque haya personas detrás. La galería comprueba la
+    apariencia del producto; un falso positivo sobre una persona se descarta.
+    """
+
+    def __init__(
+        self,
+        model: Path,
+        gallery: Path,
+        source: FrameSource,
+        *,
+        imgsz: int = 416,
+        threshold: float = 0.90,
+        embedder: Path = DEFAULT_EMBEDDER,
+        segmenter: Path = DEFAULT_SEGMENTER,
+    ):
+        self._source = source
+        self._yolo = YoloOnnxDetector.from_model(model, source, imgsz=imgsz)
+        self._gallery = Gallery.load(gallery)
+        self._embed = Embedder.from_model(embedder, self._gallery.size)
+        self._segment = Segmenter.from_model(segmenter)
+        self._threshold = threshold
+        self._imgsz = imgsz
+        self.last: tuple[str, float] | None = None
+
+    def _crop(self, frame: np.ndarray, detection: Detection) -> np.ndarray | None:
+        rows, cols = frame.shape[:2]
+        scale = min(self._imgsz / rows, self._imgsz / cols)
+        top = (self._imgsz - round(rows * scale)) // 2
+        left = (self._imgsz - round(cols * scale)) // 2
+        x, y, width, height = detection.box
+        x0 = max(0, int((x - left) / scale))
+        y0 = max(0, int((y - top) / scale))
+        x1 = min(cols, int((x + width - left) / scale))
+        y1 = min(rows, int((y + height - top) / scale))
+        if x1 <= x0 or y1 <= y0:
+            return None
+        # Un recuadro casi de pantalla completa incluye caras y fondo. El empaque
+        # se presenta en el centro de la lente; conservar esa zona evita mezclarlo.
+        if (x1 - x0) * (y1 - y0) > 0.5 * rows * cols:
+            cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
+            half_w, half_h = int(0.325 * (x1 - x0)), int(0.275 * (y1 - y0))
+            x0, x1 = max(0, cx - half_w), min(cols, cx + half_w)
+            y0, y1 = max(0, cy - half_h), min(rows, cy + half_h)
+        return frame[y0:y1, x0:x1]
+
+    def detect(self) -> list[str]:
+        frame = self._source.read()
+        self.last = None
+        for detection in self._yolo.detections(frame):
+            sku = self._yolo.class_names[detection.class_id]
+            crop = self._crop(frame, detection)
+            if crop is None or (found := isolate(crop, self._segment(crop))) is None:
+                continue
+            ranking = self._gallery.ranking(fingerprints(self._embed, *found)[0])
+            if ranking:
+                self.last = ranking[0]
+                if ranking[0][0] == sku and ranking[0][1] >= self._threshold:
+                    return [sku]
+        return []
+
+    def open(self) -> None:
+        self._yolo.open()
+
+    def close(self) -> None:
+        self._yolo.close()
+
+    def recalibrate(self) -> None:
+        """No requiere aprender el fondo; conserva la acción de la interfaz."""
 
 
 def benchmark(gallery: Path, embedder: Path, raw: Path, frames: int) -> int:

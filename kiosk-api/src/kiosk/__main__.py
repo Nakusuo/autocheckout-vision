@@ -31,6 +31,15 @@ def build_detector(
         gallery, model = env.get("KIOSK_GALLERY"), env.get("KIOSK_MODEL")
         from kiosk.vision import CameraSource, YoloOnnxDetector  # requiere el extra `vision`
 
+        if gallery and model:
+            from kiosk.recognizer import VerifiedYoloDetector
+
+            source = CameraSource(int(env.get("KIOSK_CAMERA", "0")))
+            return VerifiedYoloDetector(
+                Path(model), Path(gallery), source,
+                imgsz=int(env.get("KIOSK_IMGSZ", "416")),
+                threshold=float(env.get("KIOSK_HYBRID_THRESHOLD", "0.90")),
+            ), None
         if gallery:
             from kiosk.recognizer import THRESHOLD, SimilarityDetector, parse_zone
 

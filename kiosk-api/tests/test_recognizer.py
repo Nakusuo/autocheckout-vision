@@ -10,6 +10,7 @@ from kiosk.recognizer import (
     UNKNOWN,
     Gallery,
     SimilarityDetector,
+    VerifiedYoloDetector,
     build_gallery,
     color_hist,
     fingerprints,
@@ -18,7 +19,7 @@ from kiosk.recognizer import (
     leave_one_out,
 )
 from kiosk.tray import Detector
-from kiosk.vision import ImageFolderSource
+from kiosk.vision import Detection, ImageFolderSource
 
 RED, BLUE, GREEN = (0, 0, 220), (220, 0, 0), (0, 200, 0)
 
@@ -39,6 +40,30 @@ def fake_embed(images: list[np.ndarray]) -> np.ndarray:
 
 def product_mask(img: np.ndarray) -> np.ndarray:
     return (np.abs(img.astype(int) - 235).sum(axis=2) > 30).astype(np.float32)
+
+
+@pytest.mark.parametrize(
+    ("gallery_sku", "expected"),
+    [("MOROCHAS-30", ["MOROCHAS-30"]), ("VIZZIO-19", [])],
+)
+def test_verified_yolo_requires_gallery_agreement(gallery_sku, expected):
+    """Una propuesta de YOLO sobre fondo humano no debe cobrarse sola."""
+    image = np.full((480, 640, 3), 235, np.uint8)
+    cv2.rectangle(image, (260, 180), (380, 300), RED, -1)
+    crop = image[180:300, 260:380]
+    reference = fingerprints(fake_embed, *isolate(crop, np.ones(crop.shape[:2])))[0]
+    detector = VerifiedYoloDetector.__new__(VerifiedYoloDetector)
+    detector._source = ImageFolderSource([image])
+    detector._gallery = Gallery(reference[None], np.array([gallery_sku]), np.array([0]))
+    detector._embed = fake_embed
+    detector._segment = lambda frame: np.ones(frame.shape[:2], np.float32)
+    detector._threshold = 0.90
+    detector._imgsz = 416
+    detector._yolo = type("Yolo", (), {
+        "class_names": ["MOROCHAS-30"],
+        "detections": lambda self, frame: [Detection(0, 0.8, (169, 169, 78, 78))],
+    })()
+    assert detector.detect() == expected
 
 
 def test_isolate_crops_largest_blob_on_gray_square():

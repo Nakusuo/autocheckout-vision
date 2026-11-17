@@ -95,6 +95,24 @@ export KIOSK_IMGSZ=416     # tamaño con el que se exportó
 python -m kiosk
 ```
 
+**Quiosco con personas al fondo (YOLO + galería):** configura `KIOSK_MODEL` y
+`KIOSK_GALLERY` a la vez. YOLO propone el producto y su zona; la galería debe
+identificar el mismo SKU con parecido mínimo de `0.90` (ajustable mediante
+`KIOSK_HYBRID_THRESHOLD`). Una propuesta sin acuerdo se descarta y no se cobra.
+Este modo no aprende el fondo, por lo que las personas pueden permanecer detrás
+del producto. Presenta un solo empaque, de frente y cerca del centro de la lente.
+En la prueba local, Morochas se registró y una falsa propuesta de Guaraná sobre
+personas no entró en el carrito. La galería y el modelo deben existir antes de
+arrancar; el resultado depende de las fotos y del entrenamiento disponibles.
+
+```bash
+export KIOSK_MODE=camera
+export KIOSK_MODEL=../ml/data/models/autocaja-416.onnx
+export KIOSK_GALLERY=../ml/data/models/galeria.npz
+export KIOSK_CAMERA=0
+python -m kiosk
+```
+
 **Zona de escaneo y mano:**
 
 ```bash
