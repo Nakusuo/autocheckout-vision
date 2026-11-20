@@ -41,6 +41,16 @@ export function ArrowRight({ className }: Props) {
   );
 }
 
+/** Tecla de borrar: placa con punta a la izquierda y una equis. */
+export function BackspaceGlyph({ className }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 100 70" aria-hidden="true" focusable="false">
+      <path d="M30 6 H92 V64 H30 L6 35 Z" fill="none" stroke="currentColor" strokeWidth="8" strokeLinejoin="round" />
+      <path d="M48 22 L74 48 M74 22 L48 48" stroke="currentColor" strokeWidth="8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function CameraGlyph({ className }: Props) {
   return (
     <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">
@@ -71,6 +81,14 @@ export function TraySign({ className, scanning = false }: Props & { scanning?: b
       <rect x="80" y="96" width="30" height="30" rx="3" fill="var(--ink)" />
       <path d="M120 126 L124 96 Q135 90 146 96 L150 126 Z" fill="var(--ink)" />
       {scanning && <rect className="scan-line" x="40" y="78" width="120" height="5" fill="var(--sign-red)" />}
+    </svg>
+  );
+}
+
+export function PlusGlyph({ className }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+      <path d="M50 16 V84 M16 50 H84" fill="none" stroke="currentColor" strokeWidth="14" strokeLinecap="round" />
     </svg>
   );
 }

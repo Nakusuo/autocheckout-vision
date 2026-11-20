@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { request, useKioskState, type Snapshot } from "../api";
 import { formatPEN } from "../format";
 import { KioskStatus, PanelHeader } from "./common";
+import { WalletNotifier } from "./WalletNotifier";
 
 type Product = { sku: string; name: string; price_cents: number; weight_g: number };
 type TrayState = { tray: string[]; camera: string[] };
@@ -136,10 +137,11 @@ export function SimPanel() {
         <section className="card">
           <h1 className="card-title">El quiosco está en modo cámara</h1>
           <p className="muted">
-            Este panel solo funciona en modo simulado. Con la webcam, usa la pantalla del quiosco y /caja.
+            Los productos se pasan frente a la cámara del quiosco. Usa la pantalla del quiosco y /caja.
           </p>
           <KioskStatus snapshot={snapshot} />
         </section>
+        {snapshot?.payment_method === "yape-qr" && <WalletNotifier snapshot={snapshot} />}
       </div>
     );
   }
@@ -241,7 +243,20 @@ export function SimPanel() {
 
           <section className="card">
             <h2 className="card-title">Pago</h2>
-            {snapshot?.screen === "QR" && snapshot.qr_payload ? (
+            {snapshot?.payment_method === "yape-qr" ? (
+              <p className="muted">Pago con tu QR de Yape: usa la tarjeta «Notificación de Yape».</p>
+            ) : snapshot?.payment_method === "yape" ? (
+              <>
+                <p className="muted">
+                  Pago con Yape (Mercado Pago). En el quiosco escribe el celular y el código. Números de prueba:
+                </p>
+                <ul className="muted">
+                  <li><strong>111111111</strong> + código <strong>123456</strong>: aprobado</li>
+                  <li><strong>111111117</strong> + <strong>123456</strong>: código incorrecto</li>
+                  <li><strong>111111113</strong> + <strong>123456</strong>: límite de Yape superado</li>
+                </ul>
+              </>
+            ) : snapshot?.screen === "QR" && snapshot.qr_payload ? (
               <>
                 <a className="pbtn go" href={snapshot.qr_payload} target="_blank" rel="noopener noreferrer">
                   Abrir el celular simulado
@@ -252,6 +267,8 @@ export function SimPanel() {
               <p className="muted">El enlace de pago aparece cuando el quiosco muestra el QR.</p>
             )}
           </section>
+
+          {snapshot?.payment_method === "yape-qr" && <WalletNotifier snapshot={snapshot} />}
 
           <section className="card preview">
             <h2 className="card-title">Vista del cliente</h2>

@@ -26,8 +26,17 @@ class Webcam:
 
     def __init__(self):
         self.frame = tray()
+        self.active = True
+
+    def open(self):
+        self.active = True
+
+    def close(self):
+        self.active = False
 
     def read(self):
+        if not self.active:
+            raise OSError("La cámara grabada está apagada")
         return self.frame.copy()
 
 
@@ -69,15 +78,20 @@ def test_camera_mode_w1_to_w4_one_product_at_a_time(camera_kiosk):
     assert {line["sku"]: line["quantity"] for line in snap["lines"]} == {"ROJO": 1, "AZUL": 1}
     assert snap["total_cents"] == 280
 
-    client.post("/api/confirm")
+    assert client.post("/api/confirm").status_code == 200
+    assert not cam.active
+    cam.frame = tray(RED)
+    time.sleep(0.3)
+    assert client.get("/api/state").json()["item_count"] == 2
     client.post("/api/pay")
     wait_for(client, "QR")
     gateway.paid = True
     snap = wait_for(client, "W4")
     assert snap["total_cents"] == 280
+    assert not cam.active
 
 
-def test_camera_mode_two_products_at_once_blocks_payment(camera_kiosk):
+def test_camera_mode_unknown_does_not_unlock_payment_before_first_product(camera_kiosk):
     client, cam, _ = camera_kiosk
     time.sleep(0.2)
     client.post("/api/start")
@@ -87,8 +101,41 @@ def test_camera_mode_two_products_at_once_blocks_payment(camera_kiosk):
     cam.frame = both
     time.sleep(0.4)
     snap = client.get("/api/state").json()
-    assert snap["alert"] == "Hay un producto que no reconocemos"
+    assert snap["alert"] is None
+    assert snap["item_count"] == 0
+    assert len(client.get("/api/alerts").json()) == 1
     assert client.post("/api/confirm").status_code == 409
+    assert client.post("/api/pay").status_code == 409
+
+
+def test_camera_mode_unknown_after_first_product_does_not_block_confirmation(camera_kiosk):
+    client, cam, _ = camera_kiosk
+    time.sleep(0.2)
+    client.post("/api/start")
+    cam.frame = tray(RED)
+    time.sleep(0.3)
+    cam.frame = tray()
+    time.sleep(0.3)
+    both = tray()
+    both[5:40, 5:40] = RED
+    both[75:110, 115:150] = BLUE
+    cam.frame = both
+    time.sleep(0.4)
+    snap = client.get("/api/state").json()
+    assert snap["item_count"] == 1
+    assert snap["alert"] is None
+    assert len(client.get("/api/alerts").json()) == 1
+    assert client.post("/api/confirm").status_code == 200
+    assert not cam.active
+    assert client.post("/api/correct").status_code == 200
+    assert cam.active
+    cam.frame = tray()
+    time.sleep(0.3)
+    assert client.post("/api/confirm").status_code == 200
+    assert not cam.active
+    assert client.post("/api/cancel").status_code == 200
+    assert cam.active
+    assert client.get("/api/state").json()["item_count"] == 0
 
 
 def test_screen_keeps_answering_while_a_frame_is_slow(monkeypatch):

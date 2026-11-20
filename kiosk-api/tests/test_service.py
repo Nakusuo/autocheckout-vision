@@ -439,9 +439,18 @@ class CameraLike:
     def __init__(self):
         self.recalibrated = 0
         self.seen: list[str] = []
+        self.active = True
 
     def detect(self) -> list[str]:
+        if not self.active:
+            raise OSError("La cámara está apagada")
         return list(self.seen)
+
+    def open(self) -> None:
+        self.active = True
+
+    def close(self) -> None:
+        self.active = False
 
     def recalibrate(self) -> None:
         self.recalibrated += 1
@@ -499,6 +508,37 @@ def test_exactly_three_items_can_pay_but_four_cannot():
     ticks(svc)
     settle(svc, clock)
     assert svc.snapshot()["alert"] is None
+    svc.confirm()
+    assert svc.snapshot()["can_pay"] is True
+
+
+def test_camera_waits_for_first_registered_product_without_an_initial_alert():
+    svc, camera = make_with_camera()
+    camera.seen = ["DESCONOCIDO"]
+    ticks(svc)
+    svc.start()
+    ticks(svc)
+    snap = svc.snapshot()
+    assert snap["item_count"] == 0
+    assert snap["lines"] == []
+    assert snap["alert"] is None
+    with pytest.raises(TransitionError):
+        svc.confirm()
+    with pytest.raises(TransitionError):
+        svc.pay()
+
+
+@pytest.mark.parametrize("unknown", ["DESCONOCIDO", "FUERA-DEL-CATALOGO"])
+def test_unknown_before_first_product_does_not_block_later_confirmation(unknown):
+    svc, camera = make_with_camera()
+    svc.start()
+    for seen in ([unknown], [], ["AGUA"], []):
+        camera.seen = seen
+        ticks(svc)
+    snap = svc.snapshot()
+    assert snap["item_count"] == 1
+    assert snap["total_cents"] == 250
+    assert snap["alert"] is None
     svc.confirm()
     assert svc.snapshot()["can_pay"] is True
 
@@ -565,3 +605,105 @@ def test_resolve_help_reports_unknown_ids():
     help_id = svc.help_requests[0]["id"]
     assert svc.resolve_help(help_id) is True
     assert svc.resolve_help(help_id) is False
+
+
+def test_unknown_after_first_product_does_not_block_camera_confirmation():
+    svc, camera = make_with_camera()
+    svc.start()
+    camera.seen = ["AGUA"]
+    ticks(svc)
+    camera.seen = ["DESCONOCIDO"]
+    ticks(svc)
+    assert svc.snapshot()["item_count"] == 1
+    assert svc.snapshot()["alert"] is None
+    svc.confirm()
+    svc.pay()
+    assert svc.snapshot()["screen"] == "QR"
+
+
+def test_camera_confirmation_freezes_the_list_and_ignores_late_frames():
+    svc, camera = make_with_camera()
+    svc.start()
+    camera.seen = ["AGUA"]
+    ticks(svc)
+    svc.confirm()
+    assert not camera.active
+    assert not svc.wants_reading()
+    camera.seen = ["CHOCO"]
+    svc.tick(Reading(["CHOCO"], None))
+    svc.tick(OSError("lectura que terminó después de confirmar"))
+    ticks(svc)
+    assert svc.snapshot()["screen"] == "W3"
+    assert svc.snapshot()["item_count"] == 1
+    assert svc.snapshot()["lines"][0]["sku"] == "AGUA"
+    assert svc.snapshot()["alert"] is None
+    svc.pay()
+    ticks(svc)
+    assert not camera.active
+    assert svc.snapshot()["screen"] == "QR"
+
+
+@pytest.mark.parametrize("pay_first", [False, True])
+def test_cancelling_reopens_the_camera_and_clears_the_list(pay_first):
+    svc, camera = make_with_camera()
+    svc.start()
+    camera.seen = ["AGUA"]
+    ticks(svc)
+    svc.confirm()
+    if pay_first:
+        svc.pay()
+    assert not camera.active
+    svc.cancel()
+    assert camera.active
+    assert svc.wants_reading()
+    assert svc.snapshot()["item_count"] == 0
+    assert svc.snapshot()["screen"] == "W1"
+
+
+def test_correcting_reopens_the_camera_without_rescanning_the_same_product():
+    svc, camera = make_with_camera()
+    svc.start()
+    camera.seen = ["AGUA"]
+    ticks(svc)
+    svc.confirm()
+    assert not camera.active
+    svc.correct()
+    assert camera.active
+    ticks(svc)
+    assert svc.snapshot()["screen"] == "W2"
+    assert svc.snapshot()["item_count"] == 1
+
+
+def test_paid_camera_purchase_reopens_camera_when_returning_to_start():
+    camera, clock, gateway = CameraLike(), FakeClock(), FakeGateway()
+    svc = KioskService(CATALOG, camera, None, gateway, JwtVerifier(PUBLIC_PEM), clock)
+    svc.start()
+    camera.seen = ["AGUA"]
+    ticks(svc)
+    svc.confirm()
+    svc.pay()
+    gateway.paid = True
+    svc.tick()
+    assert svc.snapshot()["screen"] == "W4"
+    assert not camera.active
+    clock.t = 10.0
+    svc.tick()
+    assert svc.snapshot()["screen"] == "W1"
+    assert camera.active
+
+
+def test_confirmed_camera_purchase_still_checks_scale_without_reading_camera():
+    camera, clock, scale = CameraLike(), FakeClock(), SimulatedScale(noise_g=0)
+    svc = KioskService(CATALOG, camera, scale, FakeGateway(), JwtVerifier(PUBLIC_PEM), clock)
+    svc.start()
+    camera.seen = ["AGUA"]
+    scale.set_load(651)
+    ticks(svc)
+    svc.confirm()
+    assert not camera.active
+    scale.set_trap(40)
+    ticks(svc)
+    settle(svc, clock)
+    assert svc.snapshot()["screen"] == "W3"
+    assert svc.snapshot()["alert"] == "Revise su bandeja"
+    assert not svc.snapshot()["can_pay"]

@@ -189,6 +189,21 @@ describe("CajaPanel ventas y sonido", () => {
 });
 
 describe("CajaPanel", () => {
+  it("muestra los productos del QR y permite aprobar el pago simulado", async () => {
+    const calls = stubFetch((_m, path) => (path === "/api/sales" ? { count: 0, total_cents: 0, receipts: [] } : []));
+    render(<CajaPanel />);
+    const ws = FakeSocket.all[0];
+    ws.open();
+    ws.send(snap);
+    expect(screen.queryByRole("button", { name: "Aceptar pago simulado" })).not.toBeInTheDocument();
+    ws.send({ ...snap, state: "PAYING", screen: "QR", qr_payload: "https://localhost:8443/pay/ch_1" });
+    expect(screen.getByText("1 × Agua")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Aceptar pago simulado" }));
+    await waitFor(() => expect(calls).toContain("POST /api/caja/accept-payment"));
+    ws.send({ ...snap, state: "PAID", screen: "W4" });
+    expect(screen.getByText("Pago confirmado. Compra finalizada.")).toBeInTheDocument();
+  });
+
   it("lista la ayuda pendiente y la marca como atendida", async () => {
     let pending = [{ id: 7, screen: "W2", at: 0 }];
     const calls = stubFetch((method, path) => {

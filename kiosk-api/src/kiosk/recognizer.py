@@ -9,6 +9,12 @@ Con ~5 fotos por producto no alcanza para entrenar un detector, así que no se e
 
 Agregar un producto es agregar sus fotos y volver a generar la galería.
 
+Dos formas de encontrar el producto en el cuadro (KIOSK_FONDO):
+- «fijo» (por defecto): cámara cenital sobre una bandeja; lo que difiere de la bandeja vacía.
+- «libre»: cualquier fondo (pantalla vertical, producto en la mano, a futuro el celular). Cada
+  cuadro pasa por el mismo modelo que recorta las fotos de la galería (U²-Net «silueta»). Lo que
+  no se parece a ningún producto no se suma ni genera alerta: la cámara ve personas y el cuarto.
+
 Uso (las opciones --galeria y --embedder van antes del comando):
     python -m kiosk.recognizer galeria
     python -m kiosk.recognizer evaluar
@@ -18,21 +24,27 @@ Uso (las opciones --galeria y --embedder van antes del comando):
 """
 
 import argparse
+import logging
 import threading
 import time
+from collections import Counter, deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-from kiosk.vision import CameraSource, FrameSource
+from kiosk.vision import CameraSource, Detection, FrameSource, YoloOnnxDetector
 
 REPO = Path(__file__).resolve().parents[3]
 MODELS = REPO / "ml" / "data" / "models"
 DEFAULT_EMBEDDER = MODELS / "dinov2-small.onnx"
 DEFAULT_SEGMENTER = MODELS / "silueta.onnx"
 DEFAULT_GALLERY = MODELS / "galeria.npz"
+DEFAULT_BOX_GALLERY = MODELS / "galeria-recuadro.npz"  # «galeria --recuadro» (cámara del navegador)
+
+log = logging.getLogger(__name__)
 
 UNKNOWN = "DESCONOCIDO"
 GRAY = 124
@@ -59,14 +71,19 @@ def _normalize(bgr: np.ndarray, size: int) -> np.ndarray:
     return x.transpose(2, 0, 1)
 
 
-def isolate(bgr: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
-    """Recorta la mancha más grande de la máscara, con el fondo en gris, en un cuadrado."""
+def isolate(
+    bgr: np.ndarray, mask: np.ndarray, *, merge_components: bool = False
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Recorta la mancha principal (o los fragmentos ya agrupados), con fondo gris."""
     binary = (mask > 0.5).astype(np.uint8)
     n, _, stats, _ = cv2.connectedComponentsWithStats(binary)
     if n <= 1:
         return None
-    i = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-    x, y, w, h = stats[i, :4]
+    if merge_components:
+        x, y, w, h = cv2.boundingRect(binary)
+    else:
+        i = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        x, y, w, h = stats[i, :4]
     pad = int(0.05 * max(w, h))
     rows, cols = bgr.shape[:2]
     x0, y0, x1, y1 = (
@@ -108,6 +125,7 @@ class Embedder:
 
         options = ort.SessionOptions()
         options.intra_op_num_threads = 4  # el mejor en la laptop de desarrollo (8 núcleos)
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
         session = ort.InferenceSession(str(path), options, providers=["CPUExecutionProvider"])
         return cls(session, size)
 
@@ -128,7 +146,10 @@ class Segmenter:
     def from_model(cls, path: Path = DEFAULT_SEGMENTER) -> "Segmenter":
         import onnxruntime as ort
 
-        return cls(ort.InferenceSession(str(path), providers=["CPUExecutionProvider"]))
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = 4
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        return cls(ort.InferenceSession(str(path), options, providers=["CPUExecutionProvider"]))
 
     def __call__(self, bgr: np.ndarray) -> np.ndarray:
         out = self._session.run(None, {self._input: _normalize(bgr, 320)[None]})[0][0, 0]
@@ -137,12 +158,16 @@ class Segmenter:
 
 
 def fingerprints(
-    embed: Embedder, crop: np.ndarray, mask: np.ndarray, rotations: int = 1
+    embed: Embedder,
+    crop: np.ndarray,
+    mask: np.ndarray,
+    rotations: int = 1,
+    color_weight: float = COLOR_WEIGHT,
 ) -> np.ndarray:
     """Huella = [DINOv2, √peso·color]: el producto punto suma ambos parecidos."""
-    views = [crop] + [cv2.rotate(crop, r) for r in (0, 1, 2)][: rotations - 1]
+    views = [crop] + [cv2.rotate(crop, r) for r in (0, 1, 2)[: rotations - 1]]
     shape = embed(views)
-    color = np.sqrt(COLOR_WEIGHT) * color_hist(crop, mask)
+    color = np.sqrt(color_weight) * color_hist(crop, mask)
     return np.hstack([shape, np.tile(color, (len(views), 1))]).astype(np.float32)
 
 
@@ -152,34 +177,101 @@ class Gallery:
     labels: np.ndarray  # (n,) SKU de cada huella
     photos: np.ndarray  # (n,) foto de origen (las 4 rotaciones comparten número)
     size: int = EMBED_SIZE  # el quiosco debe describir los cuadros con el mismo tamaño
+    color_weight: float = COLOR_WEIGHT  # con el que se hicieron las huellas: la consulta lo repite
+    top: int = 1  # parecido de un SKU = promedio de sus `top` huellas más parecidas
+    # Vista de cada huella: «seg» (producto recortado) o «c60» (recuadro central del 60 %, etc.)
+    views: np.ndarray | None = None
+    threshold: float | None = None  # umbral y margen medidos para esta galería (si se midieron)
+    margin: float | None = None
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
+        extra: dict[str, np.ndarray] = {}
+        if self.views is not None:
+            extra["views"] = self.views
+        if self.threshold is not None:
+            extra["threshold"] = np.array(self.threshold)
+        if self.margin is not None:
+            extra["margin"] = np.array(self.margin)
         np.savez_compressed(
-            path, vectors=self.vectors, labels=self.labels, photos=self.photos, size=self.size
+            path,
+            vectors=self.vectors,
+            labels=self.labels,
+            photos=self.photos,
+            size=self.size,
+            color_weight=self.color_weight,
+            top=self.top,
+            **extra,  # type: ignore[arg-type]  # numpy tipa mal los **kwargs de savez
         )
 
     @classmethod
     def load(cls, path: Path) -> "Gallery":
         with np.load(path, allow_pickle=False) as data:
-            size = int(data["size"]) if "size" in data.files else 224
-            return cls(data["vectors"], data["labels"], data["photos"], size)
+            files = set(data.files)
+
+            def value(key: str, default):
+                return data[key].item() if key in files else default
+
+            return cls(
+                data["vectors"],
+                data["labels"],
+                data["photos"],
+                int(value("size", 224)),
+                float(value("color_weight", COLOR_WEIGHT)),
+                int(value("top", 1)),
+                data["views"] if "views" in files else None,
+                value("threshold", None),
+                value("margin", None),
+            )
 
     def ranking(self, vector: np.ndarray, skip_photo: int | None = None) -> list[tuple[str, float]]:
-        """Mejor parecido por SKU, de mayor a menor."""
+        """Parecido por SKU (promedio de sus `top` huellas más parecidas), de mayor a menor.
+
+        Con `top` > 1 un producto con muchas fotos no gana solo por tener una que se parezca
+        por casualidad: necesita varias."""
         scores = self.vectors @ vector
+        keep = self.photos != skip_photo if skip_photo is not None else slice(None)
+        scores, labels = scores[keep], self.labels[keep]
         best: dict[str, float] = {}
-        for label, photo, score in zip(self.labels, self.photos, scores, strict=True):
-            if photo == skip_photo:
-                continue
-            best[str(label)] = max(best.get(str(label), -9.0), float(score))
+        for label in np.unique(labels):
+            mine = np.sort(scores[labels == label])[::-1][: self.top]
+            best[str(label)] = float(mine.mean())
         return sorted(best.items(), key=lambda kv: -kv[1])
 
 
+def center_crop(bgr: np.ndarray, fraction: float) -> np.ndarray:
+    """Cuadrado central de lado `fraction` × el lado menor: lo que ve un recuadro guía."""
+    rows, cols = bgr.shape[:2]
+    side = max(1, int(fraction * min(rows, cols)))
+    top, left = (rows - side) // 2, (cols - side) // 2
+    return bgr[top : top + side, left : left + side]
+
+
+def center_mask(side: int, fraction: float = 0.8) -> np.ndarray:
+    """Círculo central: el color se mide donde está el producto, no en el fondo de las esquinas."""
+    mask = np.zeros((side, side), np.uint8)
+    cv2.circle(mask, (side // 2, side // 2), int(side * fraction / 2), 1, -1)
+    return mask
+
+
+def view_name(fraction: float) -> str:
+    """Nombre de la vista de un recorte central en la galería: 0.45 → «c45»."""
+    return f"c{round(fraction * 100)}"
+
+
 def build_gallery(
-    raw: Path, embed: Embedder, segment: Segmenter, skus: set[str] | None = None
+    raw: Path,
+    embed: Embedder,
+    segment: Segmenter,
+    skus: set[str] | None = None,
+    crops: tuple[float, ...] = (),
+    color_weight: float = COLOR_WEIGHT,
+    top: int = 1,
 ) -> Gallery:
-    vectors, labels, photos = [], [], []
+    """Galería con el producto recortado de cada foto (4 rotaciones). Con `crops`, suma además el
+    recuadro central de cada foto en esos tamaños: así se ve lo que manda el navegador (producto
+    con algo de fondo), y la consulta se parece a la galería."""
+    vectors, labels, photos, views = [], [], [], []
     photo = 0
     folders = sorted(p for p in raw.iterdir() if p.is_dir() and (skus is None or p.name in skus))
     for folder in folders:
@@ -188,22 +280,47 @@ def build_gallery(
             if image is None or (found := isolate(image, segment(image))) is None:
                 print(f"  sin producto visible, se omite: {folder.name}/{path.name}")
                 continue
-            fp = fingerprints(embed, *found, rotations=4)
-            vectors.append(fp)
-            labels += [folder.name] * len(fp)
-            photos += [photo] * len(fp)
+            parts = [("seg", fingerprints(embed, *found, rotations=4, color_weight=color_weight))]
+            for fraction in crops:
+                box = center_crop(image, fraction)
+                fp = fingerprints(
+                    embed, box, center_mask(box.shape[0]), rotations=4, color_weight=color_weight
+                )
+                parts.append((view_name(fraction), fp))
+            for name, fp in parts:
+                vectors.append(fp)
+                labels += [folder.name] * len(fp)
+                photos += [photo] * len(fp)
+                views += [name] * len(fp)
             photo += 1
     if not vectors:
         raise ValueError(f"No hay fotos en {raw}")
     size = getattr(embed, "size", EMBED_SIZE)
-    return Gallery(np.vstack(vectors), np.array(labels), np.array(photos), size)
+    return Gallery(
+        np.vstack(vectors),
+        np.array(labels),
+        np.array(photos),
+        size,
+        color_weight,
+        top,
+        np.array(views) if crops else None,
+    )
 
 
-def leave_one_out(gallery: Gallery) -> tuple[int, int, list[tuple[str, str, float]]]:
-    """Reconoce cada foto (sin rotar) con las demás. Devuelve aciertos, total y fallos."""
+def leave_one_out(
+    gallery: Gallery, query_view: str | None = None
+) -> tuple[int, int, list[tuple[str, str, float]]]:
+    """Reconoce cada foto (sin rotar) con las demás. Devuelve aciertos, total y fallos.
+
+    `query_view` (p. ej. «c60»): la consulta es esa vista de la foto, como el recuadro guía."""
     hits, total, misses = 0, 0, []
     for photo in np.unique(gallery.photos):
-        i = int(np.flatnonzero(gallery.photos == photo)[0])
+        mine = gallery.photos == photo
+        if query_view is not None and gallery.views is not None:
+            mine &= gallery.views == query_view
+        if not mine.any():
+            continue
+        i = int(np.flatnonzero(mine)[0])
         ranking = gallery.ranking(gallery.vectors[i], skip_photo=int(photo))
         truth, (guess, score) = str(gallery.labels[i]), ranking[0]
         total += 1
@@ -317,6 +434,38 @@ def remove_hands(frame: np.ndarray, mask: np.ndarray) -> np.ndarray:
     return np.where(touching, opened, binary).astype(np.float32)
 
 
+def foreground_regions(mask: np.ndarray, min_fraction: float) -> list[tuple[int, int, int, int]]:
+    """Agrupa manchas cuyos recuadros se solapan: pueden ser partes del mismo empaque.
+
+    No dilata ni une manchas separadas por distancia. Conserva el rechazo de dos objetos
+    con recuadros separados y no inventa píxeles de producto entre fragmentos.
+    """
+    _, _, stats, _ = cv2.connectedComponentsWithStats((mask > 0.5).astype(np.uint8))
+    boxes = [
+        (int(x), int(y), int(x + w), int(y + h))
+        for x, y, w, h, area in stats[1:]
+        if area >= min_fraction * mask.size
+    ]
+    parents = list(range(len(boxes)))
+
+    def root(i: int) -> int:
+        while parents[i] != i:
+            i = parents[i]
+        return i
+
+    for i, (x0, y0, x1, y1) in enumerate(boxes):
+        for j in range(i):
+            a0, b0, a1, b1 = boxes[j]
+            if x0 < a1 and a0 < x1 and y0 < b1 and b0 < y1:
+                parents[root(i)] = root(j)
+    groups: dict[int, tuple[int, int, int, int]] = {}
+    for i, (x0, y0, x1, y1) in enumerate(boxes):
+        key = root(i)
+        a0, b0, a1, b1 = groups.get(key, (x0, y0, x1, y1))
+        groups[key] = min(x0, a0), min(y0, b0), max(x1, a1), max(y1, b1)
+    return list(groups.values())
+
+
 class SimilarityDetector:
     """Detector del quiosco: un producto a la vez frente a la cámara → [SKU], nada → []."""
 
@@ -330,7 +479,12 @@ class SimilarityDetector:
         warmup_frames: int = 10,
         zone: Zone | None = None,
         hands: bool = True,
+        segmenter: Callable[[np.ndarray], np.ndarray] | None = None,
+        free_min_blob: float = 0.02,
     ):
+        """`segmenter`: con él, modo «fondo libre» (ver el docstring del módulo); sin él, el
+        fondo es la bandeja vacía que se aprende al arrancar. `free_min_blob`: fracción mínima
+        del cuadro que debe ocupar el objeto en modo libre (el producto se acerca a la cámara)."""
         self._embed = embed
         self._gallery = gallery
         self._source = source
@@ -340,22 +494,36 @@ class SimilarityDetector:
         self._warmup = warmup_frames
         self._zone = zone  # solo se mira este recuadro: la zona de escaneo, no toda la bandeja
         self._hands = hands
+        self._segmenter = segmenter
+        self._free_min_blob = free_min_blob
+        self._seen: str | None = None  # último resultado registrado en el log
         self._background = BackgroundModel()
         self._lock = threading.Lock()  # detect corre en otro hilo; recalibrate llega desde la API
         self.last: tuple[str, float] | None = None  # para depurar: mejor SKU y parecido
 
     @classmethod
     def from_files(
-        cls, gallery: Path, source: FrameSource, embedder: Path = DEFAULT_EMBEDDER, **kwargs
+        cls,
+        gallery: Path,
+        source: FrameSource,
+        embedder: Path = DEFAULT_EMBEDDER,
+        segmenter: Path | None = None,
+        **kwargs,
     ) -> "SimilarityDetector":
+        """`segmenter`: ruta de silueta.onnx para el modo «fondo libre»."""
         loaded = Gallery.load(gallery)
-        return cls(Embedder.from_model(embedder, loaded.size), loaded, source, **kwargs)
+        segment = Segmenter.from_model(segmenter) if segmenter is not None else None
+        return cls(
+            Embedder.from_model(embedder, loaded.size), loaded, source, segmenter=segment, **kwargs
+        )
+
+    @property
+    def free_background(self) -> bool:
+        """True si separa el producto del fondo con el segmentador (no necesita bandeja vacía)."""
+        return self._segmenter is not None
 
     def _blobs(self, mask: np.ndarray) -> int:
-        """Manchas que no son ruido: cualquier producto, aunque sea chico, cuenta."""
-        n, _, stats, _ = cv2.connectedComponentsWithStats((mask > 0.5).astype(np.uint8))
-        min_px = self._min_blob * mask.size
-        return int((stats[1:, cv2.CC_STAT_AREA] >= min_px).sum()) if n > 1 else 0
+        return len(foreground_regions(mask, self._min_blob))
 
     def recalibrate(self) -> None:
         """Olvida el fondo: los próximos cuadros (bandeja vacía) son el nuevo fondo."""
@@ -368,28 +536,314 @@ class SimilarityDetector:
         with self._lock:
             return self._detect()
 
+    def open(self) -> None:
+        with self._lock:
+            open_source = getattr(self._source, "open", None)
+            if open_source is not None:
+                open_source()
+
+    def close(self) -> None:
+        with self._lock:
+            close_source = getattr(self._source, "close", None)
+            if close_source is not None:
+                close_source()
+
+    def _report(self, result: list[str]) -> list[str]:
+        """Registra en el log cada cambio de lo que se ve (con el mejor parecido), para ajustar
+        KIOSK_THRESHOLD con pruebas reales sin inundar el log con cada cuadro."""
+        label = result[0] if result else "nada"
+        if label != self._seen:
+            best = f"{self.last[0]} {self.last[1]:.2f}" if self.last else "—"
+            log.info("Cámara: %s (mejor parecido: %s)", label, best)
+            self._seen = label
+        return result
+
     def _detect(self) -> list[str]:
         frame = crop_zone(self._source.read(), self._zone)
+        if self._segmenter is not None:
+            return self._report(self._detect_free(frame, self._segmenter))
+        return self._report(self._detect_fixed(frame))
+
+    def _detect_free(
+        self, frame: np.ndarray, segment: Callable[[np.ndarray], np.ndarray]
+    ) -> list[str]:
+        """Fondo libre: el objeto más grande que separa «silueta», sin la mano que lo sostiene."""
+        mask = (segment(frame) > 0.5).astype(np.float32)
+        if self._hands:
+            mask = remove_hands(frame, mask)
+        regions = foreground_regions(mask, self._free_min_blob)
+        if not regions:
+            self.last = None
+            return []
+        x0, y0, x1, y1 = max(regions, key=lambda r: (r[2] - r[0]) * (r[3] - r[1]))
+        product_mask = np.zeros_like(mask)
+        product_mask[y0:y1, x0:x1] = mask[y0:y1, x0:x1]
+        if (found := isolate(frame, product_mask, merge_components=True)) is None:
+            self.last = None
+            return []
+        ranking = self._gallery.ranking(fingerprints(self._embed, *found)[0])
+        self.last = ranking[0]
+        sku, score = ranking[0]
+        # Bajo el umbral no es «desconocido»: con fondo libre la cámara ve caras, manos y el cuarto
+        return [sku] if score >= self._threshold else []
+
+    def _detect_fixed(self, frame: np.ndarray) -> list[str]:
         if self._warmup > 0:  # los primeros cuadros, con la bandeja vacía, son el fondo
             self._warmup -= 1
             self._background.learn(frame)
             return []
         seen = self._background.foreground(frame)
         mask = remove_hands(frame, seen) if self._hands else seen
-        blobs = self._blobs(mask)
-        if blobs == 0:
+        regions = foreground_regions(mask, self._min_blob)
+        if not regions:
             self._background.learn(frame, seen)  # tampoco aprende donde está la mano
             self.last = None
             return []
-        # Dos cosas separadas a la vista: no se adivina cuál cobrar; el quiosco avisa y bloquea
-        # PAGAR hasta que quede una sola.
-        if blobs > 1 or (found := isolate(frame, mask)) is None:
+        # Dos cosas separadas a la vista: no se adivina cuál cobrar.
+        if len(regions) > 1:
+            self.last = None
+            return [UNKNOWN]
+        x0, y0, x1, y1 = regions[0]
+        product_mask = np.zeros_like(mask)
+        product_mask[y0:y1, x0:x1] = mask[y0:y1, x0:x1]
+        if (found := isolate(frame, product_mask, merge_components=True)) is None:
             self.last = None
             return [UNKNOWN]
         ranking = self._gallery.ranking(fingerprints(self._embed, *found)[0])
         self.last = ranking[0]
         sku, score = ranking[0]
         return [sku] if score >= self._threshold else [UNKNOWN]
+
+
+# Galería del recuadro guía («galeria --recuadro»). Medido con las 107 fotos del Drive, consulta =
+# recuadro central del 60 % y cada foto fuera de la galería (ver docs/ml/reconocimiento.md):
+# - galería solo con el producto recortado, color 0,5, mejor huella: 77,6 % de aciertos;
+# - + recuadros centrales del 45/60/80 %, color medido en el centro, peso 0,8 y promedio de las
+#   2 mejores huellas: 85,0 %;
+# - y aceptando solo con parecido ≥ 1,2 y margen ≥ 0,05 sobre el segundo: acepta 82/107 y acierta
+#   79 (96 %). El margen es lo que evita confundir empaques parecidos (Casino y Cancún).
+BOX_CROPS = (0.45, 0.6, 0.8)
+BOX_COLOR_WEIGHT = 0.8
+BOX_TOP = 2
+BOX_THRESHOLD = 1.2
+BOX_MARGIN = 0.05
+# Galerías hechas antes del recuadro (sin umbral guardado): los aciertos daban ~1,0–1,2.
+LEGACY_BOX_THRESHOLD = 1.0
+MAX_UPLOAD_BYTES = 2_000_000
+MAX_UPLOAD_PIXELS = 4096 * 4096
+# Marcadores JPEG «inicio de cuadro» (SOF): traen el alto y el ancho. C4, C8 y CC no lo son.
+_JPEG_SOF = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+
+
+def image_size(data: bytes) -> tuple[int, int] | None:
+    """(ancho, alto) leídos de la cabecera PNG o JPEG, sin decodificar. None si no se reconoce."""
+    if data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) >= 24:
+        return int.from_bytes(data[16:20]), int.from_bytes(data[20:24])
+    if data[:2] != b"\xff\xd8":
+        return None
+    i = 2
+    while i + 9 <= len(data):
+        if data[i] != 0xFF:
+            return None
+        marker = data[i + 1]
+        if marker in _JPEG_SOF:
+            return int.from_bytes(data[i + 7 : i + 9]), int.from_bytes(data[i + 5 : i + 7])
+        i += 2 + int.from_bytes(data[i + 2 : i + 4])
+    return None
+
+
+@dataclass(frozen=True)
+class BoxMatch:
+    """Resultado de reconocer un recuadro guía."""
+
+    sku: str  # el más parecido (aunque no alcance el umbral)
+    score: float
+    margin: float  # ventaja sobre el segundo producto más parecido
+    match: bool  # parecido y margen suficientes para tomarlo como ese producto
+
+
+def _first(*values: float | None) -> float:
+    """El primer valor que no sea None (el último siempre lo es)."""
+    return next(v for v in values if v is not None)
+
+
+class CropRecognizer:
+    """Reconoce el «recuadro guía» que manda el navegador (y, a futuro, la app del celular).
+
+    El cliente centra el producto en un recuadro de la pantalla y solo esa parte de la imagen
+    llega aquí. No hay modelo de fondo ni segmentación (U²-Net tarda >1 s por cuadro en la laptop
+    de desarrollo): el recorte va directo a la huella, ~100 ms. Un producto cuenta solo si se
+    parece lo suficiente (`threshold`) y le saca ventaja al segundo (`margin`).
+    """
+
+    def __init__(
+        self,
+        embed: Embedder,
+        gallery: Gallery,
+        threshold: float | None = None,
+        margin: float | None = None,
+    ):
+        self._embed = embed
+        self._gallery = gallery
+        # Lo que se pase manda; si no, lo medido para esta galería; si no, lo de antes.
+        self.threshold = _first(threshold, gallery.threshold, LEGACY_BOX_THRESHOLD)
+        self.margin = _first(margin, gallery.margin, 0.0)
+        self._lock = threading.Lock()  # una sesión ONNX: una imagen a la vez
+
+    @classmethod
+    def from_files(
+        cls,
+        gallery: Path,
+        embedder: Path = DEFAULT_EMBEDDER,
+        threshold: float | None = None,
+        margin: float | None = None,
+    ) -> "CropRecognizer":
+        """Carga la galería y el modelo DINOv2 del disco."""
+        loaded = Gallery.load(gallery)
+        return cls(Embedder.from_model(embedder, loaded.size), loaded, threshold, margin)
+
+    def recognize(self, bgr: np.ndarray) -> BoxMatch:
+        """Producto más parecido, su parecido y su ventaja sobre el segundo."""
+        # Galería con recuadros: el color se mide en el centro, igual que en sus huellas.
+        if self._gallery.views is not None:
+            mask = center_mask(min(bgr.shape[:2]))
+            side = mask.shape[0]
+            top, left = (bgr.shape[0] - side) // 2, (bgr.shape[1] - side) // 2
+            bgr = bgr[top : top + side, left : left + side]
+        else:
+            mask = np.ones(bgr.shape[:2], np.uint8)
+        with self._lock:
+            vector = fingerprints(self._embed, bgr, mask, color_weight=self._gallery.color_weight)[0]
+        ranking = self._gallery.ranking(vector)
+        sku, score = ranking[0]
+        margin = score - ranking[1][1] if len(ranking) > 1 else score
+        return BoxMatch(sku, score, margin, score >= self.threshold and margin >= self.margin)
+
+    def recognize_bytes(self, data: bytes) -> BoxMatch | None:
+        """Imagen JPEG/PNG tal como llega por HTTP. None si no es una imagen válida."""
+        if not data or len(data) > MAX_UPLOAD_BYTES:
+            return None
+        size = image_size(data)
+        if size is None or size[0] * size[1] > MAX_UPLOAD_PIXELS:
+            return None  # se mira la cabecera antes de abrirla: 2 MB pueden ser miles de MP
+        image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+        if image is None or min(image.shape[:2]) < 32:
+            return None
+        return self.recognize(image)
+
+
+class VerifiedYoloDetector:
+    """Cobra solo cuando YOLO y la galería identifican el mismo empaque.
+
+    YOLO propone una zona aunque haya personas detrás. La galería comprueba la
+    apariencia del producto; un falso positivo sobre una persona se descarta.
+    """
+
+    def __init__(
+        self,
+        model: Path,
+        gallery: Path,
+        source: FrameSource,
+        *,
+        imgsz: int = 416,
+        threshold: float = 0.90,
+        embedder: Path = DEFAULT_EMBEDDER,
+        segmenter: Path = DEFAULT_SEGMENTER,
+    ):
+        self._source = source
+        self._yolo = YoloOnnxDetector.from_model(model, source, imgsz=imgsz, conf=0.35)
+        self._gallery = Gallery.load(gallery)
+        self._embed = Embedder.from_model(embedder, self._gallery.size)
+        self._segment = Segmenter.from_model(segmenter)
+        self._threshold = threshold
+        self._imgsz = imgsz
+        self._votes: deque[str | None] = deque(maxlen=12)
+        self._held_sku: str | None = None
+        self._last_seen = 0.0
+        self.last: tuple[str, float] | None = None
+
+    def _crop(self, frame: np.ndarray, detection: Detection) -> np.ndarray | None:
+        rows, cols = frame.shape[:2]
+        scale = min(self._imgsz / rows, self._imgsz / cols)
+        top = (self._imgsz - round(rows * scale)) // 2
+        left = (self._imgsz - round(cols * scale)) // 2
+        x, y, width, height = detection.box
+        x0 = max(0, int((x - left) / scale))
+        y0 = max(0, int((y - top) / scale))
+        x1 = min(cols, int((x + width - left) / scale))
+        y1 = min(rows, int((y + height - top) / scale))
+        if x1 <= x0 or y1 <= y0:
+            return None
+        # Un recuadro casi de pantalla completa incluye caras y fondo. El empaque
+        # se presenta en el centro de la lente; conservar esa zona evita mezclarlo.
+        if (x1 - x0) * (y1 - y0) > 0.5 * rows * cols:
+            cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
+            half_w, half_h = int(0.325 * (x1 - x0)), int(0.275 * (y1 - y0))
+            x0, x1 = max(0, cx - half_w), min(cols, cx + half_w)
+            y0, y1 = max(0, cy - half_h), min(rows, cy + half_h)
+        return frame[y0:y1, x0:x1]
+
+    def detect(self) -> list[str]:
+        frame = self._source.read()
+        self.last = None
+        proposals = self._yolo.detections(frame)
+        now = time.monotonic()
+        if self._held_sku is not None:
+            if any(self._yolo.class_names[d.class_id] == self._held_sku for d in proposals):
+                self._last_seen = now
+                return [self._held_sku]
+            # Dos cuadros perdidos no representan una segunda unidad. Para otro
+            # SKU se permite cambiar en cuanto pase dos verificaciones; para el
+            # mismo SKU se exige una salida real y sostenida del encuadre.
+            if now - self._last_seen >= 3.0:
+                self._held_sku = None
+                self._votes.clear()
+        vote = None
+        for detection in proposals:
+            sku = self._yolo.class_names[detection.class_id]
+            crop = self._crop(frame, detection)
+            if crop is None:
+                continue
+            # Primero se comprueba el recuadro de YOLO directamente (~150 ms).
+            # La segmentación completa queda para resultados débiles o confusos.
+            fast = isolate(crop, np.ones(crop.shape[:2], np.float32))
+            if fast is not None:
+                ranking = self._gallery.ranking(fingerprints(self._embed, *fast)[0])
+                gallery_score = next((score for label, score in ranking if label == sku), -1.0)
+                competitor = max((score for label, score in ranking if label != sku), default=-1.0)
+                if gallery_score >= 0.92 and gallery_score - competitor >= 0.04:
+                    self.last = (sku, gallery_score)
+                    vote = sku
+                    break
+            if (found := isolate(crop, self._segment(crop))) is None:
+                continue
+            ranking = self._gallery.ranking(fingerprints(self._embed, *found)[0])
+            if ranking:
+                self.last = ranking[0]
+                gallery_score = next((score for label, score in ranking if label == sku), -1.0)
+                if gallery_score >= self._threshold and ranking[0][1] - gallery_score <= 0.03:
+                    vote = sku
+                    break
+        self._votes.append(vote)
+        counts = Counter(label for label in self._votes if label is not None)
+        for sku, hits in counts.most_common():
+            if hits >= 2 and sku != self._held_sku:
+                self._held_sku = sku
+                self._last_seen = now
+                self._votes.clear()
+                return [sku]
+        if self._held_sku is not None:
+            return [self._held_sku]
+        return []
+
+    def open(self) -> None:
+        self._yolo.open()
+
+    def close(self) -> None:
+        self._yolo.close()
+
+    def recalibrate(self) -> None:
+        """No requiere aprender el fondo; conserva la acción de la interfaz."""
 
 
 def benchmark(gallery: Path, embedder: Path, raw: Path, frames: int) -> int:
@@ -474,11 +928,20 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--catalogo", type=Path, default=REPO / "catalog" / "products.csv")
     build.add_argument("--segmenter", type=Path, default=DEFAULT_SEGMENTER)
     build.add_argument("--tamano", type=int, default=EMBED_SIZE, help="lado para DINOv2 (×14)")
+    build.add_argument(
+        "--recuadro",
+        action="store_true",
+        help="galería para la cámara del navegador (recuadro guía): galeria-recuadro.npz",
+    )
     sub.add_parser("evaluar", help="aciertos dejando cada foto fuera")
     live = sub.add_parser("camara", help="prueba en vivo con la webcam")
     live.add_argument("--camera", type=int, default=0)
     live.add_argument("--frames", type=int, default=100)
     live.add_argument("--zona", type=parse_zone, default=None, help="x0,y0,x1,y1 (KIOSK_ZONE)")
+    live.add_argument(
+        "--fondo", choices=["fijo", "libre"], default="fijo", help="KIOSK_FONDO (ver el inicio)"
+    )
+    live.add_argument("--segmenter", type=Path, default=DEFAULT_SEGMENTER)
     frame_zone = sub.add_parser("zona", help="guarda una foto con la zona de escaneo dibujada")
     frame_zone.add_argument(
         "zona", type=parse_zone, help="x0,y0,x1,y1 en fracciones, p. ej. 0.25,0.1,0.75,0.9"
@@ -503,12 +966,19 @@ def main(argv: list[str] | None = None) -> int:
 
         skus = {p.sku for p in Catalog.from_csv(args.catalogo).all()}
         missing = sorted(skus - {p.name for p in args.raw.iterdir() if p.is_dir()})
+        if args.recuadro and args.galeria == DEFAULT_GALLERY:
+            args.galeria = DEFAULT_BOX_GALLERY
         gallery = build_gallery(
             args.raw,
             Embedder.from_model(args.embedder, args.tamano),
             Segmenter.from_model(args.segmenter),
             skus,
+            crops=BOX_CROPS if args.recuadro else (),
+            color_weight=BOX_COLOR_WEIGHT if args.recuadro else COLOR_WEIGHT,
+            top=BOX_TOP if args.recuadro else 1,
         )
+        if args.recuadro:
+            gallery.threshold, gallery.margin = BOX_THRESHOLD, BOX_MARGIN
         gallery.save(args.galeria)
         photos, products = len(np.unique(gallery.photos)), len(np.unique(gallery.labels))
         print(f"Galería: {photos} fotos de {products} productos → {args.galeria}")
@@ -516,7 +986,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Sin fotos (no se podrán reconocer): {', '.join(missing)}")
         return 0
     if args.cmd == "evaluar":
-        hits, total, misses = leave_one_out(Gallery.load(args.galeria))
+        loaded = Gallery.load(args.galeria)
+        # Galería del recuadro: se evalúa como la usa el navegador (recuadro central del 60 %)
+        query = "c60" if loaded.views is not None and "c60" in loaded.views else None
+        hits, total, misses = leave_one_out(loaded, query)
         print(f"Aciertos dejando cada foto fuera: {hits}/{total} = {hits / total:.0%}")
         for truth, guess, score in misses:
             print(f"  {truth} → {guess} ({score:.2f})")
@@ -530,7 +1003,11 @@ def main(argv: list[str] | None = None) -> int:
     source = CameraSource(args.camera)
     try:
         detector = SimilarityDetector.from_files(
-            args.galeria, source, args.embedder, zone=args.zona
+            args.galeria,
+            source,
+            args.embedder,
+            segmenter=args.segmenter if args.fondo == "libre" else None,
+            zone=args.zona,
         )
         for _ in range(args.frames):
             start = time.perf_counter()

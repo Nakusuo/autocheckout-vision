@@ -79,6 +79,24 @@ def test_confirm_then_poll_returns_signed_token(client, keys):
     assert claims["amount_cents"] == 530
 
 
+def test_cashier_confirmation_requires_key(client):
+    charge = new_charge(client)
+    path = f"/charges/{charge['charge_id']}/confirm"
+    assert client.post(path).status_code == 401
+    assert client.post(path, headers=KEY).json()["status"] == "PAID"
+
+
 def test_unknown_charge_is_404(client):
     assert client.get("/charges/nope", headers=KEY).status_code == 404
     assert client.get("/pay/nope").status_code == 404
+
+
+def test_health_is_public_and_reveals_nothing(client):
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
+
+
+def test_health_reports_the_deployed_commit_on_render(client, monkeypatch):
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "abc123")
+    assert client.get("/health").json() == {"status": "ok", "revision": "abc123"}

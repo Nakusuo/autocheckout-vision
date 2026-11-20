@@ -32,3 +32,9 @@ updates:
     schedule:
       interval: weekly
     target-branch: develop
+  # Imágenes base de los Dockerfile (python, node, nginx)
+  - package-ecosystem: docker
+    directories: [/kiosk-api, /mock-gateway, /kiosk-ui]
+    schedule:
+      interval: weekly
+    target-branch: develop

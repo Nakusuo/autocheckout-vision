@@ -7,7 +7,22 @@ Quiosco de auto-checkout que reconoce productos con visión computacional (por p
 
 Licencia: AGPL-3.0 (ver `LICENSE`).
 
-## Probar el sistema (simulado)
+## Con Docker (lo más rápido)
+
+Requiere Docker con Compose. Levanta la pasarela, la API y la interfaz ya conectadas:
+
+```bash
+cp .env.example .env        # cambia GATEWAY_API_KEY por una clave larga
+docker compose up --build   # http://localhost:5173  ·  /sim  ·  /caja
+```
+
+Arquitectura edge + nube, imágenes, CI/CD y despliegue de la pasarela en Render: [`docs/CLOUD_DEVOPS.md`](docs/CLOUD_DEVOPS.md).
+
+**Demo web «el celular es la máquina»:** cámara del navegador con recuadro guía, pago con tu QR de Yape y la notificación de pago simulada: `docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build`. Guía: [`docs/DEMO_WEB.md`](docs/DEMO_WEB.md).
+
+**Pago con Yape (Mercado Pago):** `KIOSK_PAYMENT=yape docker compose up --build`. El cliente escribe su celular y el código de aprobación de Yape. Prueba con el celular `111111111` y el código `123456`. Para el sandbox real de Mercado Pago: `docker compose -f docker-compose.yml -f docker-compose.mercadopago.yml up`. Detalles, seguridad y números de prueba: [`docs/PAGO_YAPE.md`](docs/PAGO_YAPE.md).
+
+## Probar el sistema (simulado, sin Docker)
 
 Requisitos: Python 3.12 y Node 22 o superior. En cada terminal Python define la misma clave:
 `export GATEWAY_API_KEY=una-clave-larga-cualquiera` (ver `.env.example`).
@@ -36,7 +51,7 @@ npm run dev
 |---|---|
 | http://localhost:5173/ | Quiosco (cliente), formato vertical |
 | http://localhost:5173/sim | Simulador para la presentación: pasar cada producto por la cámara (o ponerlo «sin escanear»), escenarios paso a paso, balanza, acciones del quiosco, enlace al «celular» que paga y vista en vivo del quiosco |
-| http://localhost:5173/caja | Panel de caja: solicitudes de ayuda, alertas de seguridad, ventas de hoy, reactivar el quiosco y recalibrar la cámara |
+| http://localhost:5173/caja | Panel de caja: compra en curso, aprobación del pago simulado pendiente por QR, solicitudes de ayuda, alertas, ventas y estado del quiosco |
 
 **Panel de caja (`/caja`):**
 - **Alertas de seguridad** (`GET /api/alerts`, `DELETE /api/alerts/{id}` al marcarla revisada): una por compra cuando pasa algo no reconocido frente a la cámara («Producto no reconocido frente a la cámara»). Cuenta las veces (`times`) y dice cómo terminó la compra: en curso, pagada, cancelada o quiosco fuera de servicio. Si la caja la marca revisada y vuelve a pasar en la misma compra, se crea otra.
@@ -44,7 +59,9 @@ npm run dev
 - Pitido (880 Hz) con cada ayuda o alerta nueva; el botón «Sonido: sí/no» se recuerda en el navegador.
 - Se guardan hasta 50 ayudas y 50 alertas sin atender.
 
-Para pagar: en la pantalla del QR, abre en `/sim` el enlace «Abrir el celular simulado» y pulsa «Pagar con Yape/Plin (simulado)». El quiosco consulta la pasarela por HTTPS (TLS 1.3), verifica la firma RS256 y muestra el ticket.
+Para pagar: después de CONFIRMAR y PAGAR en el quiosco, `/caja` muestra las líneas y el total de la compra. Cuando aparece el QR, la caja puede pulsar «Aceptar pago simulado». También se puede abrir el enlace del QR y pagar desde el celular simulado. En ambos casos el quiosco consulta la pasarela por HTTPS (TLS 1.3), verifica la firma RS256 y muestra el ticket. La aprobación de caja solo está disponible mientras haya un cobro pendiente.
+
+Variables de arranque (todas opcionales; los valores por defecto son los de desarrollo): `KIOSK_HOST`/`KIOSK_PORT`, `KIOSK_DATA_DIR` (base, boletas, sesiones y log), `KIOSK_KEYS_DIR`, `GATEWAY_CA=system` (pasarela con certificado público) y, en la pasarela, `GATEWAY_HOST`/`GATEWAY_PORT` (o `PORT`), `GATEWAY_TLS=off` (detrás del HTTPS de un PaaS) y `GATEWAY_KEYS_DIR`.
 
 La API escucha en 127.0.0.1:8000 y solo acepta peticiones desde http://localhost:5173 (Vite usa ese puerto fijo; si está ocupado, libéralo).
 
@@ -95,6 +112,28 @@ export KIOSK_IMGSZ=416     # tamaño con el que se exportó
 python -m kiosk
 ```
 
+**Quiosco con personas al fondo (YOLO + galería):** configura `KIOSK_MODEL` y
+`KIOSK_GALLERY` a la vez. YOLO propone el producto y su zona; la galería debe
+identificar el mismo SKU con parecido mínimo de `0.90` (ajustable mediante
+`KIOSK_HYBRID_THRESHOLD`). Una propuesta sin acuerdo se descarta y no se cobra.
+Este modo no aprende el fondo, por lo que las personas pueden permanecer detrás
+del producto. Presenta un solo empaque, de frente y cerca del centro de la lente.
+En la prueba local, Morochas se registró y una falsa propuesta de Guaraná sobre
+personas no entró en el carrito. La galería y el modelo deben existir antes de
+arrancar; el resultado depende de las fotos y del entrenamiento disponibles.
+El recorte directo acelera los cuadros claros; los ambiguos usan segmentación.
+Para pasar dos unidades del mismo SKU, retira por completo la primera durante
+al menos tres segundos antes de presentar la segunda. Otro SKU puede entrar
+en cuanto se verifique, sin esa espera.
+
+```bash
+export KIOSK_MODE=camera
+export KIOSK_MODEL=../ml/data/models/autocaja-416.onnx
+export KIOSK_GALLERY=../ml/data/models/galeria.npz
+export KIOSK_CAMERA=0
+python -m kiosk
+```
+
 **Zona de escaneo y mano:**
 
 ```bash
@@ -104,7 +143,9 @@ export KIOSK_ZONE=0.25,0.1,0.75,0.9                  # x0,y0,x1,y1 en fracciones
 export KIOSK_HANDS=off                               # opcional: por defecto se quita la piel que entra por el borde de la zona
 ```
 
-**Lo que no se reconoce:** solo se suman productos del catálogo. Un desconocido (una mano, dos productos juntos) bloquea CONFIRMAR y PAGAR solo mientras está a la vista; en W3 reabre W2. Si tapa un producto ya visto, al destaparlo se cuenta otra vez: ante la duda se cobra de más (se ve en la lista y se quita con «−»), nunca de menos. Cada compra con un desconocido genera una alerta en `/caja`.
+**Lo que no se reconoce:** solo se suman productos del catálogo. En modo cámara, las detecciones desconocidas no bloquean CONFIRMAR ni PAGAR y no se agregan a la lista. Cada compra con un desconocido sigue generando una alerta de seguridad en `/caja`. En modo simulado, un desconocido a la vista sigue bloqueando el pago y reabre W2 desde W3. Si tapa un producto ya visto, al destaparlo se puede contar otra vez: revisa la lista y quita duplicados con «−».
+
+**Confirmación con webcam:** CONFIRMAR se habilita desde el primer producto reconocido (máximo 3); cierra físicamente la webcam y congela la lista hasta CORREGIR, cancelar o volver al inicio después del ticket. Con balanza, PAGAR sigue exigiendo peso correcto.
 
 **Riesgo aceptado:** sin balanza, un producto que no se reconoce puede salir sin pagar. La alerta de seguridad (que termina en «pagada») es la mitigación: la caja revisa esa compra.
 

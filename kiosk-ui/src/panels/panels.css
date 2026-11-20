@@ -287,3 +287,14 @@ body:has(.panel) { background: #f3f1ec; }
   .request { animation: none; }
   .pbtn, .scenario, .product { transition: none; }
 }
+
+/* Notificación de Yape simulada (pago con QR propio) */
+.field { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 700; }
+.field input {
+  min-height: 2.6rem;
+  padding: 0.4rem 0.7rem;
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 600;
+}

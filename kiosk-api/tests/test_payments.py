@@ -77,6 +77,13 @@ def test_tls13_context_enforces_minimum_version():
     assert ctx.verify_mode == ssl.CERT_REQUIRED
 
 
+def test_tls13_context_without_ca_uses_system_store_and_still_requires_tls13():
+    ctx = tls13_context()
+    assert ctx.minimum_version == ssl.TLSVersion.TLSv1_3
+    assert ctx.verify_mode == ssl.CERT_REQUIRED
+    assert ctx.check_hostname is True
+
+
 def _gateway(handler) -> HttpGateway:
     return HttpGateway("https://gw.test", "k", transport=httpx.MockTransport(handler))
 
@@ -84,15 +91,18 @@ def _gateway(handler) -> HttpGateway:
 def test_http_gateway_create_and_poll():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["X-API-Key"] == "k"
-        if request.method == "POST":
+        if request.method == "POST" and request.url.path == "/charges":
             return httpx.Response(
                 201, json={"charge_id": "ch_1", "qr_payload": "q", "status": "PENDING"}
             )
+        if request.method == "POST" and request.url.path == "/charges/ch_1/confirm":
+            return httpx.Response(200, json={"charge_id": "ch_1", "status": "PAID"})
         return httpx.Response(200, json={"charge_id": "ch_1", "status": "PAID", "token": "t"})
 
     gw = _gateway(handler)
     charge = gw.create_charge(530, "venta-1")
     assert (charge.id, charge.qr_payload) == ("ch_1", "q")
+    gw.confirm("ch_1")
     assert gw.poll("ch_1") == "t"
 
 
@@ -102,6 +112,8 @@ def test_http_gateway_errors_become_payment_error():
         gw.create_charge(530, "venta-1")
     with pytest.raises(PaymentError):
         gw.poll("ch_1")
+    with pytest.raises(PaymentError):
+        gw.confirm("ch_1")
 
 
 def test_replay_registry_forgets_expired_tokens():

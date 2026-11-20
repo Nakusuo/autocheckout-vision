@@ -12,7 +12,9 @@
    - Un histograma de color (tono × saturación) aporta los colores. El color pesa 0,5.
 3. **Comparación con la galería**, que guarda cada foto de referencia en 4 rotaciones.
    - Gana el producto más parecido.
-   - Si el parecido no llega al umbral (0,95, configurable con `KIOSK_THRESHOLD`), el resultado es `DESCONOCIDO` y el quiosco muestra «Hay un producto que no reconocemos» y levanta una alerta de seguridad en `/caja` (una por compra).
+   - Si el parecido no llega al umbral (0,95, configurable con `KIOSK_THRESHOLD`), el resultado es `DESCONOCIDO`. En modo cámara no se agrega a la lista ni bloquea la confirmación, pero levanta una alerta de seguridad en `/caja` (una por compra). En modo simulado bloquea mientras está a la vista.
+
+**Flujo de la prueba con cámara:** CONFIRMAR se habilita con el primer producto reconocido (máximo 3). Al confirmar se cierra la webcam y se congela la lista durante el pago y el ticket. CORREGIR vuelve a abrirla; cancelar o volver al inicio al finalizar la compra también la abre. Sin balanza, un producto ignorado no se cobra: hay que comprobar la lista antes de pagar.
 
 **Agregar un producto** es agregar sus fotos y volver a generar la galería. No hay que entrenar.
 
@@ -37,6 +39,17 @@ Casi todos los fallos son fotos del **reverso** (código de barras, tabla nutric
 La resta del fondo se calcula a la mitad de resolución (~6 ms). El cuadro completo da ~110–150 ms en la laptop de desarrollo, según la carga. **Hay que medir en la laptop de la demo**, enchufada y con los demás programas cerrados: `python -m kiosk.recognizer medir`. El tamaño se guarda en la galería (`galeria --tamano`), así el quiosco siempre describe con el mismo.
 
 El reconocimiento corre **en otro hilo**: la pantalla y los botones no se congelan mientras se procesa un cuadro.
+
+## Cámara del navegador (recuadro guía)
+
+La demo web no recorta el producto: manda el recuadro central de la cámara, con algo de fondo. Por eso tiene su propia galería, que suma a cada foto sus recuadros centrales del 45, 60 y 80 %:
+
+```bash
+python -m kiosk.recognizer galeria --recuadro    # → ml/data/models/galeria-recuadro.npz
+python -m kiosk.recognizer --galeria ../ml/data/models/galeria-recuadro.npz evaluar
+```
+
+Con las 107 fotos, el acierto con el recuadro sube de 77,6 % a 85,0 %. Aceptando solo con margen claro sobre el segundo producto, acierta el 96 % de lo que acepta. El detalle y la regla de agregado automático están en `docs/DEMO_WEB.md`.
 
 ## Pasos
 
@@ -91,7 +104,7 @@ Lo que está fuera del recuadro (la bolsa, la canasta, lo ya escaneado) no cuent
 
 ## Límites conocidos
 
-- **Un producto a la vez.** Si hay dos cosas separadas a la vista, el resultado es `DESCONOCIDO`. El quiosco avisa y bloquea PAGAR hasta que quede una sola, así no se cobra de menos.
+- **Un producto a la vez.** Si hay dos cosas separadas a la vista, el resultado es `DESCONOCIDO` y no se agrega ninguna. Revisa que cada producto aparezca en la lista; estos resultados no bloquean la confirmación de lo ya reconocido.
 - **Productos chicos.** Cuentan aunque ocupen poco de la imagen, y el fondo nunca se reajusta donde hay algo a la vista: un producto no puede «desaparecer» dentro del fondo.
 - **La mano** se quita por color de piel; con guantes, mangas largas en la zona o luz muy cálida puede quedar parte. Lo más seguro sigue siendo dejar el producto en la zona y retirar la mano.
 - **Fondo.** Si cambia mucho la luz con algo a la vista, el fondo se reajusta solo cuando no hay nada. La cámara sigue aprendiendo la bandeja vacía en W1. Si la cámara se movió, o si había algo en la bandeja al encender, pulsa **«Recalibrar cámara»** en `/caja` con la bandeja vacía.

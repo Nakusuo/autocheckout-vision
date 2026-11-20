@@ -8,19 +8,22 @@ import { Lines } from "./Lines";
 export function Confirmar({ snapshot, offline }: { snapshot: Snapshot; offline: boolean }) {
   const { error, pending, run } = useAction();
   return (
-    <section className="screen">
+    <section className="screen screen-split">
       <h1 className="title">Confirma tu compra</h1>
       <Lines snapshot={snapshot} />
-      {snapshot.alert && <Alert>{snapshot.alert}</Alert>}
-      {error && <Alert>{error}</Alert>}
-      <p className="hint">¿Falta un producto? Pulsa CORREGIR y pásalo por la cámara.</p>
-      <div className="actions">
-        <button type="button" className="btn btn-go" disabled={offline || pending || !snapshot.can_pay} onClick={() => run("/api/pay")}>
-          PAGAR
-          <ArrowRight className="btn-icon" />
-        </button>
-        <button type="button" className="btn btn-plain" disabled={offline || pending} onClick={() => run("/api/correct")}>CORREGIR</button>
-        <CancelButton disabled={offline || pending} onCancel={() => run("/api/cancel")} />
+      {/* En horizontal, avisos y botones van en la columna derecha (en vertical, display: contents). */}
+      <div className="split-side">
+        {snapshot.alert && <Alert>{snapshot.alert}</Alert>}
+        {error && <Alert>{error}</Alert>}
+        <p className="hint">¿Falta un producto? Pulsa CORREGIR y pásalo por la cámara.</p>
+        <div className="actions">
+          <button type="button" className="btn btn-go" disabled={offline || pending || !snapshot.can_pay} onClick={() => run("/api/pay")}>
+            PAGAR
+            <ArrowRight className="btn-icon" />
+          </button>
+          <button type="button" className="btn btn-plain" disabled={offline || pending} onClick={() => run("/api/correct")}>CORREGIR</button>
+          <CancelButton disabled={offline || pending} onCancel={() => run("/api/cancel")} />
+        </div>
       </div>
     </section>
   );

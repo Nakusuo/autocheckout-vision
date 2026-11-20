@@ -1,0 +1,37 @@
+# Modo cámara (Linux, webcam en /dev/video0).
+#   docker compose -f docker-compose.yml -f docker-compose.camara.yml up --build
+#
+# Requiere en ml/data/models/: dinov2-small.onnx, silueta.onnx y galeria.npz
+# (ver docs/ml/reconocimiento.md). En .env:
+#   VIDEO_GID=<número del grupo video>   →  getent group video | cut -d: -f3
+# El nombre «video» dentro del contenedor tiene otro número que en el equipo (44 en Debian),
+# por eso se usa el número: con el nombre, OpenCV no puede abrir la cámara.
+#
+# Tomar fotos o regenerar la galería (escriben en ml/data, por eso van con tu usuario y
+# fuera de compose, que monta ml/data en solo lectura). Con el quiosco apagado (usa la webcam):
+#   docker run --rm --user "$(id -u):$(id -g)" --device /dev/video0 \
+#     --group-add "$(getent group video | cut -d: -f3)" -v "$PWD/ml/data:/app/ml/data" \
+#     autocaja-kiosk-api-vision:local python -m kiosk.recognizer capturar RITZ-20
+#   (o «galeria» para regenerarla y «evaluar» para medir el acierto)
+services:
+  kiosk-api:
+    build:
+      args:
+        EXTRAS: vision
+    image: ${AUTOCAJA_IMAGEN:-autocaja}-kiosk-api-vision:${AUTOCAJA_VERSION:-local}
+    environment:
+      KIOSK_MODE: camera
+      KIOSK_GALLERY: /app/ml/data/models/galeria.npz
+      KIOSK_CAMERA: ${KIOSK_CAMERA:-0}
+      # libre: cualquier fondo, producto en la mano frente a la pantalla (por defecto aquí).
+      # fijo: cámara cenital sobre una bandeja vacía.
+      KIOSK_FONDO: ${KIOSK_FONDO:-libre}
+      # Opcionales (descomenta): zona de escaneo y umbral de parecido
+      # KIOSK_ZONE: "0.25,0.1,0.75,0.9"
+      # KIOSK_THRESHOLD: "0.6"
+    devices:
+      - /dev/video0:/dev/video0
+    group_add:
+      - "${VIDEO_GID:?Define VIDEO_GID en .env: getent group video | cut -d: -f3}"
+    volumes:
+      - ./ml/data:/app/ml/data:ro

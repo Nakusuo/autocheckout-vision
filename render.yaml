@@ -1,0 +1,27 @@
+# Render Blueprint: la pasarela de pago simulada en la nube (PaaS).
+# Se crea una vez desde el panel de Render (New → Blueprint → este repositorio).
+# Los despliegues siguientes los dispara el workflow de CD (.github/workflows/cd.yml)
+# solo cuando el CI pasó; por eso autoDeploy está apagado.
+services:
+  - type: web
+    name: autocaja-pasarela
+    runtime: docker
+    plan: free
+    region: virginia
+    branch: main
+    dockerfilePath: ./mock-gateway/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      # Render termina HTTPS en su borde; el contenedor recibe HTTP en $PORT.
+      - key: GATEWAY_TLS
+        value: "off"
+      - key: GATEWAY_HOST
+        value: 0.0.0.0
+      # La clave privada JWT se sube como «Secret File» llamado gateway_jwt_private.pem.
+      - key: GATEWAY_KEYS_DIR
+        value: /etc/secrets
+      # La misma clave que usa el quiosco; se escribe a mano en el panel (no va a git).
+      - key: GATEWAY_API_KEY
+        sync: false

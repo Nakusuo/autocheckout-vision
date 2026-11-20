@@ -1,6 +1,8 @@
 # Estado del proyecto — AutoCaja (auto-checkout por visión)
 
-> Traspaso para la próxima sesión. Actualizado: **2026-10-13**.
+> Traspaso para la próxima sesión. Actualizado: **2026-11-20**.
+>
+> **Novedades (2026-11-20, PR #62):** demo web con la cámara del navegador y **recuadro guía**. Galería del recuadro (`galeria --recuadro`) medida con **107 fotos** dejando cada una fuera: **85 %** de acierto (91/107; antes 77,6 %). Con parecido ≥ 1,2 y margen ≥ 0,05 acepta 82/107 y acierta el **96 %**. Los productos se agregan solos tras 3 cuadros iguales. Pago con Yape (Mercado Pago, imitado en la pasarela) y con el QR propio del comercio (la notificación de pago se **simula** en `/sim` mientras no exista la app Android). Contenedores, CI con prueba de humo en Docker y CD a GHCR/Render (**Render aún sin ejecutar**). Ver [`DEMO_WEB.md`](DEMO_WEB.md), [`PAGO_YAPE.md`](PAGO_YAPE.md) y [`CLOUD_DEVOPS.md`](CLOUD_DEVOPS.md).
 >
 > **Decisión (2026-10-12): reconocimiento por parecido, sin entrenar.** Con las 56 fotos del Drive (11 productos) no alcanza para YOLOv8; el modo cámara usa una galería de fotos + DINOv2 + color (91 % de aciertos, 98 % sin reversos). Ver [`ml/reconocimiento.md`](ml/reconocimiento.md). El **catálogo** pasó a esos 11 productos, con precios de bodega fijados para la demo (aprobados por el equipo; se cambian en `catalog/products.csv`).
 >
@@ -46,8 +48,8 @@
 - Un producto se suma cuando **entra** a la vista de la cámara (estable 3 cuadros); no se cuenta dos veces mientras sigue a la vista.
 - **Balanza opcional** (`KIOSK_SCALE`, ver `__main__.scale_enabled`): con `off` (por defecto) `KioskService` recibe `scale=None`, no lee peso y PAGAR depende solo de lo escaneado; el snapshot trae `weight_enabled: false` y la UI oculta todo lo de peso.
 - Con balanza: «Revise su bandeja» solo si el peso no coincide **más de 2 s** (`WEIGHT_GRACE_S`); PAGAR exige peso correcto.
-- En W3, un producto nuevo (o un desconocido) frente a la cámara **reabre W2** (antifraude, tras una revisión de seguridad).
-- **Desconocidos**: solo se acumulan SKU del catálogo. Un desconocido bloquea CONFIRMAR/PAGAR solo mientras está a la vista; si tapa un producto ya visto (p. ej. una mano), al destaparlo se cuenta otra vez (ante la duda, de más y visible; nunca de menos). El tope de 50 alertas nunca descarta una de compra pagada o en curso.
+- En modo cámara, CONFIRMAR cierra físicamente la webcam y congela la lista en W3/QR/W4; CORREGIR, cancelar o volver a W1 la abren. En modo simulado, un producto nuevo o desconocido en W3 sigue reabriendo W2.
+- **Desconocidos**: solo se acumulan SKU del catálogo. En modo cámara no bloquean CONFIRMAR/PAGAR, pero se conserva su alerta de seguridad para `/caja`. En modo simulado bloquean mientras están a la vista. Si tapan un producto ya visto, al destaparlo puede contarse otra vez; revisa duplicados con «−». El tope de 50 alertas nunca descarta una de compra pagada o en curso.
 - **Alertas de seguridad** (`GET /api/alerts`, `DELETE /api/alerts/{id}`): una por compra («Producto no reconocido frente a la cámara»), `times` cuenta las veces y `outcome` es en curso / pagada / cancelada / quiosco fuera de servicio. Si la caja la marca revisada y se repite en la misma compra, se crea otra. Ayudas y alertas pendientes: máximo 50.
 - **Compromiso explícito**: sin balanza, un producto no reconocido puede salir sin pagar; la alerta (con resultado «pagada») es la mitigación.
 - `GET /api/sales`: cantidad y total de hoy y las últimas 20 boletas.

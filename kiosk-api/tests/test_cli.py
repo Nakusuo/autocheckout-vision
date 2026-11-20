@@ -94,7 +94,10 @@ def test_build_detector_camera_with_gallery_uses_similarity(monkeypatch, tmp_pat
     detector, tray_ = entry.build_detector(
         "camera", None, None, {"KIOSK_GALLERY": str(tmp_path / "g.npz"), "KIOSK_THRESHOLD": "1.1"}
     )
-    assert detector == ("similar", {"threshold": 1.1, "zone": None, "hands": True})
+    assert detector == (
+        "similar",
+        {"segmenter": None, "threshold": 1.1, "zone": None, "hands": True},
+    )
     assert tray_ is None
 
 
@@ -212,6 +215,25 @@ def test_cli_gallery_then_evaluate(tmp_path, fake_models, capsys):
 
     assert rec.main(["--galeria", str(gallery), "evaluar"]) == 0
     assert "4/4 = 100%" in capsys.readouterr().out
+
+
+def test_cli_box_gallery_saves_its_crops_and_measured_values(tmp_path, fake_models, capsys, monkeypatch):
+    raw = tmp_path / "raw"
+    catalog = photos(raw)
+    monkeypatch.setattr(rec, "DEFAULT_BOX_GALLERY", tmp_path / "galeria-recuadro.npz")
+    monkeypatch.setattr(rec, "DEFAULT_GALLERY", tmp_path / "galeria.npz")
+    args = ["--galeria", str(tmp_path / "galeria.npz"), "galeria", "--recuadro"]
+    assert rec.main([*args, "--raw", str(raw), "--catalogo", str(catalog)]) == 0
+    box = Gallery.load(tmp_path / "galeria-recuadro.npz")  # nombre propio: no pisa la otra
+    assert not (tmp_path / "galeria.npz").exists()
+    assert (box.color_weight, box.top) == (rec.BOX_COLOR_WEIGHT, rec.BOX_TOP)
+    assert (box.threshold, box.margin) == (rec.BOX_THRESHOLD, rec.BOX_MARGIN)
+    # Por foto: producto recortado y 3 recuadros centrales, cada uno en 4 rotaciones
+    assert sorted(set(box.views.tolist())) == ["c45", "c60", "c80", "seg"]
+    assert len(box.vectors) == 4 * 4 * 4
+    capsys.readouterr()
+    assert rec.main(["--galeria", str(tmp_path / "galeria-recuadro.npz"), "evaluar"]) == 0
+    assert "4/4 = 100%" in capsys.readouterr().out  # evaluado con el recuadro del 60 %
 
 
 def test_cli_evaluate_lists_misses(tmp_path, capsys):
