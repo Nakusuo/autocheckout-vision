@@ -40,13 +40,18 @@ class NoCamera:
 
 def build_recognizer(env: Mapping[str, str]):
     """Reconocedor del recuadro guía para KIOSK_MODE=web (requiere el extra `vision`)."""
-    from kiosk.recognizer import BOX_THRESHOLD, CropRecognizer
+    from kiosk.recognizer import CropRecognizer
 
     gallery = env.get("KIOSK_GALLERY")
     if not gallery or not Path(gallery).exists():
         sys.exit("KIOSK_MODE=web: falta KIOSK_GALLERY (galería de fotos, ver docs/ml)")
-    threshold = float(env.get("KIOSK_THRESHOLD") or BOX_THRESHOLD)
-    return CropRecognizer.from_files(Path(gallery), threshold=threshold)
+    # Sin KIOSK_THRESHOLD / KIOSK_MARGIN se usan los medidos para la galería («galeria --recuadro»)
+    threshold, margin = env.get("KIOSK_THRESHOLD"), env.get("KIOSK_MARGIN")
+    return CropRecognizer.from_files(
+        Path(gallery),
+        threshold=float(threshold) if threshold else None,
+        margin=float(margin) if margin else None,
+    )
 
 
 def build_detector(

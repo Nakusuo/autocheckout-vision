@@ -231,9 +231,12 @@ def test_build_recognizer_needs_a_gallery(tmp_path, monkeypatch):
     gallery.write_bytes(b"x")
     seen = {}
     monkeypatch.setattr(
-        rec.CropRecognizer, "from_files", classmethod(lambda cls, g, threshold: seen.update(g=g, t=threshold))
+        rec.CropRecognizer,
+        "from_files",
+        classmethod(lambda cls, g, threshold, margin: seen.update(g=g, t=threshold, m=margin)),
     )
+    # Sin variables: el reconocedor usa el umbral y el margen guardados en la galería
     build_recognizer({"KIOSK_GALLERY": str(gallery)})
-    assert seen == {"g": gallery, "t": rec.BOX_THRESHOLD}
-    build_recognizer({"KIOSK_GALLERY": str(gallery), "KIOSK_THRESHOLD": "1.3"})
-    assert seen["t"] == 1.3
+    assert seen == {"g": gallery, "t": None, "m": None}
+    build_recognizer({"KIOSK_GALLERY": str(gallery), "KIOSK_THRESHOLD": "1.3", "KIOSK_MARGIN": "0.08"})
+    assert (seen["t"], seen["m"]) == (1.3, 0.08)

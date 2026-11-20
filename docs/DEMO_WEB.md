@@ -27,16 +27,26 @@ Mientras no pongas tu QR, la pantalla de pago muestra una imagen de ejemplo que 
 ## 2. Flujo
 
 1. **INICIAR**. Se abre la cámara con un **recuadro amarillo**.
-2. Pones un producto dentro del recuadro. El quiosco lo reconoce y propone, por ejemplo, «Galletas Casino 43 g, S/ 1.50, **AGREGAR**». Pulsas AGREGAR. Se repite con cada producto; «−» quita uno.
+2. Pones un producto dentro del recuadro y lo mantienes quieto. La pantalla muestra su nombre con una barra que se llena y, cuando lo reconoce igual **3 veces seguidas** (~1,2 s), lo **agrega solo** y avisa «Agregado: …». Para el siguiente, saca el producto y pon otro. Para una segunda unidad del mismo, sácalo del recuadro y vuelve a meterlo. Si se equivoca, «−» quita uno.
 3. **CONFIRMAR** → **PAGAR**. Aparece tu QR de Yape con el total.
 4. La otra persona escanea el QR con su Yape o Plin y paga ese monto.
 5. Llega la notificación de pago. En la demo se simula desde `/sim` con el texto «Juan Pérez te yapeó S/ 4.50». Si el monto coincide, la pantalla muestra **«Cobro exitoso»**, la boleta (número B001, fecha, quién pagó) y la lista. A los 10 s vuelve al inicio.
 
 ## 3. Reconocimiento con recuadro guía
 
-- El navegador manda **solo el recuadro** (320×320 px, JPEG) cada 0,7 s a `POST /api/vision/frame`. El quiosco responde con el producto más parecido, sin cambiar la compra: el cliente decide con AGREGAR. No se guardan imágenes.
-- **Por qué recuadro y no «cualquier fondo»:** el modelo que separa el producto de cualquier fondo (U²-Net «silueta») acierta más (87 %), pero tarda **más de 1 s por imagen** en la laptop de desarrollo. Con el recuadro, cada imagen tarda **~100 ms** y acierta **78 %** (medido con las 107 fotos del Drive, recortando el centro y dejando cada foto fuera). El modo «fondo libre» sigue disponible con la cámara del servidor (`KIOSK_FONDO=libre`).
-- **Umbral** (`KIOSK_THRESHOLD`, por defecto 1,0): por debajo no se sugiere nada. El log muestra cada cambio, por ejemplo «Recuadro: CASINO-43 (mejor CASINO-43 1.18)», para ajustarlo con pruebas reales.
+- El navegador manda **solo el recuadro** (320×320 px, JPEG) cada 0,4 s a `POST /api/vision/frame`. El quiosco responde con el producto más parecido, su parecido y su **margen** sobre el segundo, sin cambiar la compra. La pantalla lo agrega cuando ve el mismo producto en 3 cuadros seguidos (`stepAutoAdd` en `kiosk-ui/src/kiosk/camara.ts`). No se guardan imágenes.
+- **Por qué recuadro y no «cualquier fondo»:** el modelo que separa el producto de cualquier fondo (U²-Net «silueta») tarda **más de 1 s por imagen** en la laptop de desarrollo. Con el recuadro, cada imagen tarda **~100 ms**. El modo «fondo libre» sigue disponible con la cámara del servidor (`KIOSK_FONDO=libre`).
+- **Galería del recuadro** (`python -m kiosk.recognizer galeria --recuadro` → `galeria-recuadro.npz`). Medido con las 107 fotos del Drive, consulta = recuadro central del 60 % y cada foto fuera de la galería:
+
+  | Variante | Aciertos |
+  |---|---|
+  | Galería solo con el producto recortado (antes) | 77,6 % |
+  | + recuadros centrales del 45/60/80 % de cada foto, color medido en el centro (peso 0,8) y promedio de las 2 huellas más parecidas de cada producto | **85,0 %** |
+  | … y aceptando solo con parecido ≥ 1,2 y margen ≥ 0,05 | acepta 82 de 107, **acierta 79 (96 %)** |
+
+  El margen evita confundir empaques parecidos (Casino y Cancún, los dos amarillos). Los errores que quedan son sobre todo entre empaques parecidos (Cancún/Chocman, Glacitas/Ritz).
+- **Umbral y margen**: se guardan en la galería. Se cambian con `KIOSK_THRESHOLD` y `KIOSK_MARGIN`. El log muestra cada cambio, por ejemplo «Recuadro: CASINO-43 (mejor CASINO-43 1.38, margen 0.09)».
+- **Lo que aún no se midió:** el acierto en vivo con la webcam de la demo. Las fotos del Drive se tomaron con celular sobre una mesa; la webcam ve otra luz y otro fondo. Mostrar el producto en la **pantalla de un celular** (una foto) en vez del producto real empeora el resultado: reflejos y el marco del teléfono.
 - **Para que acierte más:** tomar fotos de cada producto con la misma cámara y luz de la demo (`capturar`, ver `docker-compose.camara.yml`) y regenerar la galería.
 
 ## 4. Pago con tu QR y la notificación

@@ -401,3 +401,73 @@ def test_from_files_loads_the_segmenter_only_for_free_background(tmp_path, monke
         tmp_path / "g.npz", source, tmp_path / "e.onnx", segmenter=tmp_path / "s.onnx"
     )
     assert (fixed.free_background, free.free_background) == (False, True)
+
+
+# ---------- Galería del recuadro guía ----------
+
+
+def test_center_crop_and_mask_look_at_the_middle():
+    from kiosk.recognizer import center_crop, center_mask
+
+    img = np.zeros((100, 200, 3), np.uint8)
+    img[40:60, 90:110] = 255
+    crop = center_crop(img, 0.6)
+    assert crop.shape[:2] == (60, 60)
+    assert crop[30, 30].tolist() == [255, 255, 255]  # el centro de la foto queda al centro
+    mask = center_mask(50)
+    assert mask[25, 25] == 1 and mask[0, 0] == 0  # las esquinas (el fondo) no cuentan
+
+
+def test_ranking_with_top_averages_the_best_prints_of_each_product():
+    from kiosk.recognizer import Gallery
+
+    g = Gallery(
+        np.array([[1.0, 0.0], [0.0, 1.0], [0.8, 0.6], [0.8, 0.6]], np.float32),
+        np.array(["A", "A", "B", "B"]),
+        np.array([0, 1, 2, 3]),
+        top=2,
+    )
+    # A tiene una huella idéntica pero la otra no se parece; B se parece en las dos
+    ranking = dict(g.ranking(np.array([1.0, 0.0], np.float32)))
+    assert ranking["A"] == pytest.approx(0.5)
+    assert ranking["B"] == pytest.approx(0.8)
+    g.top = 1
+    assert g.ranking(np.array([1.0, 0.0], np.float32))[0][0] == "A"
+
+
+def test_gallery_save_and_load_keep_box_settings(tmp_path):
+    from kiosk.recognizer import Gallery
+
+    g = Gallery(
+        np.eye(2, dtype=np.float32),
+        np.array(["A", "B"]),
+        np.array([0, 1]),
+        140,
+        0.8,
+        2,
+        np.array(["seg", "c60"]),
+        1.2,
+        0.05,
+    )
+    g.save(tmp_path / "g.npz")
+    back = Gallery.load(tmp_path / "g.npz")
+    assert (back.size, back.color_weight, back.top, back.threshold, back.margin) == (140, 0.8, 2, 1.2, 0.05)
+    assert back.views.tolist() == ["seg", "c60"]
+
+
+def test_leave_one_out_can_query_with_the_box_view():
+    from kiosk.recognizer import Gallery, leave_one_out
+
+    g = Gallery(
+        np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]], np.float32),
+        np.array(["A", "A", "B", "B"]),
+        np.array([0, 0, 1, 1]),
+        views=np.array(["seg", "c60", "seg", "c60"]),
+    )
+    # Sin vista, la consulta es la primera huella de cada foto (el recorte); con «c60», el recuadro.
+    # En los dos casos cada foto se compara solo con la otra, que es de otro producto.
+    assert leave_one_out(g)[:2] == (0, 2)
+    hits, total, misses = leave_one_out(g, "c60")
+    assert (hits, total) == (0, 2)
+    assert [m[:2] for m in misses] == [("A", "B"), ("B", "A")]
+    assert leave_one_out(g, "c99")[1] == 0  # vista que no existe: nada que evaluar

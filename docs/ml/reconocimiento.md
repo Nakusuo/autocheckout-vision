@@ -40,6 +40,17 @@ La resta del fondo se calcula a la mitad de resolución (~6 ms). El cuadro compl
 
 El reconocimiento corre **en otro hilo**: la pantalla y los botones no se congelan mientras se procesa un cuadro.
 
+## Cámara del navegador (recuadro guía)
+
+La demo web no recorta el producto: manda el recuadro central de la cámara, con algo de fondo. Por eso tiene su propia galería, que suma a cada foto sus recuadros centrales del 45, 60 y 80 %:
+
+```bash
+python -m kiosk.recognizer galeria --recuadro    # → ml/data/models/galeria-recuadro.npz
+python -m kiosk.recognizer --galeria ../ml/data/models/galeria-recuadro.npz evaluar
+```
+
+Con las 107 fotos, el acierto con el recuadro sube de 77,6 % a 85,0 %. Aceptando solo con margen claro sobre el segundo producto, acierta el 96 % de lo que acepta. El detalle y la regla de agregado automático están en `docs/DEMO_WEB.md`.
+
 ## Pasos
 
 Requisitos:

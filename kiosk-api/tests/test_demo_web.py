@@ -163,7 +163,7 @@ def solid(color, size=64) -> np.ndarray:
     return np.full((size, size, 3), color, np.uint8)
 
 
-def recognizer(threshold=1.2) -> CropRecognizer:
+def recognizer(threshold=1.2, margin=None, **gallery_options) -> CropRecognizer:
     from kiosk.recognizer import fingerprints
 
     vectors, labels = [], []
@@ -171,23 +171,42 @@ def recognizer(threshold=1.2) -> CropRecognizer:
         img = solid(color)
         vectors.append(fingerprints(fake_embed, img, np.ones(img.shape[:2], np.uint8)))
         labels.append(sku)
-    gallery = Gallery(np.vstack(vectors), np.array(labels), np.arange(2))
-    return CropRecognizer(fake_embed, gallery, threshold)
+    gallery = Gallery(np.vstack(vectors), np.array(labels), np.arange(2), **gallery_options)
+    return CropRecognizer(fake_embed, gallery, threshold, margin)
 
 
 def jpeg(img: np.ndarray) -> bytes:
     return cv2.imencode(".jpg", img)[1].tobytes()
 
 
-def test_crop_recognizer_returns_best_product_and_score():
-    sku, score = recognizer().recognize(solid((30, 30, 200)))
-    assert sku == "CASINO-43"
-    assert score > 1.2
+def test_crop_recognizer_returns_best_product_score_and_margin():
+    found = recognizer().recognize(solid((30, 30, 200)))
+    assert found.sku == "CASINO-43"
+    assert found.score > 1.2
+    assert found.margin > 0
+    assert found.match is True
+
+
+def test_crop_recognizer_needs_a_clear_margin_over_the_second():
+    # Parecido de sobra, pero sin ventaja suficiente sobre el segundo: no cuenta.
+    found = recognizer(threshold=0.0, margin=5.0).recognize(solid((30, 30, 200)))
+    assert (found.sku, found.match) == ("CASINO-43", False)
+
+
+def test_crop_recognizer_uses_the_values_measured_for_its_gallery():
+    base = recognizer()._gallery
+    base.threshold, base.margin = 1.3, 0.07
+    measured = CropRecognizer(fake_embed, base)
+    assert (measured.threshold, measured.margin) == (1.3, 0.07)
+    assert CropRecognizer(fake_embed, base, 1.1, 0.0).threshold == 1.1  # lo que se pasa manda
+    base.threshold = base.margin = None
+    legacy = CropRecognizer(fake_embed, base)
+    assert (legacy.threshold, legacy.margin) == (1.0, 0.0)  # galerías de antes del recuadro
 
 
 def test_crop_recognizer_reads_jpeg_bytes_and_rejects_garbage():
     rec = recognizer()
-    assert rec.recognize_bytes(jpeg(solid((200, 60, 20))))[0] == "RITZ-20"
+    assert rec.recognize_bytes(jpeg(solid((200, 60, 20)))).sku == "RITZ-20"
     assert rec.recognize_bytes(b"no es imagen") is None
     assert rec.recognize_bytes(b"") is None
     assert rec.recognize_bytes(jpeg(solid((200, 60, 20), size=16))) is None  # muy chica
@@ -201,7 +220,7 @@ def test_crop_recognizer_from_files(tmp_path, monkeypatch):
     monkeypatch.setattr(module.Embedder, "from_model", classmethod(lambda cls, p, s: fake_embed))
     rec = module.CropRecognizer.from_files(tmp_path / "g.npz", tmp_path / "e.onnx", threshold=1.0)
     assert rec.threshold == 1.0
-    assert rec.recognize(solid((30, 30, 200)))[0] == "CASINO-43"
+    assert rec.recognize(solid((30, 30, 200))).sku == "CASINO-43"
 
 
 # --- Endpoints -------------------------------------------------------------------------
@@ -245,6 +264,7 @@ def test_frame_endpoint_low_similarity_is_no_match(qr_file):
     ).json()
     assert (body["match"], body["sku"], body["name"]) == (False, None, None)
     assert body["score"] > 0
+    assert "margin" in body
 
 
 def test_frame_endpoint_validates_the_upload(qr_file):

@@ -41,6 +41,7 @@ MODELS = REPO / "ml" / "data" / "models"
 DEFAULT_EMBEDDER = MODELS / "dinov2-small.onnx"
 DEFAULT_SEGMENTER = MODELS / "silueta.onnx"
 DEFAULT_GALLERY = MODELS / "galeria.npz"
+DEFAULT_BOX_GALLERY = MODELS / "galeria-recuadro.npz"  # «galeria --recuadro» (cámara del navegador)
 
 log = logging.getLogger(__name__)
 
@@ -152,12 +153,16 @@ class Segmenter:
 
 
 def fingerprints(
-    embed: Embedder, crop: np.ndarray, mask: np.ndarray, rotations: int = 1
+    embed: Embedder,
+    crop: np.ndarray,
+    mask: np.ndarray,
+    rotations: int = 1,
+    color_weight: float = COLOR_WEIGHT,
 ) -> np.ndarray:
     """Huella = [DINOv2, √peso·color]: el producto punto suma ambos parecidos."""
     views = [crop] + [cv2.rotate(crop, r) for r in (0, 1, 2)][: rotations - 1]
     shape = embed(views)
-    color = np.sqrt(COLOR_WEIGHT) * color_hist(crop, mask)
+    color = np.sqrt(color_weight) * color_hist(crop, mask)
     return np.hstack([shape, np.tile(color, (len(views), 1))]).astype(np.float32)
 
 
@@ -167,34 +172,100 @@ class Gallery:
     labels: np.ndarray  # (n,) SKU de cada huella
     photos: np.ndarray  # (n,) foto de origen (las 4 rotaciones comparten número)
     size: int = EMBED_SIZE  # el quiosco debe describir los cuadros con el mismo tamaño
+    color_weight: float = COLOR_WEIGHT  # con el que se hicieron las huellas: la consulta lo repite
+    top: int = 1  # parecido de un SKU = promedio de sus `top` huellas más parecidas
+    # Vista de cada huella: «seg» (producto recortado) o «c60» (recuadro central del 60 %, etc.)
+    views: np.ndarray | None = None
+    threshold: float | None = None  # umbral y margen medidos para esta galería (si se midieron)
+    margin: float | None = None
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
+        extra: dict[str, np.ndarray] = {}
+        if self.views is not None:
+            extra["views"] = self.views
+        if self.threshold is not None:
+            extra["threshold"] = np.array(self.threshold)
+        if self.margin is not None:
+            extra["margin"] = np.array(self.margin)
         np.savez_compressed(
-            path, vectors=self.vectors, labels=self.labels, photos=self.photos, size=self.size
+            path,
+            vectors=self.vectors,
+            labels=self.labels,
+            photos=self.photos,
+            size=self.size,
+            color_weight=self.color_weight,
+            top=self.top,
+            **extra,  # type: ignore[arg-type]  # numpy tipa mal los **kwargs de savez
         )
 
     @classmethod
     def load(cls, path: Path) -> "Gallery":
         with np.load(path, allow_pickle=False) as data:
-            size = int(data["size"]) if "size" in data.files else 224
-            return cls(data["vectors"], data["labels"], data["photos"], size)
+            files = set(data.files)
+
+            def value(key: str, default):
+                return data[key].item() if key in files else default
+
+            return cls(
+                data["vectors"],
+                data["labels"],
+                data["photos"],
+                int(value("size", 224)),
+                float(value("color_weight", COLOR_WEIGHT)),
+                int(value("top", 1)),
+                data["views"] if "views" in files else None,
+                value("threshold", None),
+                value("margin", None),
+            )
 
     def ranking(self, vector: np.ndarray, skip_photo: int | None = None) -> list[tuple[str, float]]:
-        """Mejor parecido por SKU, de mayor a menor."""
+        """Parecido por SKU (promedio de sus `top` huellas más parecidas), de mayor a menor.
+
+        Con `top` > 1 un producto con muchas fotos no gana solo por tener una que se parezca
+        por casualidad: necesita varias."""
         scores = self.vectors @ vector
+        keep = self.photos != skip_photo if skip_photo is not None else slice(None)
+        scores, labels = scores[keep], self.labels[keep]
         best: dict[str, float] = {}
-        for label, photo, score in zip(self.labels, self.photos, scores, strict=True):
-            if photo == skip_photo:
-                continue
-            best[str(label)] = max(best.get(str(label), -9.0), float(score))
+        for label in np.unique(labels):
+            mine = np.sort(scores[labels == label])[::-1][: self.top]
+            best[str(label)] = float(mine.mean())
         return sorted(best.items(), key=lambda kv: -kv[1])
 
 
+def center_crop(bgr: np.ndarray, fraction: float) -> np.ndarray:
+    """Cuadrado central de lado `fraction` × el lado menor: lo que ve un recuadro guía."""
+    rows, cols = bgr.shape[:2]
+    side = max(1, int(fraction * min(rows, cols)))
+    top, left = (rows - side) // 2, (cols - side) // 2
+    return bgr[top : top + side, left : left + side]
+
+
+def center_mask(side: int, fraction: float = 0.8) -> np.ndarray:
+    """Círculo central: el color se mide donde está el producto, no en el fondo de las esquinas."""
+    mask = np.zeros((side, side), np.uint8)
+    cv2.circle(mask, (side // 2, side // 2), int(side * fraction / 2), 1, -1)
+    return mask
+
+
+def view_name(fraction: float) -> str:
+    return f"c{round(fraction * 100)}"
+
+
 def build_gallery(
-    raw: Path, embed: Embedder, segment: Segmenter, skus: set[str] | None = None
+    raw: Path,
+    embed: Embedder,
+    segment: Segmenter,
+    skus: set[str] | None = None,
+    crops: tuple[float, ...] = (),
+    color_weight: float = COLOR_WEIGHT,
+    top: int = 1,
 ) -> Gallery:
-    vectors, labels, photos = [], [], []
+    """Galería con el producto recortado de cada foto (4 rotaciones). Con `crops`, suma además el
+    recuadro central de cada foto en esos tamaños: así se ve lo que manda el navegador (producto
+    con algo de fondo), y la consulta se parece a la galería."""
+    vectors, labels, photos, views = [], [], [], []
     photo = 0
     folders = sorted(p for p in raw.iterdir() if p.is_dir() and (skus is None or p.name in skus))
     for folder in folders:
@@ -203,22 +274,47 @@ def build_gallery(
             if image is None or (found := isolate(image, segment(image))) is None:
                 print(f"  sin producto visible, se omite: {folder.name}/{path.name}")
                 continue
-            fp = fingerprints(embed, *found, rotations=4)
-            vectors.append(fp)
-            labels += [folder.name] * len(fp)
-            photos += [photo] * len(fp)
+            parts = [("seg", fingerprints(embed, *found, rotations=4, color_weight=color_weight))]
+            for fraction in crops:
+                box = center_crop(image, fraction)
+                fp = fingerprints(
+                    embed, box, center_mask(box.shape[0]), rotations=4, color_weight=color_weight
+                )
+                parts.append((view_name(fraction), fp))
+            for name, fp in parts:
+                vectors.append(fp)
+                labels += [folder.name] * len(fp)
+                photos += [photo] * len(fp)
+                views += [name] * len(fp)
             photo += 1
     if not vectors:
         raise ValueError(f"No hay fotos en {raw}")
     size = getattr(embed, "size", EMBED_SIZE)
-    return Gallery(np.vstack(vectors), np.array(labels), np.array(photos), size)
+    return Gallery(
+        np.vstack(vectors),
+        np.array(labels),
+        np.array(photos),
+        size,
+        color_weight,
+        top,
+        np.array(views) if crops else None,
+    )
 
 
-def leave_one_out(gallery: Gallery) -> tuple[int, int, list[tuple[str, str, float]]]:
-    """Reconoce cada foto (sin rotar) con las demás. Devuelve aciertos, total y fallos."""
+def leave_one_out(
+    gallery: Gallery, query_view: str | None = None
+) -> tuple[int, int, list[tuple[str, str, float]]]:
+    """Reconoce cada foto (sin rotar) con las demás. Devuelve aciertos, total y fallos.
+
+    `query_view` (p. ej. «c60»): la consulta es esa vista de la foto, como el recuadro guía."""
     hits, total, misses = 0, 0, []
     for photo in np.unique(gallery.photos):
-        i = int(np.flatnonzero(gallery.photos == photo)[0])
+        mine = gallery.photos == photo
+        if query_view is not None and gallery.views is not None:
+            mine &= gallery.views == query_view
+        if not mine.any():
+            continue
+        i = int(np.flatnonzero(mine)[0])
         ranking = gallery.ranking(gallery.vectors[i], skip_photo=int(photo))
         truth, (guess, score) = str(gallery.labels[i]), ranking[0]
         total += 1
@@ -512,11 +608,29 @@ class SimilarityDetector:
         return [sku] if score >= self._threshold else [UNKNOWN]
 
 
-# Con recuadro guía el recorte trae algo de fondo: los aciertos dan ~1,2 (mediana con las fotos del
-# Drive, recorte central) y fotos completas con mucho fondo bajan a ~1,0. Como el cliente confirma
-# con «Agregar», se prefiere sugerir de más. Se ajusta con KIOSK_THRESHOLD mirando el log.
-BOX_THRESHOLD = 1.0
+# Galería del recuadro guía («galeria --recuadro»). Medido con las 107 fotos del Drive, consulta =
+# recuadro central del 60 % y cada foto fuera de la galería (ver docs/ml/reconocimiento.md):
+# - galería solo con el producto recortado, color 0,5, mejor huella: 77,6 % de aciertos;
+# - + recuadros centrales del 45/60/80 %, color medido en el centro, peso 0,8 y promedio de las
+#   2 mejores huellas: 85,0 %;
+# - y aceptando solo con parecido ≥ 1,2 y margen ≥ 0,05 sobre el segundo: acepta 82/107 y acierta
+#   79 (96 %). El margen es lo que evita confundir empaques parecidos (Casino y Cancún).
+BOX_CROPS = (0.45, 0.6, 0.8)
+BOX_COLOR_WEIGHT = 0.8
+BOX_TOP = 2
+BOX_THRESHOLD = 1.2
+BOX_MARGIN = 0.05
+# Galerías hechas antes del recuadro (sin umbral guardado): los aciertos daban ~1,0–1,2.
+LEGACY_BOX_THRESHOLD = 1.0
 MAX_UPLOAD_BYTES = 2_000_000
+
+
+@dataclass(frozen=True)
+class BoxMatch:
+    sku: str  # el más parecido (aunque no alcance el umbral)
+    score: float
+    margin: float  # ventaja sobre el segundo producto más parecido
+    match: bool  # parecido y margen suficientes para tomarlo como ese producto
 
 
 class CropRecognizer:
@@ -524,32 +638,61 @@ class CropRecognizer:
 
     El cliente centra el producto en un recuadro de la pantalla y solo esa parte de la imagen
     llega aquí. No hay modelo de fondo ni segmentación (U²-Net tarda >1 s por cuadro en la laptop
-    de desarrollo): el recorte va directo a la huella, ~100 ms. Medido con las fotos del Drive
-    (recorte central del 60 %, dejando cada foto fuera): 83/107 = 78 % de aciertos. Por eso la
-    cámara solo *sugiere* el producto y el cliente lo agrega con un toque.
+    de desarrollo): el recorte va directo a la huella, ~100 ms. Un producto cuenta solo si se
+    parece lo suficiente (`threshold`) y le saca ventaja al segundo (`margin`).
     """
 
-    def __init__(self, embed: Embedder, gallery: Gallery, threshold: float = BOX_THRESHOLD):
+    def __init__(
+        self,
+        embed: Embedder,
+        gallery: Gallery,
+        threshold: float | None = None,
+        margin: float | None = None,
+    ):
         self._embed = embed
         self._gallery = gallery
-        self.threshold = threshold
+        # Lo que se pase manda; si no, lo medido para esta galería; si no, lo de antes.
+        self.threshold = (
+            threshold
+            if threshold is not None
+            else gallery.threshold
+            if gallery.threshold is not None
+            else LEGACY_BOX_THRESHOLD
+        )
+        self.margin = (
+            margin if margin is not None else gallery.margin if gallery.margin is not None else 0.0
+        )
         self._lock = threading.Lock()  # una sesión ONNX: una imagen a la vez
 
     @classmethod
     def from_files(
-        cls, gallery: Path, embedder: Path = DEFAULT_EMBEDDER, threshold: float = BOX_THRESHOLD
+        cls,
+        gallery: Path,
+        embedder: Path = DEFAULT_EMBEDDER,
+        threshold: float | None = None,
+        margin: float | None = None,
     ) -> "CropRecognizer":
         loaded = Gallery.load(gallery)
-        return cls(Embedder.from_model(embedder, loaded.size), loaded, threshold)
+        return cls(Embedder.from_model(embedder, loaded.size), loaded, threshold, margin)
 
-    def recognize(self, bgr: np.ndarray) -> tuple[str, float]:
-        """Mejor producto y su parecido (el que llama decide con `threshold`)."""
-        mask = np.ones(bgr.shape[:2], np.uint8)
+    def recognize(self, bgr: np.ndarray) -> BoxMatch:
+        """Producto más parecido, su parecido y su ventaja sobre el segundo."""
+        # Galería con recuadros: el color se mide en el centro, igual que en sus huellas.
+        if self._gallery.views is not None:
+            mask = center_mask(min(bgr.shape[:2]))
+            side = mask.shape[0]
+            top, left = (bgr.shape[0] - side) // 2, (bgr.shape[1] - side) // 2
+            bgr = bgr[top : top + side, left : left + side]
+        else:
+            mask = np.ones(bgr.shape[:2], np.uint8)
         with self._lock:
-            vector = fingerprints(self._embed, bgr, mask)[0]
-        return self._gallery.ranking(vector)[0]
+            vector = fingerprints(self._embed, bgr, mask, color_weight=self._gallery.color_weight)[0]
+        ranking = self._gallery.ranking(vector)
+        sku, score = ranking[0]
+        margin = score - ranking[1][1] if len(ranking) > 1 else score
+        return BoxMatch(sku, score, margin, score >= self.threshold and margin >= self.margin)
 
-    def recognize_bytes(self, data: bytes) -> tuple[str, float] | None:
+    def recognize_bytes(self, data: bytes) -> BoxMatch | None:
         """Imagen JPEG/PNG tal como llega por HTTP. None si no es una imagen válida."""
         if not data or len(data) > MAX_UPLOAD_BYTES:
             return None
@@ -641,6 +784,11 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--catalogo", type=Path, default=REPO / "catalog" / "products.csv")
     build.add_argument("--segmenter", type=Path, default=DEFAULT_SEGMENTER)
     build.add_argument("--tamano", type=int, default=EMBED_SIZE, help="lado para DINOv2 (×14)")
+    build.add_argument(
+        "--recuadro",
+        action="store_true",
+        help="galería para la cámara del navegador (recuadro guía): galeria-recuadro.npz",
+    )
     sub.add_parser("evaluar", help="aciertos dejando cada foto fuera")
     live = sub.add_parser("camara", help="prueba en vivo con la webcam")
     live.add_argument("--camera", type=int, default=0)
@@ -674,12 +822,19 @@ def main(argv: list[str] | None = None) -> int:
 
         skus = {p.sku for p in Catalog.from_csv(args.catalogo).all()}
         missing = sorted(skus - {p.name for p in args.raw.iterdir() if p.is_dir()})
+        if args.recuadro and args.galeria == DEFAULT_GALLERY:
+            args.galeria = DEFAULT_BOX_GALLERY
         gallery = build_gallery(
             args.raw,
             Embedder.from_model(args.embedder, args.tamano),
             Segmenter.from_model(args.segmenter),
             skus,
+            crops=BOX_CROPS if args.recuadro else (),
+            color_weight=BOX_COLOR_WEIGHT if args.recuadro else COLOR_WEIGHT,
+            top=BOX_TOP if args.recuadro else 1,
         )
+        if args.recuadro:
+            gallery.threshold, gallery.margin = BOX_THRESHOLD, BOX_MARGIN
         gallery.save(args.galeria)
         photos, products = len(np.unique(gallery.photos)), len(np.unique(gallery.labels))
         print(f"Galería: {photos} fotos de {products} productos → {args.galeria}")
@@ -687,7 +842,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Sin fotos (no se podrán reconocer): {', '.join(missing)}")
         return 0
     if args.cmd == "evaluar":
-        hits, total, misses = leave_one_out(Gallery.load(args.galeria))
+        loaded = Gallery.load(args.galeria)
+        # Galería del recuadro: se evalúa como la usa el navegador (recuadro central del 60 %)
+        query = "c60" if loaded.views is not None and "c60" in loaded.views else None
+        hits, total, misses = leave_one_out(loaded, query)
         print(f"Aciertos dejando cada foto fuera: {hits}/{total} = {hits / total:.0%}")
         for truth, guess, score in misses:
             print(f"  {truth} → {guess} ({score:.2f})")

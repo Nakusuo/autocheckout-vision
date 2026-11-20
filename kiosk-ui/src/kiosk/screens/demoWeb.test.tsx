@@ -71,11 +71,72 @@ describe("CamaraWeb", () => {
   });
 });
 
+describe("CamaraWeb: agregado automático", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  /** Cámara y servidor simulados: cada cuadro responde con el siguiente SKU de la lista. */
+  function stubFrames(answers: (string | null)[]) {
+    stubCamera(() => Promise.resolve({ getTracks: () => [] }));
+    vi.spyOn(HTMLVideoElement.prototype, "videoWidth", "get").mockReturnValue(640);
+    vi.spyOn(HTMLVideoElement.prototype, "videoHeight", "get").mockReturnValue(480);
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage: () => undefined } as never);
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((cb) => cb(new Blob(["x"])));
+    const fetch = vi.fn(async () => {
+      const sku = answers.shift() ?? null;
+      const body = sku ? { match: true, sku, name: `Producto ${sku}`, price_cents: 150 } : { match: false };
+      return { ok: true, json: async () => body } as Response;
+    });
+    vi.stubGlobal("fetch", fetch);
+    return fetch;
+  }
+
+  async function frames(n: number) {
+    for (let i = 0; i < n; i++) await act(async () => vi.advanceTimersByTime(400));
+  }
+
+  it("agrega solo tras verlo igual 3 veces y avisa «Agregado»", async () => {
+    vi.useFakeTimers();
+    stubFrames(["CASINO-43", "CASINO-43", "CASINO-43", "CASINO-43"]);
+    const onAdd = vi.fn();
+    render(<CamaraWeb disabled={false} onAdd={onAdd} />);
+    await frames(2);
+    expect(screen.getByText("Producto CASINO-43")).toBeInTheDocument();
+    expect(screen.getByText("Mantenlo quieto…")).toBeInTheDocument();
+    expect(onAdd).not.toHaveBeenCalled();
+    await frames(2);
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    expect(onAdd).toHaveBeenCalledWith("CASINO-43");
+    expect(screen.getByText("Agregado: Producto CASINO-43")).toBeInTheDocument();
+  });
+
+  it("deshabilitada (sin conexión o agregando) no agrega nada", async () => {
+    vi.useFakeTimers();
+    stubFrames(Array(5).fill("CASINO-43"));
+    const onAdd = vi.fn();
+    render(<CamaraWeb disabled onAdd={onAdd} />);
+    await frames(5);
+    expect(onAdd).not.toHaveBeenCalled();
+    expect(screen.getByText("Pon un producto dentro del recuadro amarillo.")).toBeInTheDocument();
+  });
+});
+
 describe("Escaneo con la cámara del navegador", () => {
   it("muestra la cámara en vez de la bandeja", () => {
     render(<Escaneo snapshot={base} offline={false} />);
     expect(screen.getByText("Pon un producto dentro del recuadro amarillo.")).toBeInTheDocument();
     expect(screen.queryByText(/Pasa tus productos uno por uno/)).not.toBeInTheDocument();
+    // Lista vacía: en horizontal se ve junto a la cámara (en vertical el CSS la oculta).
+    expect(screen.getByText(/Tu lista está vacía/)).toBeInTheDocument();
+  });
+
+  it("CONFIRMAR y CANCELAR van juntos y CONFIRMAR espera un producto", () => {
+    render(<Escaneo snapshot={base} offline={false} />);
+    const confirm = screen.getByRole("button", { name: "CONFIRMAR" });
+    expect(confirm).toBeDisabled();
+    expect(confirm.parentElement).toBe(screen.getByRole("button", { name: "CANCELAR COMPRA" }).parentElement);
   });
 
   it("con productos, mantiene la cámara y la lista", () => {
@@ -97,6 +158,14 @@ describe("PagoQrPropio", () => {
     expect(screen.getByText("Escanea con Yape o Plin")).toBeInTheDocument();
     expect(screen.getByText("110 s")).toBeInTheDocument();
     expect(screen.getByText("Esperando la confirmación del pago")).toBeInTheDocument();
+  });
+
+  it("pide escribir el monto exacto, sin cortarlo en dos líneas", () => {
+    render(<PagoQrPropio snapshot={paying} offline={false} />);
+    // El QR es fijo: el cliente escribe el monto y el pago solo se acepta si coincide.
+    const step = screen.getByText(/^Escribe exactamente/);
+    expect(step.textContent).toBe("Escribe exactamente S/\u00a02.80");
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
   });
 
   it("sin imagen configurada lo avisa", () => {

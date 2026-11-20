@@ -52,12 +52,19 @@ class NotificationIn(BaseModel):
     text: str = Field(min_length=1, max_length=500)
 
 
+class FrameMatch(Protocol):
+    """Resultado de un recuadro (kiosk.recognizer.BoxMatch)."""
+
+    sku: str
+    score: float
+    margin: float
+    match: bool
+
+
 class FrameRecognizer(Protocol):
     """Reconocedor del recuadro guía (kiosk.recognizer.CropRecognizer, extra `vision`)."""
 
-    threshold: float
-
-    def recognize_bytes(self, data: bytes) -> tuple[str, float] | None: ...
+    def recognize_bytes(self, data: bytes) -> FrameMatch | None: ...
 
 
 MAX_FRAME_BYTES = 2_000_000
@@ -240,8 +247,8 @@ def create_app(
 
         @app.post("/api/vision/frame")
         async def vision_frame(request: Request) -> dict:
-            """Recibe el recuadro guía (JPEG/PNG) y devuelve el producto sugerido. No cambia la
-            compra: el cliente decide con «Agregar»."""
+            """Recibe el recuadro guía (JPEG/PNG) y devuelve el producto reconocido. No cambia la
+            compra: la pantalla lo agrega cuando lo ve igual varias veces seguidas."""
             kind = request.headers.get("content-type", "").split(";")[0].strip()
             if kind not in ("image/jpeg", "image/png"):
                 raise HTTPException(status_code=415, detail="Se espera una imagen JPEG o PNG")
@@ -253,19 +260,22 @@ def create_app(
             found = await asyncio.to_thread(recognizer.recognize_bytes, data)
             if found is None:
                 raise HTTPException(status_code=422, detail="Imagen inválida")
-            sku, score = found
+            sku = found.sku
             product = service.catalog.get(sku)
-            match = product is not None and score >= recognizer.threshold
+            match = product is not None and found.match
             label = sku if match else "nada"
             if label != last_seen["label"]:  # solo los cambios: sirve para ajustar el umbral
-                log.info("Recuadro: %s (mejor %s %.2f)", label, sku, score)
+                log.info(
+                    "Recuadro: %s (mejor %s %.2f, margen %.2f)", label, sku, found.score, found.margin
+                )
                 last_seen["label"] = label
             return {
                 "match": match,
                 "sku": sku if match else None,
                 "name": product.name if match and product else None,
                 "price_cents": product.price_cents if match and product else None,
-                "score": round(score, 3),
+                "score": round(found.score, 3),
+                "margin": round(found.margin, 3),
             }
 
     if wallet_qr_file is not None:

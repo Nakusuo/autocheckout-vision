@@ -1,4 +1,4 @@
-import { BOX_FRACTION, guideBox, toSuggestion } from "./camara";
+import { AUTO_ADD_START, BOX_FRACTION, guideBox, stepAutoAdd, toSuggestion, type AutoAdd } from "./camara";
 
 describe("guideBox", () => {
   it("con la vista del mismo formato que el video, recorta el 60 % del alto, centrado", () => {
@@ -37,5 +37,38 @@ describe("toSuggestion", () => {
     { match: true, sku: 3, name: "Y", price_cents: 1 },
   ])("sin coincidencia clara no sugiere nada (%j)", (body) => {
     expect(toSuggestion(body)).toBeNull();
+  });
+});
+
+describe("stepAutoAdd", () => {
+  const run = (frames: (string | null)[]) => {
+    let state: AutoAdd = AUTO_ADD_START;
+    const added: string[] = [];
+    for (const sku of frames) {
+      const step = stepAutoAdd(state, sku);
+      state = step.state;
+      if (step.add) added.push(step.add);
+    }
+    return added;
+  };
+
+  it("agrega un producto visto 3 veces seguidas, una sola vez aunque siga en el recuadro", () => {
+    expect(run(["CASINO", "CASINO"])).toEqual([]);
+    expect(run(["CASINO", "CASINO", "CASINO"])).toEqual(["CASINO"]);
+    expect(run(Array(12).fill("CASINO"))).toEqual(["CASINO"]);
+  });
+
+  it("un parpadeo con otro producto reinicia la cuenta y no agrega nada", () => {
+    expect(run(["CASINO", "CANCUN", "CASINO", "CANCUN", "CASINO"])).toEqual([]);
+  });
+
+  it("para sumar otra unidad hay que sacarlo del recuadro y volver a meterlo", () => {
+    const again = ["CASINO", "CASINO", "CASINO", null, "CASINO", "CASINO", "CASINO"];
+    expect(run(again)).toEqual(["CASINO"]); // un solo cuadro vacío puede ser un parpadeo
+    expect(run(["CASINO", "CASINO", "CASINO", null, null, "CASINO", "CASINO", "CASINO"])).toEqual(["CASINO", "CASINO"]);
+  });
+
+  it("si entra otro producto enseguida, también se agrega", () => {
+    expect(run(["CASINO", "CASINO", "CASINO", "RITZ", "RITZ", "RITZ"])).toEqual(["CASINO", "RITZ"]);
   });
 });
