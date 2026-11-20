@@ -101,8 +101,8 @@ DevOps une desarrollo y operación en un ciclo continuo, con automatización y r
 | Probar | ruff, mypy, bandit, oxlint, pytest (cobertura ≥ 90 %), vitest, Playwright, prueba de humo en contenedores, mutación semanal | `.github/workflows/ci.yml`, `mutation.yml` |
 | Publicar (*release*) | Imágenes en GHCR etiquetadas con el SHA del commit y `latest` | `.github/workflows/cd.yml` |
 | Desplegar | Pasarela: deploy hook de Render y espera de `/health`. Quiosco: `docker compose pull` | `cd.yml`, `render.yaml` |
-| Operar | `restart: unless-stopped`, volúmenes, log rotado (`kiosk.log`), recalibrar y reactivar desde `/caja` | `docker-compose.yml`, panel de caja |
-| Monitorear | Sondas de salud. Métricas de negocio frente al SRS (`python -m kiosk.metrics`). Alertas de seguridad en `/caja` | `kiosk/metrics.py`, `/api/alerts` |
+| Operar | `restart: unless-stopped`, volúmenes, log rotado (`kiosk.log`), reactivar desde `/ayuda` | `docker-compose.yml`, panel de caja |
+| Monitorear | Sondas de salud. Métricas de negocio frente al SRS (`python -m kiosk.metrics`). Alertas de seguridad en `/ayuda` | `kiosk/metrics.py`, `/api/alerts` |
 
 **Seguridad integrada (DevSecOps):** gitleaks busca secretos en todo el historial, bandit hace análisis estático de Python, `npm audit` revisa dependencias, y Dependabot actualiza pip, npm, Actions y, desde ahora, las imágenes base de Docker.
 
@@ -145,7 +145,7 @@ flowchart LR
 
 ```bash
 cp .env.example .env            # cambia GATEWAY_API_KEY por una clave larga
-docker compose up --build       # http://localhost:5173  ·  /sim  ·  /caja
+docker compose up --build       # http://localhost:5173  ·  /ayuda
 # Prueba de humo (otra terminal):
 docker compose cp mock-gateway:/app/keys/ca.pem /tmp/ca.pem
 python3 ops/smoke_compose.py --ca /tmp/ca.pem

@@ -1,8 +1,9 @@
-# Demo web «el celular es la máquina»: cámara del navegador con recuadro guía, pago con TU QR de
-# Yape/Plin y la notificación de pago simulada desde /sim. Ver docs/DEMO_WEB.md.
+# Demo web «el celular es la máquina»: cámara del navegador con recuadro guía y pago con TU QR de
+# Yape/Plin. El pago se confirmará con la notificación que mande la app Android (pendiente); sin
+# ella el cobro por QR no se completa. Ver docs/DEMO_WEB.md.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
-#   → http://localhost:5173 (quiosco)  ·  http://localhost:5173/sim (simular el yapeo)
+#   → http://localhost:5173 (quiosco)  ·  http://localhost:5173/ayuda (ayuda y alertas)
 #
 # Requiere: ml/data/models/ (galeria-recuadro.npz y modelos, ver docs/ml/reconocimiento.md) y la imagen de tu
 # QR en privado/yape-qr.png (fuera de git; legible: chmod a+r privado/yape-qr.png).
@@ -18,7 +19,6 @@ services:
       # Galería del recuadro guía: python -m kiosk.recognizer galeria --recuadro (docs/ml)
       KIOSK_GALLERY: /app/ml/data/models/galeria-recuadro.npz
       KIOSK_YAPE_QR: /app/privado/yape-qr.png
-      KIOSK_SIMULAR_PAGO: "on"
       # Por defecto se usan el parecido mínimo (1,2) y el margen (0,05) guardados en la galería.
       # Para ajustarlos mirando las líneas «Recuadro: …» del log:
       # KIOSK_THRESHOLD: "1.2"
