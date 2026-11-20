@@ -58,6 +58,11 @@ class FakeGateway:
         amount = self.paid_amount if self.paid_amount is not None else self.amounts[-1]
         return sign(charge_id=charge_id, amount_cents=amount)
 
+    def confirm(self, charge_id: str) -> None:
+        if charge_id != "ch_1":
+            raise PaymentError("Cobro no encontrado")
+        self.paid = True
+
 
 class FakeYape:
     """Yape falso: devuelve los resultados encolados en `results` (o aprueba)."""

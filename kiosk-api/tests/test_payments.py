@@ -91,15 +91,18 @@ def _gateway(handler) -> HttpGateway:
 def test_http_gateway_create_and_poll():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["X-API-Key"] == "k"
-        if request.method == "POST":
+        if request.method == "POST" and request.url.path == "/charges":
             return httpx.Response(
                 201, json={"charge_id": "ch_1", "qr_payload": "q", "status": "PENDING"}
             )
+        if request.method == "POST" and request.url.path == "/charges/ch_1/confirm":
+            return httpx.Response(200, json={"charge_id": "ch_1", "status": "PAID"})
         return httpx.Response(200, json={"charge_id": "ch_1", "status": "PAID", "token": "t"})
 
     gw = _gateway(handler)
     charge = gw.create_charge(530, "venta-1")
     assert (charge.id, charge.qr_payload) == ("ch_1", "q")
+    gw.confirm("ch_1")
     assert gw.poll("ch_1") == "t"
 
 
@@ -109,6 +112,8 @@ def test_http_gateway_errors_become_payment_error():
         gw.create_charge(530, "venta-1")
     with pytest.raises(PaymentError):
         gw.poll("ch_1")
+    with pytest.raises(PaymentError):
+        gw.confirm("ch_1")
 
 
 def test_replay_registry_forgets_expired_tokens():

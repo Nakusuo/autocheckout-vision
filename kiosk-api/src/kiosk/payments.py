@@ -36,6 +36,8 @@ class PaymentGateway(Protocol):
 
     def poll(self, charge_id: str) -> str | None: ...
 
+    def confirm(self, charge_id: str) -> None: ...
+
 
 class JwtVerifier:
     """Valida la confirmación firmada RS256 de la pasarela y rechaza reenvíos (jti)."""
@@ -108,6 +110,9 @@ class HttpGateway:
 
     def poll(self, charge_id: str) -> str | None:
         return self._call("GET", f"/charges/{charge_id}").get("token")
+
+    def confirm(self, charge_id: str) -> None:
+        self._call("POST", f"/charges/{charge_id}/confirm")
 
 
 # --- Yape vía Mercado Pago (Checkout API) -------------------------------------------------

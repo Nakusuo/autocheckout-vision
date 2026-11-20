@@ -152,6 +152,8 @@ def test_no_qr_gateway_refuses_qr():
     with pytest.raises(PaymentError, match="Yape"):
         NoQrGateway().create_charge(100, "venta-1")
     assert NoQrGateway().poll("x") is None
+    with pytest.raises(PaymentError, match="no con QR"):
+        NoQrGateway().confirm("x")  # la caja no puede aprobar un QR que no existe
 
 
 def test_background_mode_defaults_to_fixed_tray(tmp_path):

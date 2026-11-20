@@ -187,6 +187,10 @@ def create_app(
         service.finish_yape(reference, amount, outcome)
         return service.snapshot()
 
+    @app.post("/api/caja/accept-payment")
+    async def accept_payment() -> dict:
+        return act(service.accept_payment)
+
     @app.post("/api/recalibrate")
     async def recalibrate() -> dict:
         return act(service.recalibrate)

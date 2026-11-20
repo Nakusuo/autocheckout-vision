@@ -205,6 +205,17 @@ class KioskService:
         self._reference = reference
         self._last_poll = float("-inf")
 
+    def accept_payment(self) -> None:
+        """La caja aprueba el cobro simulado vigente; se valida el token firmado."""
+        if self.checkout.state is not State.PAYING or self._charge is None:
+            raise TransitionError("No hay un pago pendiente para aprobar")
+        try:
+            self._gateway.confirm(self._charge.id)
+        except PaymentError as e:
+            raise TransitionError("No se pudo aprobar el pago. Intente de nuevo") from e
+        self._last_poll = float("-inf")
+        self._poll_payment()
+
     def begin_yape(self) -> tuple[int, str]:
         """Reserva el cobro con Yape: valida el estado y devuelve (monto, referencia).
 
