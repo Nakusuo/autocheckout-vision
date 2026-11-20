@@ -11,7 +11,7 @@ from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocke
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.responses import FileResponse, JSONResponse
 
-from kiosk.checkout import TransitionError
+from kiosk.checkout import State, TransitionError
 from kiosk.scale import SimulatedScale
 from kiosk.service import KioskService, Reading
 from kiosk.tray import SimulatedTray
@@ -256,10 +256,13 @@ def create_app(
             kind = request.headers.get("content-type", "").split(";")[0].strip()
             if kind not in ("image/jpeg", "image/png"):
                 raise HTTPException(status_code=415, detail="Se espera una imagen JPEG o PNG")
+            declared = request.headers.get("content-length", "")
+            if declared.isdigit() and int(declared) > MAX_FRAME_BYTES:  # sin leerla entera
+                raise HTTPException(status_code=413, detail="Imagen demasiado grande")
             data = await request.body()
             if len(data) > MAX_FRAME_BYTES:
                 raise HTTPException(status_code=413, detail="Imagen demasiado grande")
-            if service.snapshot()["screen"] != "W2":
+            if service.checkout.state is not State.SCANNING:
                 raise HTTPException(status_code=409, detail="La cámara solo reconoce al escanear")
             found = await asyncio.to_thread(recognizer.recognize_bytes, data)
             if found is None:
@@ -288,9 +291,9 @@ def create_app(
         async def wallet_qr() -> FileResponse:
             return FileResponse(wallet_qr_file, headers={"Cache-Control": "no-store"})
 
-    def notify(text: str) -> dict:
+    def notify(text: str, simulated: bool = False) -> dict:
         try:
-            return service.wallet_notification(text)
+            return service.wallet_notification(text, simulated=simulated)
         except TransitionError as e:
             raise HTTPException(status_code=409, detail=str(e)) from e
 
@@ -298,7 +301,7 @@ def create_app(
 
         @app.post("/sim/wallet-notification")
         async def sim_wallet_notification(body: NotificationIn) -> dict:
-            return notify(body.text)
+            return notify(body.text, simulated=True)
 
     if notifier_key:
 

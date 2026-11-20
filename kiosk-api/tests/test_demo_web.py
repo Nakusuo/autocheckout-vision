@@ -213,6 +213,24 @@ def test_crop_recognizer_reads_jpeg_bytes_and_rejects_garbage():
     assert rec.recognize_bytes(b"x" * 2_000_001) is None
 
 
+def test_crop_recognizer_rejects_decompression_bombs():
+    # PNG chico en bytes pero de 17,6 MP: se descarta por la cabecera, sin abrirlo.
+    bomb = cv2.imencode(".png", np.zeros((4200, 4200), np.uint8))[1].tobytes()
+    assert len(bomb) < 2_000_000
+    assert recognizer().recognize_bytes(bomb) is None
+
+
+def test_image_size_reads_png_and_jpeg_headers():
+    from kiosk.recognizer import image_size
+
+    img = solid((1, 2, 3), size=40)[:, :30]
+    assert image_size(cv2.imencode(".png", img)[1].tobytes()) == (30, 40)
+    assert image_size(jpeg(img)) == (30, 40)
+    assert image_size(b"\xff\xd8\x00\x00") is None  # JPEG roto
+    assert image_size(b"\xff\xd8") is None  # sin cuadro
+    assert image_size(b"GIF89a") is None
+
+
 def test_crop_recognizer_from_files(tmp_path, monkeypatch):
     import kiosk.recognizer as module
 
@@ -299,6 +317,7 @@ def test_simulated_notification_pays(qr_file):
     r = http.post("/sim/wallet-notification", json={"text": "Juan te yapeó S/ 2.80"})
     assert r.json()["matched"] is True
     assert svc.snapshot()["screen"] == "W4"
+    assert svc.pos.receipts[-1]["charge_id"] == "sim-billetera-venta-1"  # se distingue de la real
 
 
 def test_notifier_endpoint_requires_the_key(qr_file):

@@ -14,6 +14,7 @@ from kiosk.payments import (
     JwtVerifier,
     PaymentError,
     PaymentGateway,
+    UnverifiedPayment,
     YapeProvider,
     YapeResult,
     parse_wallet_notification,
@@ -244,12 +245,25 @@ class KioskService:
             return self._yape.charge(amount_cents, reference, phone, otp)
         except PaymentError as e:
             return e
+        except Exception as e:  # un fallo inesperado no debe dejar el cobro «en curso» para siempre
+            log.exception("Error inesperado al cobrar con Yape")
+            return PaymentError(f"Error inesperado: {e}")
 
     def finish_yape(
         self, reference: str, amount_cents: int, outcome: YapeResult | PaymentError
     ) -> None:
         """Aplica el resultado del cobro (en el bucle principal)."""
         self._yape_busy = False
+        if isinstance(outcome, UnverifiedPayment):
+            # Quizá ya se cobró: sin reintentos, la caja revisa la operación.
+            self._yape_attempts = MAX_YAPE_ATTEMPTS
+            self._yape_error = "No se pudo verificar el pago. Pida ayuda en caja"
+            self._cashier_alert(
+                f"Pago Yape aprobado sin verificar ({reference}, operación "
+                f"{outcome.payment_id}, S/ {outcome.amount_cents / 100:.2f}): revisar en Mercado Pago"
+            )
+            log.error("Pago Yape %s aprobado sin verificar: %s", outcome.payment_id, outcome)
+            return
         if isinstance(outcome, PaymentError):
             log.warning("Cobro con Yape fallido: %s", outcome)
             self._yape_error = "No se pudo conectar con Yape. Intente de nuevo"
@@ -272,10 +286,11 @@ class KioskService:
             return
         self._complete_sale(reference, outcome.payment_id, cart)
 
-    def wallet_notification(self, text: str) -> dict:
+    def wallet_notification(self, text: str, simulated: bool = False) -> dict:
         """Notificación de pago recibido en el celular del comercio (Yape/Plin a su QR).
 
-        Se acepta solo si hay un cobro esperando y el monto es exactamente el total. Devuelve
+        Se acepta solo si hay un cobro esperando y el monto es exactamente el total. Con
+        `simulated` (demo, /sim) la boleta queda con `charge_id` «sim-billetera-…». Devuelve
         `{"matched": bool, "reason"?: str, "receipt"?: str}` para quien la envió.
         RIESGO CONOCIDO: un pago ajeno por el mismo monto, durante la espera, se tomaría como este.
         """
@@ -293,7 +308,7 @@ class KioskService:
                 "reason": f"Monto distinto: llegó S/ {notice.amount_cents / 100:.2f}, "
                 f"se espera S/ {cart.total_cents / 100:.2f}",
             }
-        charge_id = f"billetera-{self._reference}"
+        charge_id = f"{'sim-' if simulated else ''}billetera-{self._reference}"
         self._complete_sale(self._reference, charge_id, cart)
         self._payer = notice.payer
         receipt = self._receipt or {}
@@ -309,22 +324,27 @@ class KioskService:
 
     def _orphan_payment(self, outcome: YapeResult, reference: str) -> None:
         """Mercado Pago aprobó un cobro que ya no corresponde a la compra en pantalla: la caja
-        debe devolverlo. Queda como alerta que nunca se descarta (outcome «pagada»)."""
-        alert = {
-            "id": self._next_alert_id,
-            "reason": (
-                f"Pago Yape aprobado sin compra en curso ({reference}, operación "
-                f"{outcome.payment_id}, S/ {outcome.amount_cents / 100:.2f}): devolver"
-            ),
-            "screen": SCREEN[self.checkout.state],
-            "at": self._clock(),
-            "times": 1,
-            "outcome": "pagada",
-        }
-        self._next_alert_id += 1
-        self.security_alerts.append(alert)
-        self._trim_alerts()
+        debe devolverlo."""
+        self._cashier_alert(
+            f"Pago Yape aprobado sin compra en curso ({reference}, operación "
+            f"{outcome.payment_id}, S/ {outcome.amount_cents / 100:.2f}): devolver"
+        )
         log.error("Pago Yape %s aprobado sin compra en curso", outcome.payment_id)
+
+    def _cashier_alert(self, reason: str) -> None:
+        """Alerta de dinero para la caja: nunca se descarta sola (outcome «pagada»)."""
+        self.security_alerts.append(
+            {
+                "id": self._next_alert_id,
+                "reason": reason,
+                "screen": SCREEN[self.checkout.state],
+                "at": self._clock(),
+                "times": 1,
+                "outcome": "pagada",
+            }
+        )
+        self._next_alert_id += 1
+        self._trim_alerts()
 
     def recover(self) -> None:
         self._do(self.checkout.recover)

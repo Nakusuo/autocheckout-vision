@@ -14,6 +14,7 @@ from kiosk.payments import (
     YAPE_DEFAULT_MESSAGE,
     MercadoPagoYape,
     PaymentError,
+    UnverifiedPayment,
     YapeResult,
     yape_message,
 )
@@ -185,7 +186,15 @@ def test_non_json_or_unexpected_body_raises():
 def test_confirmation_must_match_the_sale(confirm):
     server = MpServer()
     server.confirm_body = confirm
-    with pytest.raises(PaymentError, match="no coincide"):
+    with pytest.raises(UnverifiedPayment, match="no coincide") as info:
+        client(server).charge(530, "venta-1", "111111111", "123456")
+    assert info.value.payment_id == "123" and info.value.amount_cents == 530
+
+
+def test_confirmation_network_failure_is_unverified_not_a_retry():
+    server = MpServer()
+    server.raise_on = "/v1/payments/123"
+    with pytest.raises(UnverifiedPayment, match="no disponible"):
         client(server).charge(530, "venta-1", "111111111", "123456")
 
 
@@ -295,6 +304,30 @@ def test_gateway_error_shows_a_connection_message():
     assert snap["screen"] == "QR"
     assert snap["payment_error"] == "No se pudo conectar con Yape. Intente de nuevo"
     assert snap["payment_processing"] is False
+
+
+def test_unverified_approval_alerts_the_cashier_and_blocks_retries():
+    svc, tray, _, yape, _ = make_service()
+    to_payment(svc, tray)
+    yape.results = [UnverifiedPayment("no coincide", "555", 250)]
+    pay(svc)
+    snap = svc.snapshot()
+    assert snap["screen"] == "QR"
+    assert "pida ayuda en caja" in snap["payment_error"].lower()
+    alert = svc.security_alerts[-1]
+    assert "555" in alert["reason"] and alert["outcome"] == "pagada"
+    with pytest.raises(TransitionError, match="Demasiados intentos"):
+        svc.begin_yape()
+
+
+def test_unexpected_error_frees_the_payment():
+    svc, tray, _, yape, _ = make_service()
+    to_payment(svc, tray)
+    yape.results = [RuntimeError("bug")]
+    pay(svc)
+    snap = svc.snapshot()
+    assert snap["payment_processing"] is False
+    assert snap["payment_error"] == "No se pudo conectar con Yape. Intente de nuevo"
 
 
 def test_cannot_cancel_or_time_out_while_processing():

@@ -35,6 +35,7 @@ class NoCamera:
     /api/vision/frame; el quiosco no lee ninguna cámara propia."""
 
     def detect(self) -> list[str]:
+        """Nunca ve nada: los productos llegan por /api/vision/frame."""
         return []
 
 
@@ -171,13 +172,16 @@ def wallet_settings(env: Mapping[str, str]) -> tuple[Path, bool, str | None]:
     """KIOSK_PAYMENT=yape-qr: (imagen del QR, simular notificaciones, clave del notificador).
 
     - KIOSK_YAPE_QR: imagen PNG/JPG del QR del comercio (la de «Mi QR» en Yape; fuera de git).
-    - KIOSK_SIMULAR_PAGO=off apaga /sim/wallet-notification (encendido por defecto: demo web).
+    - KIOSK_SIMULAR_PAGO=on enciende /sim/wallet-notification (solo demo: marca la venta como
+      pagada sin dinero real). Apagado por defecto.
     - KIOSK_NOTIFIER_KEY (≥ 16 caracteres) habilita /api/pay/notification para la app Android.
     """
     path = Path(env.get("KIOSK_YAPE_QR") or REPO / "privado" / "yape-qr.png")
     if path.suffix.lower() not in (".png", ".jpg", ".jpeg") or not path.is_file():
         sys.exit(f"KIOSK_PAYMENT=yape-qr: falta la imagen de tu QR de Yape en {path} (PNG o JPG)")
-    simulate = env.get("KIOSK_SIMULAR_PAGO", "on") != "off"
+    simulate = env.get("KIOSK_SIMULAR_PAGO", "off") == "on"
+    if simulate:
+        log.warning("KIOSK_SIMULAR_PAGO=on: /sim/wallet-notification da ventas por pagadas (demo)")
     key = env.get("KIOSK_NOTIFIER_KEY") or None
     if key is not None and len(key) < 16:
         sys.exit("KIOSK_NOTIFIER_KEY debe tener al menos 16 caracteres")
@@ -208,12 +212,15 @@ class NoQrGateway:
     """Con Yape no se generan QR: si algo lo pidiera, falla con un error claro."""
 
     def create_charge(self, amount_cents: int, reference: str) -> Charge:
+        """Siempre falla: este quiosco no genera QR de la pasarela."""
         raise PaymentError("Este quiosco cobra con Yape, no con QR")
 
     def poll(self, charge_id: str) -> str | None:
+        """Sin cobros de la pasarela no hay nada que consultar."""
         return None
 
     def confirm(self, charge_id: str) -> None:
+        """Siempre falla: no hay cobro de la pasarela que aprobar."""
         raise PaymentError("Este quiosco cobra con Yape, no con QR")
 
 
@@ -244,9 +251,9 @@ def main() -> None:
     scale = SimulatedScale()
     try:
         detector, tray = build_detector(mode, catalog, scale, os.environ)
-    except (OSError, ValueError) as e:  # cámara que no abre, KIOSK_CAMERA/KIOSK_ZONE inválidos
-        sys.exit(f"No se pudo preparar la cámara: {e}")
-    recognizer = build_recognizer(os.environ) if mode == "web" else None
+        recognizer = build_recognizer(os.environ) if mode == "web" else None
+    except (OSError, ValueError) as e:  # cámara que no abre, modelo que falta, número inválido
+        sys.exit(f"No se pudo preparar la cámara o el reconocedor: {e}")
     yape = build_yape(os.environ, keys) if payment == "yape" else None
     wallet = wallet_settings(os.environ) if payment == "yape-qr" else None
     if yape is not None or wallet is not None:
@@ -300,7 +307,9 @@ def main() -> None:
         service,
         tray,
         scale if tray is not None else None,
-        threaded_sensing=tray is None,  # cámara: reconocer sin congelar la pantalla
+        # Cámara del quiosco: reconocer en otro hilo sin congelar la pantalla. En «web» la
+        # cámara está en el navegador y no hay nada que leer aquí.
+        threaded_sensing=tray is None and mode != "web",
         recognizer=recognizer,
         wallet_qr_file=wallet_file,
         simulate_wallet=simulate_wallet,

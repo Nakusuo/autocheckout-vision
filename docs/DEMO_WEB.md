@@ -53,7 +53,7 @@ Mientras no pongas tu QR, la pantalla de pago muestra una imagen de ejemplo que 
 
 - El QR es el **estático** de tu Yape. El cliente escribe el monto en su app. Ese QR también se puede pagar desde Plin y las apps de bancos (QR interoperable).
 - El pago se da por hecho cuando llega una **notificación** con el **monto exacto** del total mientras la pantalla espera. Endpoints:
-  - `POST /sim/wallet-notification {"text": "..."}`: solo para la demo. Se apaga con `KIOSK_SIMULAR_PAGO=off`.
+  - `POST /sim/wallet-notification {"text": "..."}`: solo para la demo. Solo existe con `KIOSK_SIMULAR_PAGO=on` (apagado por defecto; `docker-compose.demo.yml` lo enciende).
   - `POST /api/pay/notification` con `Authorization: Bearer <KIOSK_NOTIFIER_KEY>`: para la futura app Android. Sin la clave responde 401.
 - El intérprete (`parse_wallet_notification` en `kiosk-api/src/kiosk/payments.py`) toma el monto «S/ …» y, si lo encuentra, el nombre. **Los formatos son supuestos:** no se han visto notificaciones reales de Yape ni de Plin en este proyecto. Hay que confirmarlos con avisos reales antes de la app.
 - **Riesgos conocidos:**

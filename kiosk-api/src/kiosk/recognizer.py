@@ -165,7 +165,7 @@ def fingerprints(
     color_weight: float = COLOR_WEIGHT,
 ) -> np.ndarray:
     """Huella = [DINOv2, √peso·color]: el producto punto suma ambos parecidos."""
-    views = [crop] + [cv2.rotate(crop, r) for r in (0, 1, 2)][: rotations - 1]
+    views = [crop] + [cv2.rotate(crop, r) for r in (0, 1, 2)[: rotations - 1]]
     shape = embed(views)
     color = np.sqrt(color_weight) * color_hist(crop, mask)
     return np.hstack([shape, np.tile(color, (len(views), 1))]).astype(np.float32)
@@ -255,6 +255,7 @@ def center_mask(side: int, fraction: float = 0.8) -> np.ndarray:
 
 
 def view_name(fraction: float) -> str:
+    """Nombre de la vista de un recorte central en la galería: 0.45 → «c45»."""
     return f"c{round(fraction * 100)}"
 
 
@@ -518,6 +519,7 @@ class SimilarityDetector:
 
     @property
     def free_background(self) -> bool:
+        """True si separa el producto del fondo con el segmentador (no necesita bandeja vacía)."""
         return self._segmenter is not None
 
     def _blobs(self, mask: np.ndarray) -> int:
@@ -628,14 +630,41 @@ BOX_MARGIN = 0.05
 # Galerías hechas antes del recuadro (sin umbral guardado): los aciertos daban ~1,0–1,2.
 LEGACY_BOX_THRESHOLD = 1.0
 MAX_UPLOAD_BYTES = 2_000_000
+MAX_UPLOAD_PIXELS = 4096 * 4096
+# Marcadores JPEG «inicio de cuadro» (SOF): traen el alto y el ancho. C4, C8 y CC no lo son.
+_JPEG_SOF = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+
+
+def image_size(data: bytes) -> tuple[int, int] | None:
+    """(ancho, alto) leídos de la cabecera PNG o JPEG, sin decodificar. None si no se reconoce."""
+    if data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) >= 24:
+        return int.from_bytes(data[16:20]), int.from_bytes(data[20:24])
+    if data[:2] != b"\xff\xd8":
+        return None
+    i = 2
+    while i + 9 <= len(data):
+        if data[i] != 0xFF:
+            return None
+        marker = data[i + 1]
+        if marker in _JPEG_SOF:
+            return int.from_bytes(data[i + 7 : i + 9]), int.from_bytes(data[i + 5 : i + 7])
+        i += 2 + int.from_bytes(data[i + 2 : i + 4])
+    return None
 
 
 @dataclass(frozen=True)
 class BoxMatch:
+    """Resultado de reconocer un recuadro guía."""
+
     sku: str  # el más parecido (aunque no alcance el umbral)
     score: float
     margin: float  # ventaja sobre el segundo producto más parecido
     match: bool  # parecido y margen suficientes para tomarlo como ese producto
+
+
+def _first(*values: float | None) -> float:
+    """El primer valor que no sea None (el último siempre lo es)."""
+    return next(v for v in values if v is not None)
 
 
 class CropRecognizer:
@@ -657,16 +686,8 @@ class CropRecognizer:
         self._embed = embed
         self._gallery = gallery
         # Lo que se pase manda; si no, lo medido para esta galería; si no, lo de antes.
-        self.threshold = (
-            threshold
-            if threshold is not None
-            else gallery.threshold
-            if gallery.threshold is not None
-            else LEGACY_BOX_THRESHOLD
-        )
-        self.margin = (
-            margin if margin is not None else gallery.margin if gallery.margin is not None else 0.0
-        )
+        self.threshold = _first(threshold, gallery.threshold, LEGACY_BOX_THRESHOLD)
+        self.margin = _first(margin, gallery.margin, 0.0)
         self._lock = threading.Lock()  # una sesión ONNX: una imagen a la vez
 
     @classmethod
@@ -677,6 +698,7 @@ class CropRecognizer:
         threshold: float | None = None,
         margin: float | None = None,
     ) -> "CropRecognizer":
+        """Carga la galería y el modelo DINOv2 del disco."""
         loaded = Gallery.load(gallery)
         return cls(Embedder.from_model(embedder, loaded.size), loaded, threshold, margin)
 
@@ -701,6 +723,9 @@ class CropRecognizer:
         """Imagen JPEG/PNG tal como llega por HTTP. None si no es una imagen válida."""
         if not data or len(data) > MAX_UPLOAD_BYTES:
             return None
+        size = image_size(data)
+        if size is None or size[0] * size[1] > MAX_UPLOAD_PIXELS:
+            return None  # se mira la cabecera antes de abrirla: 2 MB pueden ser miles de MP
         image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
         if image is None or min(image.shape[:2]) < 32:
             return None

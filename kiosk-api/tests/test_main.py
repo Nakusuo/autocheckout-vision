@@ -193,9 +193,9 @@ def test_wallet_settings(tmp_path):
     with pytest.raises(SystemExit, match="falta la imagen"):
         wallet_settings({"KIOSK_YAPE_QR": str(qr)})
     qr.write_bytes(b"png")
-    assert wallet_settings({"KIOSK_YAPE_QR": str(qr)}) == (qr, True, None)
-    env = {"KIOSK_YAPE_QR": str(qr), "KIOSK_SIMULAR_PAGO": "off", "KIOSK_NOTIFIER_KEY": "k" * 16}
-    assert wallet_settings(env) == (qr, False, "k" * 16)
+    assert wallet_settings({"KIOSK_YAPE_QR": str(qr)}) == (qr, False, None)
+    env = {"KIOSK_YAPE_QR": str(qr), "KIOSK_SIMULAR_PAGO": "on", "KIOSK_NOTIFIER_KEY": "k" * 16}
+    assert wallet_settings(env) == (qr, True, "k" * 16)
     with pytest.raises(SystemExit, match="16 caracteres"):
         wallet_settings({"KIOSK_YAPE_QR": str(qr), "KIOSK_NOTIFIER_KEY": "corta"})
     txt = tmp_path / "qr.txt"

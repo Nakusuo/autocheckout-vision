@@ -139,7 +139,20 @@ class YapeResult:
     amount_cents: int
 
 
+class UnverifiedPayment(PaymentError):
+    """Mercado Pago aprobó el cobro pero la consulta de verificación falló o no coincide.
+
+    El cliente quizá ya pagó: no se debe reintentar, la caja revisa la operación `payment_id`."""
+
+    def __init__(self, message: str, payment_id: str, amount_cents: int):
+        super().__init__(message)
+        self.payment_id = payment_id
+        self.amount_cents = amount_cents
+
+
 class YapeProvider(Protocol):
+    """Cobra con Yape. Errores de red o de configuración lanzan `PaymentError`."""
+
     def charge(self, amount_cents: int, reference: str, phone: str, otp: str) -> YapeResult: ...
 
 
@@ -238,7 +251,10 @@ class MercadoPagoYape:
     def _confirm(self, payment_id: str, amount_cents: int, reference: str, auth: dict) -> None:
         """No basta con la primera respuesta: se vuelve a consultar el pago y se exige que esté
         aprobado, por el mismo monto y con la referencia de esta venta."""
-        data = self._json(self._send("GET", f"/v1/payments/{payment_id}", headers=auth))
+        try:
+            data = self._json(self._send("GET", f"/v1/payments/{payment_id}", headers=auth))
+        except PaymentError as e:
+            raise UnverifiedPayment(str(e), payment_id, amount_cents) from e
         amount = data.get("transaction_amount")
         if (
             data.get("status") != "approved"
@@ -246,7 +262,11 @@ class MercadoPagoYape:
             or round(amount * 100) != amount_cents
             or data.get("external_reference") != reference
         ):
-            raise PaymentError(f"El pago {payment_id} no coincide con la venta {reference}")
+            raise UnverifiedPayment(
+                f"El pago {payment_id} no coincide con la venta {reference}",
+                payment_id,
+                amount_cents,
+            )
 
 
 YAPE_MESSAGES = {
