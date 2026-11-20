@@ -123,10 +123,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pago", choices=["qr", "yape"], default="qr", help="medio de pago")
     args = parser.parse_args(argv)
 
-    for page in ("/", "/sim", "/caja"):
+    for page in ("/", "/ayuda"):
         status, raw = request("GET", f"{UI}{page}")
         check(status == 200 and b"<div id=\"root\"" in raw, f"{page} → {status}")
-    step("nginx sirve la interfaz en /, /sim y /caja")
+    step("nginx sirve la interfaz en / y /ayuda")
 
     status, _ = request("POST", f"{UI}/api/start", headers={"Origin": "http://malicioso.test"})
     check(status == 403, f"un origen ajeno debía dar 403 y dio {status}")

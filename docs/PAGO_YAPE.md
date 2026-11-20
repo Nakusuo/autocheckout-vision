@@ -53,7 +53,7 @@ Código: `MercadoPagoYape` en `kiosk-api/src/kiosk/payments.py`; `begin_yape` / 
 | Cobrar dos veces el mismo intento | Cada intento lleva su propia `X-Idempotency-Key` (`venta-N-<uuid>`) |
 | Respuesta alterada o equivocada | Tras un «approved» se **vuelve a consultar** el pago (`GET /v1/payments/{id}`) y se exige estado aprobado, el mismo monto y la misma referencia de venta. Si no cuadra, no se entrega el ticket |
 | Cliente cancela mientras se cobra | Mientras Mercado Pago responde no se puede cancelar y no corre el tiempo límite de 120 s |
-| Pago aprobado que ya no corresponde a la compra en pantalla | No se da la compra por pagada. Se crea una **alerta en `/caja`** con la operación y el monto «para devolver», y nunca se descarta |
+| Pago aprobado que ya no corresponde a la compra en pantalla | No se da la compra por pagada. Se crea una **alerta en `/ayuda`** con la operación y el monto «para devolver», y nunca se descarta |
 | Probar códigos al azar | Máximo **3 rechazos** por compra. Luego se pide ayuda en caja |
 | Credenciales | `MP_ACCESS_TOKEN` y `MP_PUBLIC_KEY` solo por variables de entorno (`.env`, fuera de git) |
 
@@ -84,7 +84,7 @@ Sin Docker: `KIOSK_PAYMENT=yape MP_PUBLIC_KEY=... MP_ACCESS_TOKEN=... python -m 
 
 ## 5. Números de prueba
 
-Son los que publica Mercado Pago (código `123456` para todos). La imitación de `mock-gateway` responde igual. También aparecen en el panel `/sim`.
+Son los que publica Mercado Pago (código `123456` para todos). La imitación de `mock-gateway` responde igual. 
 
 | Celular | Resultado | Mensaje en el quiosco |
 |---|---|---|

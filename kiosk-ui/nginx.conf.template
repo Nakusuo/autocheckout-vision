@@ -1,4 +1,5 @@
 # Igual que el proxy de Vite (vite.config.ts): /api, /sim/ y /ws van a kiosk-api.
+# /sim/... son rutas de la API simulada que usan las pruebas automáticas (no hay página /sim).
 # El navegador ve un solo origen (http://localhost:5173), que es el único que acepta la API.
 server {
     listen 8080;
@@ -10,9 +11,8 @@ server {
 
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "no-referrer" always;
-    # /sim muestra la vista del cliente en un iframe del mismo origen: DENY lo dejaría en blanco.
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
     add_header Permissions-Policy "camera=(self), microphone=(), geolocation=()" always;
 
     location /api/ {
@@ -22,12 +22,6 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-    # /sim (sin barra) es la página del simulador; /sim/... son rutas de la API simulada.
-    # Sin esta regla exacta, nginx redirigiría /sim a /sim/ por el proxy de abajo.
-    location = /sim {
-        try_files /index.html =404;
     }
 
     location /sim/ {
@@ -46,7 +40,7 @@ server {
         proxy_read_timeout 1h;
     }
 
-    # Rutas de la aplicación (/, /sim, /caja): siempre index.html.
+    # Rutas de la aplicación (/ y /ayuda): siempre index.html.
     location / {
         try_files $uri $uri/ /index.html;
     }

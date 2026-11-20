@@ -1,7 +1,6 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { useKioskState, type Snapshot } from "../api";
-import { CajaPanel } from "./CajaPanel";
-import { SimPanel } from "./SimPanel";
+import { AyudaPanel } from "./AyudaPanel";
 
 /** WebSocket falso: las pruebas abren, cierran y empujan mensajes a mano. */
 class FakeSocket {
@@ -125,41 +124,15 @@ function stubAudio() {
   return starts;
 }
 
-describe("CajaPanel ventas y sonido", () => {
+describe("AyudaPanel sonido", () => {
   beforeEach(() => localStorage.clear());
-
-  it("muestra las ventas del día", async () => {
-    stubFetch((_m, path) =>
-      path === "/api/sales"
-        ? {
-            count: 2,
-            total_cents: 1250,
-            receipts: [
-              { number: "B001-00000002", issued_at: new Date(2026, 9, 12, 15, 4).toISOString(), items: 3, total_cents: 1000 },
-              { number: "B001-00000001", issued_at: new Date(2026, 9, 12, 9, 30).toISOString(), items: 1, total_cents: 250 },
-            ],
-          }
-        : [],
-    );
-    render(<CajaPanel />);
-    expect(await screen.findByText("B001-00000002", { exact: false })).toBeInTheDocument();
-    expect(screen.getByText("2 ventas")).toBeInTheDocument();
-    expect(screen.getByText(/15:04/)).toHaveTextContent("3 productos");
-    expect(screen.getByText(/09:30/)).toHaveTextContent("1 producto");
-  });
-
-  it("sin ventas muestra el estado vacío", async () => {
-    stubFetch((_m, path) => (path === "/api/sales" ? noSales : []));
-    render(<CajaPanel />);
-    expect(await screen.findByText("Aún no hay ventas hoy.")).toBeInTheDocument();
-  });
 
   it("pita cuando llega una solicitud nueva", async () => {
     const starts = stubAudio();
     let pending: { id: number; screen: string; at: number }[] = [];
     stubFetch((_m, path) => (path === "/api/sales" ? noSales : pending));
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    render(<CajaPanel />);
+    render(<AyudaPanel />);
     await screen.findByText("Sin solicitudes");
     expect(starts.n).toBe(0);
     pending = [{ id: 3, screen: "W2", at: 0 }];
@@ -175,33 +148,30 @@ describe("CajaPanel ventas y sonido", () => {
     let pending: { id: number; screen: string; at: number }[] = [];
     stubFetch((_m, path) => (path === "/api/sales" ? noSales : pending));
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const { unmount } = render(<CajaPanel />);
+    const { unmount } = render(<AyudaPanel />);
     fireEvent.click(screen.getByRole("button", { name: "Sonido: sí" }));
-    expect(localStorage.getItem("caja.sound")).toBe("off");
+    expect(localStorage.getItem("ayuda.sound")).toBe("off");
     pending = [{ id: 4, screen: "W2", at: 0 }];
     await act(() => vi.advanceTimersByTimeAsync(2000));
     expect(await screen.findByText(/Solicitud #4/)).toBeInTheDocument();
     expect(starts.n).toBe(0);
     unmount();
-    render(<CajaPanel />);
+    render(<AyudaPanel />);
     expect(screen.getByRole("button", { name: "Sonido: no" })).toBeInTheDocument();
   });
 });
 
-describe("CajaPanel", () => {
-  it("muestra los productos del QR y permite aprobar el pago simulado", async () => {
-    const calls = stubFetch((_m, path) => (path === "/api/sales" ? { count: 0, total_cents: 0, receipts: [] } : []));
-    render(<CajaPanel />);
+describe("AyudaPanel", () => {
+  it("no muestra compras, ventas ni pagos: solo ayuda y alertas", async () => {
+    stubFetch(() => []);
+    render(<AyudaPanel />);
     const ws = FakeSocket.all[0];
     ws.open();
-    ws.send(snap);
-    expect(screen.queryByRole("button", { name: "Aceptar pago simulado" })).not.toBeInTheDocument();
-    ws.send({ ...snap, state: "PAYING", screen: "QR", qr_payload: "https://localhost:8443/pay/ch_1" });
-    expect(screen.getByText("1 × Agua")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Aceptar pago simulado" }));
-    await waitFor(() => expect(calls).toContain("POST /api/caja/accept-payment"));
-    ws.send({ ...snap, state: "PAID", screen: "W4" });
-    expect(screen.getByText("Pago confirmado. Compra finalizada.")).toBeInTheDocument();
+    ws.send({ ...snap, state: "PAYING", screen: "QR" });
+    expect(await screen.findByText("Sin solicitudes")).toBeInTheDocument();
+    expect(screen.queryByText(/Agua/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ventas de hoy/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /pago/i })).not.toBeInTheDocument();
   });
 
   it("lista la ayuda pendiente y la marca como atendida", async () => {
@@ -211,78 +181,27 @@ describe("CajaPanel", () => {
       if (method === "DELETE") pending = [];
       return pending;
     });
-    render(<CajaPanel />);
+    render(<AyudaPanel />);
     expect(await screen.findByText(/Solicitud #7/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Atendido" }));
     expect(await screen.findByText("Sin solicitudes")).toBeInTheDocument();
     expect(calls).toContain("DELETE /api/help/7");
   });
 
-  it("«Recalibrar cámara» solo aparece con cámara y llama a la API", async () => {
+  it("«Reactivar quiosco» aparece solo fuera de servicio y llama a la API", async () => {
     const calls = stubFetch((_m, path) => (path === "/api/sales" ? noSales : []));
-    render(<CajaPanel />);
+    render(<AyudaPanel />);
     const ws = FakeSocket.all[0];
     ws.open();
     ws.send(snap);
-    expect(screen.queryByRole("button", { name: "Recalibrar cámara" })).not.toBeInTheDocument();
-
-    ws.send({ ...snap, camera: true });
-    fireEvent.click(screen.getByRole("button", { name: "Recalibrar cámara" }));
-    expect(await screen.findByRole("button", { name: "Calibrando…" })).toBeDisabled();
-    expect(calls).toContain("POST /api/recalibrate");
-  });
-
-  it("«Reactivar quiosco» solo se habilita fuera de servicio", async () => {
-    stubFetch((_m, path) => (path === "/api/sales" ? noSales : []));
-    render(<CajaPanel />);
-    const ws = FakeSocket.all[0];
-    ws.open();
-    ws.send(snap);
-    expect(screen.getByRole("button", { name: "Reactivar quiosco" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Reactivar quiosco" })).not.toBeInTheDocument();
     ws.send({ ...snap, screen: "FUERA_DE_SERVICIO", state: "OUT_OF_SERVICE" });
-    expect(screen.getByRole("button", { name: "Reactivar quiosco" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Reactivar quiosco" }));
+    await waitFor(() => expect(calls).toContain("POST /api/recover"));
   });
 });
 
-describe("SimPanel", () => {
-  const catalog = [{ sku: "AGUA", name: "Agua", price_cents: 250, weight_g: 651 }];
-
-  it("en modo cámara (sin rutas /sim) avisa y deja de consultar la bandeja", async () => {
-    const calls: string[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) => {
-        calls.push(url);
-        return Promise.resolve(new Response(JSON.stringify({ detail: "Not Found" }), { status: 404 }));
-      }),
-    );
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    render(<SimPanel />);
-    expect(await screen.findByText("El quiosco está en modo cámara")).toBeInTheDocument();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    const before = calls.length;
-    await act(() => vi.advanceTimersByTimeAsync(2000));
-    expect(calls.length).toBe(before);
-  });
-
-  it("sin balanza oculta «Sin escanear»; pasar por la cámara llama a /sim/scan", async () => {
-    const calls = stubFetch((_m, path) =>
-      path === "/sim/catalog" ? catalog : path.startsWith("/sim/") ? { tray: [], camera: [] } : snap,
-    );
-    render(<SimPanel />);
-    const ws = FakeSocket.all[0];
-    ws.open();
-    ws.send(snap);
-    fireEvent.click(await screen.findByRole("button", { name: "Pasar por la cámara" }));
-    await waitFor(() => expect(calls).toContain("POST /sim/scan"));
-    expect(screen.queryByRole("button", { name: "Sin escanear" })).not.toBeInTheDocument();
-
-    ws.send({ ...snap, weight_enabled: true });
-    expect(screen.getByRole("button", { name: "Sin escanear" })).toBeInTheDocument();
-  });
-});
-
-describe("CajaPanel alertas de seguridad", () => {
+describe("AyudaPanel alertas de seguridad", () => {
   const noSales = { count: 0, total_cents: 0, receipts: [] };
   const alert = { id: 9, reason: "Producto no reconocido frente a la cámara", screen: "W2", at: 0, times: 2, outcome: "pagada" };
 
@@ -306,7 +225,7 @@ describe("CajaPanel alertas de seguridad", () => {
   }
 
   it("muestra la alerta, pita y se marca como revisada", async () => {
-    localStorage.removeItem("caja.sound"); // otra prueba lo dejó apagado
+    localStorage.removeItem("ayuda.sound"); // otra prueba lo dejó apagado
     const starts = stubAudio();
     let alerts = [alert];
     const route: Route = (method, path) => {
@@ -319,7 +238,7 @@ describe("CajaPanel alertas de seguridad", () => {
     };
     alertRoutes.add(route);
     const calls = stubFetch(route);
-    render(<CajaPanel />);
+    render(<AyudaPanel />);
     expect(await screen.findByText(/Producto no reconocido frente a la cámara/)).toBeInTheDocument();
     expect(screen.getByText(/2 veces/)).toBeInTheDocument();
     expect(screen.getByText(/compra pagada/)).toBeInTheDocument();
@@ -334,7 +253,7 @@ describe("CajaPanel alertas de seguridad", () => {
       path === "/api/sales" ? noSales : path === "/api/alerts" ? [{ ...alert, times: 1, outcome: "en curso" }] : [];
     alertRoutes.add(route);
     stubFetch(route);
-    render(<CajaPanel />);
+    render(<AyudaPanel />);
     expect(await screen.findByText(/1 vez/)).toBeInTheDocument();
   });
 });

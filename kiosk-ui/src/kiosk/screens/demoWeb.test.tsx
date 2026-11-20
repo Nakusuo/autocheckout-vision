@@ -1,6 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { Snapshot } from "../../api";
-import { WalletNotifier } from "../../panels/WalletNotifier";
 import { CamaraWeb } from "./CamaraWeb";
 import { Escaneo } from "./Escaneo";
 import { PagoQrPropio } from "./PagoQrPropio";
@@ -228,38 +227,5 @@ describe("Ticket con boleta", () => {
   it("sin nombre del pagador no muestra esa fila", () => {
     render(<Ticket snapshot={{ ...paid, receipt: { ...paid.receipt, payer: null } }} />);
     expect(screen.queryByText("Pagó")).not.toBeInTheDocument();
-  });
-});
-
-describe("WalletNotifier", () => {
-  const paying = { ...base, state: "PAYING", screen: "QR" as const, total_cents: 280 };
-
-  it("propone el texto con el monto y avisa si el pago se aceptó", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ matched: true, receipt: "B001-00000001" })));
-    vi.stubGlobal("fetch", fetchMock);
-    render(<WalletNotifier snapshot={paying} />);
-    expect(screen.getByPlaceholderText("Juan Pérez te yapeó S/ 2.80")).toBeInTheDocument();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Simular yapeo recibido" })));
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/sim/wallet-notification",
-      expect.objectContaining({ body: JSON.stringify({ text: "Juan Pérez te yapeó S/ 2.80" }) }),
-    );
-    expect(screen.getByRole("status")).toHaveTextContent("Pago aceptado: boleta B001-00000001");
-  });
-
-  it("manda el texto escrito y muestra por qué no se aceptó", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ matched: false, reason: "Monto distinto" }))));
-    render(<WalletNotifier snapshot={paying} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Ana te yapeó S/ 1.00" } });
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Simular yapeo recibido" })));
-    expect(screen.getByRole("status")).toHaveTextContent("No se aceptó: Monto distinto");
-  });
-
-  it("antes del QR avisa que no se aceptará, y muestra errores de la API", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ detail: "Este quiosco no cobra con QR" }), { status: 409 })));
-    render(<WalletNotifier snapshot={base} />);
-    expect(screen.getByText(/aún no muestra el QR/)).toBeInTheDocument();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Simular yapeo recibido" })));
-    expect(screen.getByRole("status")).toHaveTextContent("Este quiosco no cobra con QR");
   });
 });

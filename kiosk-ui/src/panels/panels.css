@@ -1,4 +1,4 @@
-/* Paneles del equipo (/sim y /caja): misma identidad que el quiosco, en formato de laptop.
+/* Vista de ayuda del encargado (/ayuda): misma identidad que el quiosco, en formato de laptop.
    Tamaños en rem (no cqw): se usan con mouse, a distancia de escritorio. */
 body:has(.panel) { background: #f3f1ec; }
 
@@ -86,155 +86,15 @@ body:has(.panel) { background: #f3f1ec; }
   box-shadow: 0 0 0 2px var(--ink);
 }
 
-/* Estado del quiosco */
-.status { display: flex; flex-direction: column; gap: 0.75rem; }
-.status-screen { display: flex; align-items: center; gap: 0.75rem; }
-.status-code {
-  min-width: 3rem;
-  height: 3rem;
-  padding: 0.25rem 0.4rem 0;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--sign-red);
-  color: var(--sign-white);
-  font-weight: 900;
-}
-.status-name { font-size: 1.5rem; font-weight: 900; letter-spacing: -0.01em; }
-.status-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin: 0; }
-.status-facts div { padding: 0.5rem 0.7rem 0.4rem; border-radius: 10px; background: #f3f1ec; }
-.status-facts dt { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
-.status-facts dd { margin: 0; font-size: 1.15rem; font-weight: 900; }
-.status-facts dd.bad { color: var(--sign-red); }
-.status-alert {
-  margin: 0;
-  padding: 0.6rem 0.85rem 0.5rem;
-  border: 2px solid var(--ink);
-  border-radius: 10px;
-  background: var(--sign-yellow-soft);
-  font-weight: 800;
-}
-
-/* Simulador */
-.sim-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
-  gap: 1.25rem;
-  padding: 1.25rem 1.5rem 2rem;
-  max-width: 1500px;
-  margin: 0 auto;
-}
-.sim-main, .sim-side { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
-
-.scenarios { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.6rem; }
-.scenario {
+/* Ayuda: una columna, legible en laptop y en celular. */
+.ayuda-layout {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 0.2rem;
-  padding: 0.75rem 0.9rem 0.65rem;
-  text-align: left;
-  border: 2px solid var(--ink);
-  border-radius: 10px;
-  background: var(--sign-white);
-  font: inherit;
-  cursor: pointer;
-  transition: background-color 150ms var(--ease-out), transform 100ms var(--ease-out);
-}
-.scenario:hover:not(:disabled) { background: var(--sign-yellow-soft); }
-.scenario:disabled { opacity: 0.45; cursor: progress; }
-.scenario:active { transform: scale(0.98); }
-.scenario-label { font-weight: 900; }
-.scenario-detail { font-size: 0.82rem; color: var(--ink-soft); line-height: 1.3; }
-
-.products { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
-.product {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.65rem 0.8rem;
-  border: 2px solid var(--rule);
-  border-radius: 10px;
-  transition: border-color 150ms var(--ease-out), background-color 150ms var(--ease-out);
-}
-.product-info { display: flex; flex-direction: column; min-width: 0; }
-.product-name { font-weight: 800; }
-.product.on { border-color: var(--ink); }
-.product-count {
-  min-width: 2.4rem;
-  height: 2.4rem;
-  padding-top: 0.2rem;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  background: var(--ink);
-  color: var(--sign-white);
-  font-size: 1.15rem;
-  font-weight: 900;
-}
-.product:not(.on) .product-count { background: var(--disabled-bg); color: var(--disabled-ink); }
-.product-actions { display: flex; gap: 0.4rem; }
-.product.seen { border-color: var(--sign-red); background: var(--sign-yellow-soft); }
-.seen-tag {
-  display: inline-block;
-  white-space: nowrap;
-  margin-left: 0.5rem;
-  padding: 0.15rem 0.5rem 0.05rem;
-  border-radius: 6px;
-  background: var(--sign-red);
-  color: var(--sign-white);
-  font-size: 0.72rem;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  vertical-align: 0.1em;
-}
-.product-actions .pbtn { min-height: 2.5rem; padding: 0.45rem 0.8rem 0.3rem; font-size: 0.9rem; }
-.running {
-  padding: 0.25rem 0.7rem 0.1rem;
-  border-radius: 999px;
-  background: var(--sign-yellow);
-  font-size: 0.85rem;
-  font-weight: 800;
-}
-
-.trap { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.chip {
-  padding: 0.5rem 1rem 0.4rem;
-  border: 2px solid var(--ink);
-  border-radius: 999px;
-  background: var(--sign-white);
-  font: inherit;
-  font-weight: 800;
-  cursor: pointer;
-}
-.chip.active { background: var(--ink); color: var(--sign-white); }
-
-.remote { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.remote .pbtn { flex: 1 1 140px; }
-
-.preview { align-items: stretch; }
-.preview-frame {
-  width: 100%;
-  aspect-ratio: 9 / 16;
-  max-height: 70vh;
-  border: 0;
-  border-radius: 8px;
-  background: var(--asphalt);
-}
-
-/* Caja */
-.caja-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
   gap: 1.25rem;
   padding: 1.25rem 1.5rem 2rem;
-  max-width: 1300px;
+  max-width: 900px;
   margin: 0 auto;
-  align-items: start;
 }
-.caja-side { display: flex; flex-direction: column; gap: 1.25rem; }
 .count {
   min-width: 2rem;
   padding: 0.25rem 0.6rem 0.1rem;
@@ -269,32 +129,15 @@ body:has(.panel) { background: #f3f1ec; }
 .down p { margin: 0; }
 .down-icon { width: 3.5rem; flex: none; }
 
-.sale { display: flex; flex-direction: column; }
-.sale-line { display: flex; justify-content: space-between; gap: 1rem; padding: 0.5rem 0; border-bottom: 1px solid var(--rule); font-weight: 700; }
 .card-head-tools { display: flex; align-items: center; gap: 0.6rem; }
 .sound-toggle { min-height: 0; padding: 0.3rem 0.7rem 0.2rem; font-size: 0.9rem; }
-.receipt-line { font-weight: 600; font-size: 0.95rem; }
-.sale-total { border-bottom: 0; padding-top: 0.7rem; font-size: 1.2rem; font-weight: 900; }
 
 @media (max-width: 900px) {
-  .sim-layout, .caja-layout { grid-template-columns: 1fr; padding: 1rem; }
-  .product { grid-template-columns: 1fr auto; }
-  .product-actions { grid-column: 1 / -1; flex-wrap: wrap; }
+  .ayuda-layout { padding: 1rem; }
   .link-state { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .request { animation: none; }
-  .pbtn, .scenario, .product { transition: none; }
-}
-
-/* Notificación de Yape simulada (pago con QR propio) */
-.field { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 700; }
-.field input {
-  min-height: 2.6rem;
-  padding: 0.4rem 0.7rem;
-  border: 2px solid var(--ink);
-  border-radius: 10px;
-  font: inherit;
-  font-weight: 600;
+  .pbtn { transition: none; }
 }
