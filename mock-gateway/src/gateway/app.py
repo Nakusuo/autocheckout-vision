@@ -47,6 +47,11 @@ def create_app(private_key_pem: bytes, api_key: str, public_url: str) -> FastAPI
             raise HTTPException(status_code=404, detail="Cobro no encontrado")
         return charge
 
+    @app.get("/health")
+    def health() -> dict:
+        """Sonda de salud para Docker y el proveedor de nube: no expone datos."""
+        return {"status": "ok"}
+
     @app.post("/charges", status_code=201)
     def create_charge(body: ChargeIn, x_api_key: str | None = Header(default=None)) -> dict:
         require_key(x_api_key)

@@ -82,3 +82,9 @@ def test_confirm_then_poll_returns_signed_token(client, keys):
 def test_unknown_charge_is_404(client):
     assert client.get("/charges/nope", headers=KEY).status_code == 404
     assert client.get("/pay/nope").status_code == 404
+
+
+def test_health_is_public_and_reveals_nothing(client):
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}

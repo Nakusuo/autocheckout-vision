@@ -103,6 +103,25 @@ jobs:
             kiosk-ui/test-results
           retention-days: 7
 
+  # Construye las tres imágenes, levanta el stack con docker compose y recorre una compra
+  # completa (interfaz → API → pasarela TLS 1.3 → ticket). Si esto pasa, el CD puede publicar.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Clave de prueba (solo para este job)
+        run: echo "GATEWAY_API_KEY=ci-$(openssl rand -hex 24)" > .env
+      - run: docker compose build
+      - run: docker compose up -d --wait --wait-timeout 120
+      - name: Prueba de humo
+        run: |
+          docker compose cp mock-gateway:/app/keys/ca.pem "$RUNNER_TEMP/ca.pem"
+          python3 ops/smoke_compose.py --ca "$RUNNER_TEMP/ca.pem"
+      - if: failure()
+        run: docker compose logs --no-color
+      - if: always()
+        run: docker compose down -v
+
   secretos:
     runs-on: ubuntu-latest
     steps:

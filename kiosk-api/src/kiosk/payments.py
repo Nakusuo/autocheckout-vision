@@ -67,8 +67,9 @@ class JwtVerifier:
         return PaymentEvent(str(claims["charge_id"]), int(claims["amount_cents"]))
 
 
-def tls13_context(ca_file: Path | str) -> ssl.SSLContext:
-    ctx = ssl.create_default_context(cafile=str(ca_file))
+def tls13_context(ca_file: Path | str | None = None) -> ssl.SSLContext:
+    """Contexto TLS que exige 1.3. Sin `ca_file` confía en las CA del sistema (pasarela en la nube)."""
+    ctx = ssl.create_default_context(cafile=str(ca_file) if ca_file else None)
     ctx.minimum_version = ssl.TLSVersion.TLSv1_3
     return ctx
 
@@ -85,7 +86,7 @@ class HttpGateway:
             base_url=base_url,
             headers={"X-API-Key": api_key},
             timeout=HTTP_TIMEOUT_S,
-            verify=tls13_context(ca_file) if ca_file else True,
+            verify=tls13_context(ca_file),
             transport=transport,
         )
 

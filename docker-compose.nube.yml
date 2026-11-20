@@ -1,0 +1,15 @@
+# Quiosco en el local (edge) + pasarela en la nube (Render). Ver docs/CLOUD_DEVOPS.md, sección 7.
+# NO PROBADO contra Render: falta crear el servicio (lo hace el equipo con su cuenta).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.nube.yml up --build --no-deps kiosk-api kiosk-ui
+#
+# .env debe tener PASARELA_URL (p. ej. https://autocaja-pasarela.onrender.com) y la misma
+# GATEWAY_API_KEY que se puso en Render. keys-nube/ guarda gateway_jwt_public.pem (fuera de git).
+services:
+  kiosk-api:
+    environment:
+      GATEWAY_URL: ${PASARELA_URL:?Define PASARELA_URL en .env}
+      # Certificado público de Render: se verifica con las CA del sistema (TLS 1.3 obligatorio).
+      GATEWAY_CA: system
+    volumes:
+      - ./keys-nube:/app/keys:ro

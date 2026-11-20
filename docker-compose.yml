@@ -1,0 +1,88 @@
+# AutoCaja en contenedores (modo simulado), todo en una máquina: el quiosco (edge).
+#
+#   cp .env.example .env        # y cambia GATEWAY_API_KEY
+#   docker compose up --build   # http://localhost:5173  (/sim, /caja)
+#
+# Con imágenes ya publicadas por el CD (GitHub Container Registry), sin compilar:
+#   AUTOCAJA_IMAGEN=ghcr.io/nakusuo/autocaja AUTOCAJA_VERSION=latest \
+#     docker compose pull && docker compose up -d --no-build
+name: autocaja
+
+x-clave: &clave
+  GATEWAY_API_KEY: ${GATEWAY_API_KEY:?Define GATEWAY_API_KEY en .env (ver .env.example)}
+
+services:
+  # Una sola vez: genera la CA y las claves de desarrollo en el volumen «claves».
+  # El certificado incluye «mock-gateway», que es el nombre con el que lo llama kiosk-api.
+  claves:
+    image: ${AUTOCAJA_IMAGEN:-autocaja}-mock-gateway:${AUTOCAJA_VERSION:-local}
+    build:
+      context: .
+      dockerfile: mock-gateway/Dockerfile
+    command: ["python", "-m", "gateway.devkeys", "--san", "mock-gateway"]
+    volumes:
+      - claves:/app/keys
+    restart: "no"
+
+  mock-gateway:
+    image: ${AUTOCAJA_IMAGEN:-autocaja}-mock-gateway:${AUTOCAJA_VERSION:-local}
+    build:
+      context: .
+      dockerfile: mock-gateway/Dockerfile
+    environment:
+      <<: *clave
+      # El «celular» abre el QR desde el navegador del equipo: https://localhost:8443
+      GATEWAY_PUBLIC_URL: https://localhost:8443
+    volumes:
+      - claves:/app/keys:ro
+    ports:
+      - "127.0.0.1:8443:8443"
+    depends_on:
+      claves:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import ssl, urllib.request as u; u.urlopen('https://localhost:8443/health', timeout=2, context=ssl.create_default_context(cafile='/app/keys/ca.pem'))"
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+  kiosk-api:
+    image: ${AUTOCAJA_IMAGEN:-autocaja}-kiosk-api:${AUTOCAJA_VERSION:-local}
+    build:
+      context: .
+      dockerfile: kiosk-api/Dockerfile
+    environment:
+      <<: *clave
+      GATEWAY_URL: https://mock-gateway:8443
+      KIOSK_MODE: sim
+      KIOSK_SCALE: ${KIOSK_SCALE:-off}
+    volumes:
+      - claves:/app/keys:ro
+      - datos:/datos
+    # Sin puerto publicado: solo se llega a la API a través de kiosk-ui (mismo origen).
+    depends_on:
+      mock-gateway:
+        condition: service_healthy
+    restart: unless-stopped
+
+  kiosk-ui:
+    image: ${AUTOCAJA_IMAGEN:-autocaja}-kiosk-ui:${AUTOCAJA_VERSION:-local}
+    build:
+      context: .
+      dockerfile: kiosk-ui/Dockerfile
+    ports:
+      - "127.0.0.1:5173:8080"
+    depends_on:
+      kiosk-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  claves:
+  datos:

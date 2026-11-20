@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 keys/
+keys-nube/
 *.pem
 
 # Python

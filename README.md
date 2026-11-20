@@ -7,7 +7,18 @@ Quiosco de auto-checkout que reconoce productos con visión computacional (por p
 
 Licencia: AGPL-3.0 (ver `LICENSE`).
 
-## Probar el sistema (simulado)
+## Con Docker (lo más rápido)
+
+Requiere Docker con Compose. Levanta la pasarela, la API y la interfaz ya conectadas:
+
+```bash
+cp .env.example .env        # cambia GATEWAY_API_KEY por una clave larga
+docker compose up --build   # http://localhost:5173  ·  /sim  ·  /caja
+```
+
+Arquitectura edge + nube, imágenes, CI/CD y despliegue de la pasarela en Render: [`docs/CLOUD_DEVOPS.md`](docs/CLOUD_DEVOPS.md).
+
+## Probar el sistema (simulado, sin Docker)
 
 Requisitos: Python 3.12 y Node 22 o superior. En cada terminal Python define la misma clave:
 `export GATEWAY_API_KEY=una-clave-larga-cualquiera` (ver `.env.example`).
@@ -45,6 +56,8 @@ npm run dev
 - Se guardan hasta 50 ayudas y 50 alertas sin atender.
 
 Para pagar: en la pantalla del QR, abre en `/sim` el enlace «Abrir el celular simulado» y pulsa «Pagar con Yape/Plin (simulado)». El quiosco consulta la pasarela por HTTPS (TLS 1.3), verifica la firma RS256 y muestra el ticket.
+
+Variables de arranque (todas opcionales; los valores por defecto son los de desarrollo): `KIOSK_HOST`/`KIOSK_PORT`, `KIOSK_DATA_DIR` (base, boletas, sesiones y log), `KIOSK_KEYS_DIR`, `GATEWAY_CA=system` (pasarela con certificado público) y, en la pasarela, `GATEWAY_HOST`/`GATEWAY_PORT` (o `PORT`), `GATEWAY_TLS=off` (detrás del HTTPS de un PaaS) y `GATEWAY_KEYS_DIR`.
 
 La API escucha en 127.0.0.1:8000 y solo acepta peticiones desde http://localhost:5173 (Vite usa ese puerto fijo; si está ocupado, libéralo).
 

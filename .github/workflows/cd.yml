@@ -1,0 +1,97 @@
+name: CD
+
+# Despliegue continuo. Solo corre cuando el CI terminó en verde sobre un push a main
+# (o a mano desde la pestaña Actions). Así nunca se publica un commit que no pasó las pruebas.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# Un despliegue a la vez; si llega otro, espera (no se cancela uno a medias).
+concurrency:
+  group: cd-main
+  cancel-in-progress: false
+
+jobs:
+  imagenes:
+    name: Publicar ${{ matrix.servicio }} en GHCR
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        servicio: [kiosk-api, mock-gateway, kiosk-ui]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # El commit exacto que pasó el CI, no el último de main.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Nombre de la imagen (GHCR exige minúsculas)
+        id: imagen
+        run: echo "nombre=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/autocaja-${{ matrix.servicio }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.servicio }}/Dockerfile
+          push: true
+          # Etiqueta inmutable (sha del commit) para poder volver atrás, y latest para el quiosco.
+          tags: |
+            ${{ steps.imagen.outputs.nombre }}:${{ github.event.workflow_run.head_sha || github.sha }}
+            ${{ steps.imagen.outputs.nombre }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha || github.sha }}
+            org.opencontainers.image.licenses=AGPL-3.0
+          cache-from: type=gha,scope=${{ matrix.servicio }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.servicio }}
+
+  pasarela:
+    name: Desplegar la pasarela en Render
+    needs: imagenes
+    runs-on: ubuntu-latest
+    environment:
+      name: produccion
+      url: ${{ vars.PASARELA_URL }}
+    steps:
+      - name: Disparar el despliegue (deploy hook)
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::warning::Falta el secreto RENDER_DEPLOY_HOOK_URL: no se desplegó (ver docs/CLOUD_DEVOPS.md)"
+            exit 0
+          fi
+          curl -fsS -X POST "$HOOK" > /dev/null
+          echo "Despliegue solicitado a Render"
+      - name: Verificar que responde (/health)
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          URL: ${{ vars.PASARELA_URL }}
+        run: |
+          if [ -z "$HOOK" ] || [ -z "$URL" ]; then
+            echo "::warning::Sin RENDER_DEPLOY_HOOK_URL o PASARELA_URL: no se verifica"
+            exit 0
+          fi
+          # Render tarda en construir y el plan gratuito arranca en frío: hasta ~10 min.
+          for _ in $(seq 1 40); do
+            if curl -fsS "$URL/health" | grep -q '"ok"'; then
+              echo "La pasarela responde en $URL"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::La pasarela no respondió en $URL/health"
+          exit 1

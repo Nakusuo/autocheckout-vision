@@ -1,8 +1,10 @@
 """Genera claves y certificados SOLO para desarrollo en <repo>/keys/ (fuera de git)."""
 
+import argparse
 import datetime as dt
 import ipaddress
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 from cryptography import x509
@@ -33,7 +35,12 @@ def write_signing_keys(out: Path) -> None:
     )
 
 
-def write_tls_certs(out: Path) -> None:
+def write_tls_certs(out: Path, extra_names: Sequence[str] = ()) -> None:
+    """CA de desarrollo y certificado del servidor para localhost, 127.0.0.1 y `extra_names`.
+
+    `extra_names` sirve en Docker: el quiosco llama a la pasarela por el nombre del servicio
+    (p. ej. `mock-gateway`) y el certificado debe incluirlo para que la verificación TLS pase.
+    """
     now = dt.datetime.now(dt.UTC)
     start = now - dt.timedelta(minutes=5)
 
@@ -79,7 +86,11 @@ def write_tls_certs(out: Path) -> None:
         .not_valid_after(now + dt.timedelta(days=90))
         .add_extension(
             x509.SubjectAlternativeName(
-                [x509.DNSName("localhost"), x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]
+                [
+                    x509.DNSName("localhost"),
+                    x509.IPAddress(ipaddress.ip_address("127.0.0.1")),
+                    *(x509.DNSName(name) for name in extra_names),
+                ]
             ),
             critical=False,
         )
@@ -100,15 +111,32 @@ def write_tls_certs(out: Path) -> None:
     _write_private(out / "server-key.pem", server_key)
 
 
-def main() -> None:
-    out = REPO / "keys"
+def parse_args(argv: Sequence[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="python -m gateway.devkeys", description="Claves y certificados de desarrollo."
+    )
+    parser.add_argument("--force", action="store_true", help="regenerar aunque ya existan")
+    parser.add_argument(
+        "--san",
+        action="append",
+        default=[],
+        metavar="NOMBRE",
+        help="nombre DNS extra para el certificado (repetible; p. ej. mock-gateway en Docker)",
+    )
+    parser.add_argument("--out", type=Path, default=REPO / "keys", help="carpeta de salida")
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    out: Path = args.out
     out.mkdir(exist_ok=True)
     private_key_path = out / "gateway_jwt_private.pem"
-    if private_key_path.exists() and "--force" not in sys.argv:
+    if private_key_path.exists() and not args.force:
         print(f"Ya existen claves en {out}; usa --force para regenerarlas")
         return
     write_signing_keys(out)
-    write_tls_certs(out)
+    write_tls_certs(out, args.san)
     print(f"Claves y certificados de desarrollo creados en {out}")
 
 

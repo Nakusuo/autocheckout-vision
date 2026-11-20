@@ -1,0 +1,22 @@
+# Modo cámara (Linux, webcam en /dev/video0). NO PROBADO con la webcam de la demo.
+#   docker compose -f docker-compose.yml -f docker-compose.camara.yml up --build
+# Requiere la galería y los modelos en ml/data/models/ (ver docs/ml/reconocimiento.md).
+services:
+  kiosk-api:
+    build:
+      args:
+        EXTRAS: vision
+    image: ${AUTOCAJA_IMAGEN:-autocaja}-kiosk-api-vision:${AUTOCAJA_VERSION:-local}
+    environment:
+      KIOSK_MODE: camera
+      KIOSK_GALLERY: /app/ml/data/models/galeria.npz
+      KIOSK_CAMERA: ${KIOSK_CAMERA:-0}
+      # Opcionales (descomenta): zona de escaneo y umbral de parecido
+      # KIOSK_ZONE: "0.25,0.1,0.75,0.9"
+      # KIOSK_THRESHOLD: "0.6"
+    devices:
+      - /dev/video0:/dev/video0
+    group_add:
+      - video
+    volumes:
+      - ./ml/data/models:/app/ml/data/models:ro
