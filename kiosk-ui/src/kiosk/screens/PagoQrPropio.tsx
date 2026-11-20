@@ -12,11 +12,7 @@ export function PagoQrPropio({ snapshot, offline }: { snapshot: Snapshot; offlin
   const { error, pending, run } = useAction();
   const left = Math.max(0, Math.ceil(120 - snapshot.seconds_in_state));
   return (
-    <section className="screen screen-pay">
-      <div className="pay-head">
-        <p className="pay-label">Total a pagar</p>
-        <p className="amount">{formatPEN(snapshot.total_cents)}</p>
-      </div>
+    <section className="screen screen-pay screen-pay-own">
       <div className="qr-plate">
         {snapshot.wallet_qr ? (
           <img className="qr-img qr-wallet" src={snapshot.wallet_qr} alt="Código QR de Yape del comercio" />
@@ -24,13 +20,31 @@ export function PagoQrPropio({ snapshot, offline }: { snapshot: Snapshot; offlin
           <div className="qr-box">Falta el QR del comercio</div>
         )}
       </div>
-      <p className="pay-hint">Escanea con Yape o Plin</p>
-      <div className="countdown">
-        <p className="speed-sign">{left} s</p>
-        <p className="muted waiting">Esperando la confirmación del pago</p>
+      {/* En vertical, pay-info no existe para el diseño (display: contents) y el monto sube
+          arriba del QR; en horizontal es la columna derecha. */}
+      <div className="pay-info">
+        <div className="pay-head">
+          <p className="pay-label">Total a pagar</p>
+          <p className="amount">{formatPEN(snapshot.total_cents)}</p>
+        </div>
+        {/* El QR es fijo: el monto lo escribe el cliente, y el pago solo se acepta si coincide. */}
+        <ol className="pay-steps">
+          <li className="pay-step">
+            <span className="pay-step-n" aria-hidden="true">1</span>
+            <span className="pay-hint">Escanea con Yape o Plin</span>
+          </li>
+          <li className="pay-step">
+            <span className="pay-step-n" aria-hidden="true">2</span>
+            <span className="pay-hint">Escribe exactamente {formatPEN(snapshot.total_cents).replace(" ", "\u00a0")}</span>
+          </li>
+        </ol>
+        <div className="countdown">
+          <p className="speed-sign">{left} s</p>
+          <p className="muted waiting">Esperando la confirmación del pago</p>
+        </div>
+        {error && <Alert>{error}</Alert>}
+        <CancelButton disabled={offline || pending} onCancel={() => run("/api/cancel")} />
       </div>
-      {error && <Alert>{error}</Alert>}
-      <CancelButton disabled={offline || pending} onCancel={() => run("/api/cancel")} />
     </section>
   );
 }

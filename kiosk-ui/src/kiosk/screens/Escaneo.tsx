@@ -51,50 +51,60 @@ export function Escaneo({ snapshot, offline }: { snapshot: Snapshot; offline: bo
 
   return (
     <section className={snapshot.browser_camera ? "screen screen-scan-web" : "screen"}>
-      <div className="scan-head">
-        <h1 className="title">Escaneando</h1>
-        <span className="live">
-          <span className="live-dot" aria-hidden="true" />
-          En vivo
-        </span>
-      </div>
       {snapshot.browser_camera && (
         <CamaraWeb disabled={offline || pending} onAdd={(sku) => run("/api/cart/add", { sku })} />
       )}
-      {empty && snapshot.browser_camera ? null : empty ? (
-        <div className="empty">
-          <TraySign className="empty-sign" scanning />
-          <p className="lead">Pasa tus productos uno por uno frente a la cámara. Cada uno se suma aquí.</p>
+      {/* En vertical, scan-side no existe para el diseño (display: contents); en horizontal es la
+          columna derecha, junto a la cámara. */}
+      <div className="scan-side">
+        <div className="scan-head">
+          <h1 className="title">Escaneando</h1>
+          <span className="live">
+            <span className="live-dot" aria-hidden="true" />
+            En vivo
+          </span>
         </div>
-      ) : (
-        <Lines
-          snapshot={snapshot}
-          added={added}
-          onRemove={(sku) => run("/api/remove", { sku })}
-          removeDisabled={offline || pending}
-        />
-      )}
-      {w && !empty && !snapshot.alert && (
-        <p className={`weight ${w.ok ? "ok" : "pending"}`}>
-          {w.ok ? <CheckDisc className="weight-icon" /> : <span className="weight-pending" aria-hidden="true" />}
-          <span>{w.ok ? "Peso correcto" : "Pesando la bandeja…"}</span>
-        </p>
-      )}
-      {snapshot.alert && <Alert>{snapshot.alert}</Alert>}
-      {error && <Alert>{error}</Alert>}
-      {!empty && !snapshot.alert && !snapshot.browser_camera && (
-        <p className="hint">Pasa el siguiente producto o pulsa CONFIRMAR si ya están todos.</p>
-      )}
-      <button
-        type="button"
-        className="btn btn-go"
-        disabled={offline || pending || snapshot.item_count === 0 || snapshot.alert !== null || (w !== null && !w.ok)}
-        onClick={() => run("/api/confirm")}
-      >
-        CONFIRMAR
-        <ArrowRight className="btn-icon" />
-      </button>
-      <CancelButton disabled={offline || pending} onCancel={() => run("/api/cancel")} />
+        {empty && snapshot.browser_camera ? (
+          <div className="empty scan-empty">
+            <p className="lead">Tu lista está vacía. Cada producto que agregues aparece aquí.</p>
+          </div>
+        ) : empty ? (
+          <div className="empty">
+            <TraySign className="empty-sign" scanning />
+            <p className="lead">Pasa tus productos uno por uno frente a la cámara. Cada uno se suma aquí.</p>
+          </div>
+        ) : (
+          <Lines
+            snapshot={snapshot}
+            added={added}
+            onRemove={(sku) => run("/api/remove", { sku })}
+            removeDisabled={offline || pending}
+          />
+        )}
+        {w && !empty && !snapshot.alert && (
+          <p className={`weight ${w.ok ? "ok" : "pending"}`}>
+            {w.ok ? <CheckDisc className="weight-icon" /> : <span className="weight-pending" aria-hidden="true" />}
+            <span>{w.ok ? "Peso correcto" : "Pesando la bandeja…"}</span>
+          </p>
+        )}
+        {snapshot.alert && <Alert>{snapshot.alert}</Alert>}
+        {error && <Alert>{error}</Alert>}
+        {!empty && !snapshot.alert && !snapshot.browser_camera && (
+          <p className="hint">Pasa el siguiente producto o pulsa CONFIRMAR si ya están todos.</p>
+        )}
+        <div className="scan-actions">
+          <button
+            type="button"
+            className="btn btn-go"
+            disabled={offline || pending || snapshot.item_count === 0 || snapshot.alert !== null || (w !== null && !w.ok)}
+            onClick={() => run("/api/confirm")}
+          >
+            CONFIRMAR
+            <ArrowRight className="btn-icon" />
+          </button>
+          <CancelButton disabled={offline || pending} onCancel={() => run("/api/cancel")} />
+        </div>
+      </div>
     </section>
   );
 }

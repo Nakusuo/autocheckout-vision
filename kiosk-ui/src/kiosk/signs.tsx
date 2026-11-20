@@ -84,3 +84,11 @@ export function TraySign({ className, scanning = false }: Props & { scanning?: b
     </svg>
   );
 }
+
+export function PlusGlyph({ className }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+      <path d="M50 16 V84 M16 50 H84" fill="none" stroke="currentColor" strokeWidth="14" strokeLinecap="round" />
+    </svg>
+  );
+}
