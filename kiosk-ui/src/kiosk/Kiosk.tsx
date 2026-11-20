@@ -6,6 +6,7 @@ import { Escaneo } from "./screens/Escaneo";
 import { FueraDeServicio } from "./screens/FueraDeServicio";
 import { Inicio } from "./screens/Inicio";
 import { Pago } from "./screens/Pago";
+import { PagoYape } from "./screens/PagoYape";
 import { Ticket } from "./screens/Ticket";
 
 const STEPS = ["Coloca", "Confirma", "Paga", "Listo"] as const;
@@ -45,7 +46,11 @@ function Screen({ snapshot, offline }: { snapshot: Snapshot; offline: boolean })
     case "W3":
       return <Confirmar snapshot={snapshot} offline={offline} />;
     case "QR":
-      return <Pago snapshot={snapshot} offline={offline} />;
+      return snapshot.payment_method === "yape" ? (
+        <PagoYape snapshot={snapshot} offline={offline} />
+      ) : (
+        <Pago snapshot={snapshot} offline={offline} />
+      );
     case "W4":
       return <Ticket snapshot={snapshot} />;
     case "FUERA_DE_SERVICIO":

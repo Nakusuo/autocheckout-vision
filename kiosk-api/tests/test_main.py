@@ -85,3 +85,70 @@ def test_unknown_gateway_ca_exits(tmp_path):
 
     with pytest.raises(SystemExit, match="GATEWAY_CA"):
         gateway_ca({"GATEWAY_CA": "cualquiera"}, tmp_path)
+
+
+def test_payment_mode_defaults_to_qr():
+    from kiosk.__main__ import payment_mode
+
+    assert payment_mode({}) == "qr"
+    assert payment_mode({"KIOSK_PAYMENT": "yape"}) == "yape"
+    with pytest.raises(SystemExit, match="KIOSK_PAYMENT"):
+        payment_mode({"KIOSK_PAYMENT": "tarjeta"})
+
+
+YAPE_ENV = {"MP_PUBLIC_KEY": "TEST-pk", "MP_ACCESS_TOKEN": "TEST-token"}
+
+
+@pytest.mark.parametrize("missing", ["MP_PUBLIC_KEY", "MP_ACCESS_TOKEN"])
+def test_build_yape_requires_credentials(tmp_path, missing):
+    from kiosk.__main__ import build_yape
+
+    env = {k: v for k, v in YAPE_ENV.items() if k != missing}
+    with pytest.raises(SystemExit, match="MP_PUBLIC_KEY y MP_ACCESS_TOKEN"):
+        build_yape(env, tmp_path)
+
+
+@pytest.mark.parametrize("url", ["http://api.mercadopago.com", "ftp://x", "https://"])
+def test_build_yape_requires_https(tmp_path, url):
+    from kiosk.__main__ import build_yape
+
+    with pytest.raises(SystemExit, match="https"):
+        build_yape({**YAPE_ENV, "MP_BASE_URL": url}, tmp_path)
+
+
+def test_build_yape_against_mercado_pago_uses_system_cas(tmp_path, monkeypatch):
+    import kiosk.__main__ as main
+
+    seen = {}
+    monkeypatch.setattr(main, "MercadoPagoYape", lambda *a, **kw: seen.update(args=a, kw=kw))
+    main.build_yape(YAPE_ENV, tmp_path)  # sin ca.pem: no hace falta con Mercado Pago real
+    assert seen["args"] == ("https://api.mercadopago.com", "TEST-pk", "TEST-token")
+    assert seen["kw"] == {"payer_email": "cliente@autocaja.pe", "ca_file": None}
+
+
+def test_build_yape_against_the_mock_uses_the_dev_ca(tmp_path, monkeypatch):
+    import kiosk.__main__ as main
+
+    (tmp_path / "ca.pem").write_text("ca")
+    seen = {}
+    monkeypatch.setattr(main, "MercadoPagoYape", lambda *a, **kw: seen.update(args=a, kw=kw))
+    env = {**YAPE_ENV, "MP_BASE_URL": "https://mock-gateway:8443", "MP_PAYER_EMAIL": "a@b.pe"}
+    main.build_yape(env, tmp_path)
+    assert seen["args"][0] == "https://mock-gateway:8443"
+    assert seen["kw"] == {"payer_email": "a@b.pe", "ca_file": tmp_path / "ca.pem"}
+
+
+def test_build_yape_returns_a_real_client(tmp_path):
+    from kiosk.__main__ import build_yape
+    from kiosk.payments import MercadoPagoYape
+
+    assert isinstance(build_yape(YAPE_ENV, tmp_path), MercadoPagoYape)
+
+
+def test_no_qr_gateway_refuses_qr():
+    from kiosk.__main__ import NoQrGateway
+    from kiosk.payments import PaymentError
+
+    with pytest.raises(PaymentError, match="Yape"):
+        NoQrGateway().create_charge(100, "venta-1")
+    assert NoQrGateway().poll("x") is None

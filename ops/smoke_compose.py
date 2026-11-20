@@ -6,7 +6,11 @@ verificando su certificado con la CA de desarrollo, y ticket en W4.
 
 Uso (con `docker compose up -d` ya en marcha):
     docker compose cp mock-gateway:/app/keys/ca.pem /tmp/ca.pem
-    python ops/smoke_compose.py --ca /tmp/ca.pem
+    python ops/smoke_compose.py --ca /tmp/ca.pem            # pago con QR
+    python ops/smoke_compose.py --ca /tmp/ca.pem --pago yape # con KIOSK_PAYMENT=yape
+
+Con `--pago yape` se usan los números de prueba de Mercado Pago: primero uno que rechaza
+(«código incorrecto») y luego uno que aprueba.
 
 Solo usa la biblioteca estándar para correr igual en el CI y en cualquier equipo.
 """
@@ -90,9 +94,33 @@ def step(text: str) -> None:
     print(f"✔ {text}")
 
 
+def pay_with_qr(ca: str) -> None:
+    state = wait_for("QR de pago", lambda s: bool(s["qr_payload"]))
+    step(f"compra W1→W2→W3→QR (S/ {state['total_cents'] / 100:.2f})")
+    pay_url = state["qr_payload"] + "/confirm"
+    tls = ssl.create_default_context(cafile=ca)
+    tls.minimum_version = ssl.TLSVersion.TLSv1_3
+    status, raw = request("POST", pay_url, context=tls)
+    check(status == 200 and "Pago realizado" in raw.decode(), f"pago → {status}")
+    step("el «celular» paga en la pasarela por HTTPS con TLS 1.3 y certificado verificado")
+
+
+def pay_with_yape() -> None:
+    state = wait_for("pantalla de Yape", lambda s: s["screen"] == "QR")
+    check(state.get("payment_method") == "yape", f"se esperaba Yape: {state.get('payment_method')}")
+    step(f"compra W1→W2→W3→pago con Yape (S/ {state['total_cents'] / 100:.2f})")
+    bad = api("POST", "/api/pay/yape", {"phone": "111111117", "otp": "123456"})
+    check(bad["screen"] == "QR" and bool(bad["payment_error"]), f"rechazo → {bad}")
+    step(f"Yape rechaza con mensaje para el cliente: «{bad['payment_error']}»")
+    ok = api("POST", "/api/pay/yape", {"phone": "111111111", "otp": "123456"})
+    check(ok["screen"] == "W4", f"pago aprobado → {ok['screen']}")
+    step("Yape aprueba: token → cobro → confirmación (API de Mercado Pago imitada, TLS 1.3)")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--ca", required=True, help="CA de desarrollo (ca.pem del volumen)")
+    parser.add_argument("--pago", choices=["qr", "yape"], default="qr", help="medio de pago")
     args = parser.parse_args(argv)
 
     for page in ("/", "/sim", "/caja"):
@@ -116,15 +144,10 @@ def main(argv: list[str] | None = None) -> int:
     wait_for("producto en la lista", lambda s: s["item_count"] == 1)
     api("POST", "/api/confirm")
     api("POST", "/api/pay")
-    state = wait_for("QR de pago", lambda s: bool(s["qr_payload"]))
-    step(f"compra W1→W2→W3→QR (S/ {state['total_cents'] / 100:.2f})")
-
-    pay_url = state["qr_payload"] + "/confirm"
-    tls = ssl.create_default_context(cafile=args.ca)
-    tls.minimum_version = ssl.TLSVersion.TLSv1_3
-    status, raw = request("POST", pay_url, context=tls)
-    check(status == 200 and "Pago realizado" in raw.decode(), f"pago → {status}")
-    step("el «celular» paga en la pasarela por HTTPS con TLS 1.3 y certificado verificado")
+    if args.pago == "yape":
+        pay_with_yape()
+    else:
+        pay_with_qr(args.ca)
 
     wait_for("ticket W4", lambda s: s["screen"] == "W4")
     sales = api("GET", "/api/sales")

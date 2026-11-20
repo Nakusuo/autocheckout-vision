@@ -62,6 +62,13 @@ services:
       GATEWAY_URL: https://mock-gateway:8443
       KIOSK_MODE: sim
       KIOSK_SCALE: ${KIOSK_SCALE:-off}
+      # KIOSK_PAYMENT=yape: el cliente paga con Yape (celular + código de aprobación).
+      # Por defecto contra la imitación de Mercado Pago de mock-gateway (sin credenciales).
+      # Para el sandbox real de Mercado Pago: docker-compose.mercadopago.yml.
+      KIOSK_PAYMENT: ${KIOSK_PAYMENT:-qr}
+      MP_BASE_URL: https://mock-gateway:8443
+      MP_PUBLIC_KEY: TEST-simulado
+      MP_ACCESS_TOKEN: ${GATEWAY_API_KEY}
     volumes:
       - claves:/app/keys:ro
       - datos:/datos

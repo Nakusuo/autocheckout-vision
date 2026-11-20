@@ -37,6 +37,13 @@ class ScaleIn(BaseModel):
     enabled: bool
 
 
+class YapeIn(BaseModel):
+    """Celular (9 dígitos) y código de aprobación de Yape (6 dígitos). No se guardan ni se loguean."""
+
+    phone: Annotated[str, StringConstraints(pattern=r"^\d{9}$")]
+    otp: Annotated[str, StringConstraints(pattern=r"^\d{6}$")]
+
+
 class TrapIn(BaseModel):
     offset_g: float = Field(ge=-5000, le=5000)
 
@@ -128,6 +135,19 @@ def create_app(
     @app.post("/api/pay")
     async def pay() -> dict:
         return act(service.pay)
+
+    @app.post("/api/pay/yape")
+    async def pay_yape(body: YapeIn) -> dict:
+        try:
+            amount, reference = service.begin_yape()
+        except TransitionError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        # La llamada a Mercado Pago va en otro hilo: la pantalla y el bucle siguen respondiendo.
+        outcome = await asyncio.to_thread(
+            service.charge_yape, amount, reference, body.phone, body.otp
+        )
+        service.finish_yape(reference, amount, outcome)
+        return service.snapshot()
 
     @app.post("/api/recalibrate")
     async def recalibrate() -> dict:

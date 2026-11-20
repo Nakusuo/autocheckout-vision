@@ -241,7 +241,18 @@ export function SimPanel() {
 
           <section className="card">
             <h2 className="card-title">Pago</h2>
-            {snapshot?.screen === "QR" && snapshot.qr_payload ? (
+            {snapshot?.payment_method === "yape" ? (
+              <>
+                <p className="muted">
+                  Pago con Yape (Mercado Pago). En el quiosco escribe el celular y el código. Números de prueba:
+                </p>
+                <ul className="muted">
+                  <li><strong>111111111</strong> + código <strong>123456</strong>: aprobado</li>
+                  <li><strong>111111117</strong> + <strong>123456</strong>: código incorrecto</li>
+                  <li><strong>111111113</strong> + <strong>123456</strong>: límite de Yape superado</li>
+                </ul>
+              </>
+            ) : snapshot?.screen === "QR" && snapshot.qr_payload ? (
               <>
                 <a className="pbtn go" href={snapshot.qr_payload} target="_blank" rel="noopener noreferrer">
                   Abrir el celular simulado

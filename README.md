@@ -18,6 +18,8 @@ docker compose up --build   # http://localhost:5173  ·  /sim  ·  /caja
 
 Arquitectura edge + nube, imágenes, CI/CD y despliegue de la pasarela en Render: [`docs/CLOUD_DEVOPS.md`](docs/CLOUD_DEVOPS.md).
 
+**Pago con Yape (Mercado Pago):** `KIOSK_PAYMENT=yape docker compose up --build`. El cliente escribe su celular y el código de aprobación de Yape. Prueba con el celular `111111111` y el código `123456`. Para el sandbox real de Mercado Pago: `docker compose -f docker-compose.yml -f docker-compose.mercadopago.yml up`. Detalles, seguridad y números de prueba: [`docs/PAGO_YAPE.md`](docs/PAGO_YAPE.md).
+
 ## Probar el sistema (simulado, sin Docker)
 
 Requisitos: Python 3.12 y Node 22 o superior. En cada terminal Python define la misma clave:

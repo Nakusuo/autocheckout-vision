@@ -35,7 +35,7 @@ El NIST (SP 800-145) define la computación en la nube por cinco característica
 | **IaaS** (infraestructura) | Hardware, red, virtualización | No se usa hoy. Alternativa: una VM en AWS EC2 o Azure con Docker. Da más control, pero hay que parchar el sistema operativo |
 | **PaaS** (plataforma) | Además: sistema operativo, runtime, balanceo y TLS | **`mock-gateway` en Render**: entregamos un Dockerfile y Render lo construye, lo corre, le da HTTPS y vigila `/health` |
 | **CaaS** (contenedores) | Orquestación de contenedores | **GitHub Container Registry (GHCR)** guarda las imágenes versionadas que publica el CD |
-| **SaaS** (software) | Toda la aplicación | **GitHub** (código, Actions, Dependabot) y, en un piloto real, la billetera Yape/Plin y la facturación electrónica (SUNAT/OSE), que se consumirían como servicio |
+| **SaaS** (software) | Toda la aplicación | **GitHub** (código, Actions, Dependabot) y **Mercado Pago** para cobrar con Yape por API (`docs/PAGO_YAPE.md`). En un piloto real, también la facturación electrónica (SUNAT/OSE) |
 
 ### 2.3 Modelo de despliegue: híbrido edge + nube pública
 

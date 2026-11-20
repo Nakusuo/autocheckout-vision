@@ -172,6 +172,12 @@ describe("Kiosk", () => {
     expect(screen.getByText("Escanea con Yape o Plin")).toBeInTheDocument();
   });
 
+  it("QR con Yape muestra el teclado en vez del código QR", () => {
+    render(<Kiosk snapshot={{ ...base, screen: "QR", payment_method: "yape" }} />);
+    expect(screen.getByText("Total a pagar con Yape")).toBeInTheDocument();
+    expect(screen.queryByText("Escanea con Yape o Plin")).not.toBeInTheDocument();
+  });
+
   it("QR sin payload muestra Generando y ninguna imagen", () => {
     render(<Kiosk snapshot={{ ...base, screen: "QR", qr_payload: null }} />);
     expect(screen.getByText("Generando código QR…")).toBeInTheDocument();

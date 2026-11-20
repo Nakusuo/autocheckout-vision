@@ -480,6 +480,72 @@ body:has(.kiosk) {
 @keyframes pulse { to { background: var(--sign-white); } }
 .pay-hint { margin: 0; font-size: 5cqw; font-weight: 900; }
 
+/* Pago con Yape: celular + código de aprobación con teclado propio (pantalla táctil).
+   Presupuesto de alto (~133cqw útiles): todo va arriba y compacto para que nada se tape. */
+.screen-yape { gap: 2.2cqw; padding-top: 3.4cqw; }
+.yape-head { display: flex; align-items: center; justify-content: space-between; gap: 3cqw; }
+.yape-head .pay-head { align-items: flex-start; }
+.yape-head .amount { font-size: 11cqw; }
+.yape-head .speed-sign { width: 15cqw; box-shadow: inset 0 0 0 1.6cqw var(--sign-red); font-size: 3.6cqw; }
+.yape-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 2.4cqw; }
+.yape-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6cqw;
+  min-width: 0;
+  padding: 2cqw 3cqw 1.6cqw;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--sign-white);
+  box-shadow: inset 0 0 0 var(--border) var(--ink);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.yape-field.active { background: var(--sign-yellow); box-shadow: inset 0 0 0 1.2cqw var(--ink); }
+.yape-field:focus-visible { outline: 1.2cqw solid var(--sign-yellow); outline-offset: 0.6cqw; }
+.yape-field:disabled { cursor: not-allowed; opacity: 0.7; }
+.yape-field-label {
+  font-size: 2.8cqw;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--ink-soft);
+}
+.yape-field.active .yape-field-label { color: var(--ink); }
+.yape-field-value { font-size: 5.6cqw; font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.6cqw; }
+.key {
+  min-height: 10.6cqw;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--sign-white);
+  box-shadow: inset 0 0 0 var(--border) var(--ink);
+  color: var(--ink);
+  font: inherit;
+  font-size: 6.4cqw;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 120ms var(--ease-out), background-color 160ms var(--ease-out);
+}
+.key-text { font-size: 4.2cqw; letter-spacing: 0.04em; }
+.key-icon { width: 8cqw; vertical-align: middle; }
+.key:active:not(:disabled) { transform: scale(0.96); background: var(--sign-yellow-soft); }
+.key:focus-visible { outline: 1.2cqw solid var(--sign-yellow); outline-offset: 0.4cqw; }
+.key:disabled { background: var(--disabled-bg); color: var(--disabled-ink); cursor: not-allowed; }
+.screen-yape .hint { text-align: center; }
+.screen-yape .pay-hint { text-align: center; font-size: 4.4cqw; }
+.yape-actions { gap: 1cqw; }
+.screen-yape .alert { padding-block: 1.6cqw; font-size: 3.4cqw; line-height: 1.25; }
+.screen-yape .alert-icon { width: 6.4cqw; }
+
 /* Cuenta regresiva como señal de velocidad: aro rojo y cifra negra. */
 .countdown { display: flex; align-items: center; justify-content: center; gap: 3.6cqw; }
 .speed-sign {
@@ -506,5 +572,5 @@ body:has(.kiosk) {
 
 @media (prefers-reduced-motion: reduce) {
   .plate, .line, .scan-line, .qr-box, .live-dot, .added-tag, .weight-pending { animation: none; }
-  .btn, .route-disc { transition: none; }
+  .btn, .route-disc, .key { transition: none; }
 }

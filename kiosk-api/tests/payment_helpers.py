@@ -57,3 +57,23 @@ class FakeGateway:
             return None
         amount = self.paid_amount if self.paid_amount is not None else self.amounts[-1]
         return sign(charge_id=charge_id, amount_cents=amount)
+
+
+class FakeYape:
+    """Yape falso: devuelve los resultados encolados en `results` (o aprueba)."""
+
+    def __init__(self) -> None:
+        from kiosk.payments import YapeResult
+
+        self._result_type = YapeResult
+        self.calls: list[tuple[int, str, str, str]] = []
+        self.results: list = []
+
+    def charge(self, amount_cents: int, reference: str, phone: str, otp: str):
+        self.calls.append((amount_cents, reference, phone, otp))
+        if self.results:
+            outcome = self.results.pop(0)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+        return self._result_type("pay_1", True, "accredited", amount_cents)

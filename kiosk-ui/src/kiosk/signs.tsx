@@ -41,6 +41,16 @@ export function ArrowRight({ className }: Props) {
   );
 }
 
+/** Tecla de borrar: placa con punta a la izquierda y una equis. */
+export function BackspaceGlyph({ className }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 100 70" aria-hidden="true" focusable="false">
+      <path d="M30 6 H92 V64 H30 L6 35 Z" fill="none" stroke="currentColor" strokeWidth="8" strokeLinejoin="round" />
+      <path d="M48 22 L74 48 M74 22 L48 48" stroke="currentColor" strokeWidth="8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function CameraGlyph({ className }: Props) {
   return (
     <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">

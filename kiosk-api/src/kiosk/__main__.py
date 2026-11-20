@@ -4,13 +4,22 @@ import sys
 from collections.abc import Mapping
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from urllib.parse import urlparse
 
 import uvicorn
 
 from kiosk.app import create_app
 from kiosk.catalog import Catalog
 from kiosk.metrics import SessionRecorder
-from kiosk.payments import HttpGateway, JwtVerifier
+from kiosk.payments import (
+    DEFAULT_PAYER_EMAIL,
+    MP_API,
+    Charge,
+    HttpGateway,
+    JwtVerifier,
+    MercadoPagoYape,
+    PaymentError,
+)
 from kiosk.pos import SimulatedPos
 from kiosk.scale import SimulatedScale
 from kiosk.service import KioskService
@@ -92,6 +101,44 @@ def gateway_ca(env: Mapping[str, str], keys: Path) -> Path | None:
     return keys / "ca.pem"
 
 
+def payment_mode(env: Mapping[str, str]) -> str:
+    """KIOSK_PAYMENT=qr (por defecto): QR de la pasarela simulada. yape: Yape vía Mercado Pago."""
+    mode = env.get("KIOSK_PAYMENT", "qr")
+    if mode not in ("qr", "yape"):
+        sys.exit(f"KIOSK_PAYMENT desconocido: {mode!r} (usa 'qr' o 'yape')")
+    return mode
+
+
+def build_yape(env: Mapping[str, str], keys: Path) -> MercadoPagoYape:
+    """Cliente de Yape. MP_BASE_URL apunta a Mercado Pago (por defecto) o a la pasarela simulada,
+    que imita sus endpoints; con la simulada se confía en la CA de desarrollo (ver gateway_ca)."""
+    public_key, access_token = env.get("MP_PUBLIC_KEY"), env.get("MP_ACCESS_TOKEN")
+    if not public_key or not access_token:
+        sys.exit("Pago con Yape: faltan MP_PUBLIC_KEY y MP_ACCESS_TOKEN (credenciales de prueba)")
+    base_url = env.get("MP_BASE_URL", MP_API)
+    url = urlparse(base_url)
+    if url.scheme != "https" or not url.hostname:
+        sys.exit(f"MP_BASE_URL debe ser una URL https: {base_url!r}")
+    ca_file = None if url.hostname == urlparse(MP_API).hostname else gateway_ca(env, keys)
+    return MercadoPagoYape(
+        base_url,
+        public_key,
+        access_token,
+        payer_email=env.get("MP_PAYER_EMAIL", DEFAULT_PAYER_EMAIL),
+        ca_file=ca_file,
+    )
+
+
+class NoQrGateway:
+    """Con Yape no se generan QR: si algo lo pidiera, falla con un error claro."""
+
+    def create_charge(self, amount_cents: int, reference: str) -> Charge:
+        raise PaymentError("Este quiosco cobra con Yape, no con QR")
+
+    def poll(self, charge_id: str) -> str | None:
+        return None
+
+
 def setup_logging(path: Path) -> None:
     """Consola y archivo con hora; el archivo rota a 1 MB y guarda 3 anteriores (~4 MB)."""
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -110,12 +157,7 @@ def main() -> None:
     data = data_dir(os.environ)
     setup_logging(data / "kiosk.log")
     keys = Path(os.environ.get("KIOSK_KEYS_DIR") or REPO / "keys")
-    api_key = os.environ.get("GATEWAY_API_KEY")
-    if not api_key:
-        sys.exit("Falta GATEWAY_API_KEY (ver .env.example)")
-    if not (keys / "gateway_jwt_public.pem").exists():
-        sys.exit("Faltan claves: ejecuta primero `python -m gateway.devkeys` en mock-gateway")
-    ca_file = gateway_ca(os.environ, keys)
+    payment = payment_mode(os.environ)
 
     db = data / "kiosk.db"
     init_db(db, REPO / "catalog" / "products.csv")
@@ -127,10 +169,23 @@ def main() -> None:
         )
     except (OSError, ValueError) as e:  # cámara que no abre, KIOSK_CAMERA/KIOSK_ZONE inválidos
         sys.exit(f"No se pudo preparar la cámara: {e}")
-    gateway = HttpGateway(
-        os.environ.get("GATEWAY_URL", "https://localhost:8443"), api_key, ca_file=ca_file
-    )
-    verifier = JwtVerifier((keys / "gateway_jwt_public.pem").read_bytes())
+    yape = build_yape(os.environ, keys) if payment == "yape" else None
+    if yape is not None:
+        log.info("Cobro con Yape vía %s", os.environ.get("MP_BASE_URL", MP_API))
+        gateway: HttpGateway | NoQrGateway = NoQrGateway()
+        verifier: JwtVerifier | None = None
+    else:
+        api_key = os.environ.get("GATEWAY_API_KEY")
+        if not api_key:
+            sys.exit("Falta GATEWAY_API_KEY (ver .env.example)")
+        if not (keys / "gateway_jwt_public.pem").exists():
+            sys.exit("Faltan claves: ejecuta primero `python -m gateway.devkeys` en mock-gateway")
+        gateway = HttpGateway(
+            os.environ.get("GATEWAY_URL", "https://localhost:8443"),
+            api_key,
+            ca_file=gateway_ca(os.environ, keys),
+        )
+        verifier = JwtVerifier((keys / "gateway_jwt_public.pem").read_bytes())
     pos = SimulatedPos(data / "boletas.jsonl")
     sessions = SessionRecorder(data / "sesiones.jsonl")
     use_scale = scale_enabled(os.environ)
@@ -154,6 +209,7 @@ def main() -> None:
         pos=pos,
         sessions=sessions,
         on_cart=follow,
+        yape=yape,
     )
     if tray is not None:
         app = create_app(service, tray, scale)

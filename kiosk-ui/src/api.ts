@@ -16,6 +16,12 @@ export type Snapshot = {
   seconds_in_state: number;
   help_pending: boolean;
   qr_payload: string | null;
+  /** "yape": el cliente paga escribiendo celular y código de aprobación (Mercado Pago). */
+  payment_method?: "qr" | "yape";
+  /** Motivo del último rechazo de Yape, en palabras del cliente. */
+  payment_error?: string | null;
+  /** true mientras el quiosco espera la respuesta de Mercado Pago. */
+  payment_processing?: boolean;
 };
 
 const SCREENS = new Set<unknown>(["W1", "W2", "W3", "QR", "W4", "FUERA_DE_SERVICIO"]);
@@ -46,7 +52,10 @@ export function isSnapshot(v: unknown): v is Snapshot {
     (v.alert === null || typeof v.alert === "string") &&
     isNum(v.seconds_in_state) &&
     typeof v.help_pending === "boolean" &&
-    (v.qr_payload === null || typeof v.qr_payload === "string")
+    (v.qr_payload === null || typeof v.qr_payload === "string") &&
+    (v.payment_method === undefined || v.payment_method === "qr" || v.payment_method === "yape") &&
+    (v.payment_error === undefined || v.payment_error === null || typeof v.payment_error === "string") &&
+    (v.payment_processing === undefined || typeof v.payment_processing === "boolean")
   );
 }
 

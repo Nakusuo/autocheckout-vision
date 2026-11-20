@@ -1,0 +1,15 @@
+# Pago con Yape contra el SANDBOX REAL de Mercado Pago (credenciales de prueba del equipo).
+# Ver docs/PAGO_YAPE.md. NO PROBADO todavía: faltan las credenciales de prueba.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.mercadopago.yml up --build
+#
+# .env debe tener MP_PUBLIC_KEY y MP_ACCESS_TOKEN (de «Credenciales de prueba» en
+# mercadopago.com.pe/developers/panel). Nunca van a git.
+services:
+  kiosk-api:
+    environment:
+      KIOSK_PAYMENT: yape
+      MP_BASE_URL: https://api.mercadopago.com
+      MP_PUBLIC_KEY: ${MP_PUBLIC_KEY:?Define MP_PUBLIC_KEY en .env (credencial de prueba)}
+      MP_ACCESS_TOKEN: ${MP_ACCESS_TOKEN:?Define MP_ACCESS_TOKEN en .env (credencial de prueba)}
+      MP_PAYER_EMAIL: ${MP_PAYER_EMAIL:-cliente@autocaja.pe}

@@ -1,5 +1,6 @@
 import ssl
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -106,3 +107,156 @@ class HttpGateway:
 
     def poll(self, charge_id: str) -> str | None:
         return self._call("GET", f"/charges/{charge_id}").get("token")
+
+
+# --- Yape vía Mercado Pago (Checkout API) -------------------------------------------------
+#
+# Flujo documentado por Mercado Pago Perú (developers/.../integration-configuration/yape):
+#   1. POST /platforms/pci/yape/v1/payment?public_key=...  {phoneNumber, otp, requestId} → token
+#   2. POST /v1/payments (Bearer access token, X-Idempotency-Key) con payment_method_id="yape"
+#      → respuesta síncrona: status "approved" o "rejected" (+ status_detail).
+# El cliente escribe su celular y el «código de aprobación» de su app Yape (válido ~2 min).
+# El quiosco no necesita una URL pública (no hay webhook): la respuesta llega en la misma llamada.
+
+MP_API = "https://api.mercadopago.com"
+YAPE_TIMEOUT_S = 10.0
+DEFAULT_PAYER_EMAIL = "cliente@autocaja.pe"
+
+
+@dataclass(frozen=True)
+class YapeResult:
+    """Resultado de un cobro con Yape. `status_detail` explica el rechazo (códigos de MP)."""
+
+    payment_id: str
+    approved: bool
+    status_detail: str
+    amount_cents: int
+
+
+class YapeProvider(Protocol):
+    def charge(self, amount_cents: int, reference: str, phone: str, otp: str) -> YapeResult: ...
+
+
+class MercadoPagoYape:
+    """Cobra con Yape usando la Checkout API de Mercado Pago.
+
+    `base_url` es la API real (https://api.mercadopago.com) o la pasarela simulada, que imita
+    los mismos endpoints y números de prueba. Con TLS 1.3 obligatorio en ambos casos (RNF-04).
+
+    Errores del cliente (código vencido, sin saldo…) vuelven como `YapeResult(approved=False)`;
+    fallos de red o de configuración (credenciales inválidas) lanzan `PaymentError`.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        public_key: str,
+        access_token: str,
+        payer_email: str = DEFAULT_PAYER_EMAIL,
+        ca_file: Path | None = None,
+        transport: httpx.BaseTransport | None = None,
+    ):
+        self._public_key = public_key
+        self._access_token = access_token
+        self._payer_email = payer_email
+        self._client = httpx.Client(
+            base_url=base_url,
+            timeout=YAPE_TIMEOUT_S,
+            verify=tls13_context(ca_file),
+            transport=transport,
+        )
+
+    def _send(self, method: str, path: str, **kwargs) -> httpx.Response:
+        try:
+            response = self._client.request(method, path, **kwargs)
+        except httpx.HTTPError as e:
+            raise PaymentError(f"Mercado Pago no disponible: {e}") from e
+        if response.status_code >= 500 or response.status_code in (401, 403):
+            raise PaymentError(f"Mercado Pago respondió {response.status_code}")
+        return response
+
+    @staticmethod
+    def _json(response: httpx.Response) -> dict:
+        try:
+            data = response.json()
+        except ValueError as e:
+            raise PaymentError("Respuesta de Mercado Pago no es JSON") from e
+        if not isinstance(data, dict):
+            raise PaymentError("Respuesta de Mercado Pago inesperada")
+        return data
+
+    def _token(self, phone: str, otp: str) -> str | None:
+        """Token de un solo uso. None si Yape rechaza el celular o el código."""
+        response = self._send(
+            "POST",
+            "/platforms/pci/yape/v1/payment",
+            params={"public_key": self._public_key},
+            json={"phoneNumber": phone, "otp": otp, "requestId": str(uuid.uuid4())},
+        )
+        if response.is_client_error:
+            return None
+        token = self._json(response).get("id")
+        if not isinstance(token, str) or not token:
+            raise PaymentError("Mercado Pago no devolvió el token de Yape")
+        return token
+
+    def charge(self, amount_cents: int, reference: str, phone: str, otp: str) -> YapeResult:
+        token = self._token(phone, otp)
+        if token is None:
+            return YapeResult("", False, "invalid_phone_or_otp", amount_cents)
+        auth = {"Authorization": f"Bearer {self._access_token}"}
+        response = self._send(
+            "POST",
+            "/v1/payments",
+            headers={**auth, "X-Idempotency-Key": f"{reference}-{uuid.uuid4()}"},
+            json={
+                "token": token,
+                "transaction_amount": amount_cents / 100,
+                "installments": 1,
+                "payment_method_id": "yape",
+                "description": f"AutoCaja {reference}",
+                "external_reference": reference,
+                "payer": {"email": self._payer_email},
+            },
+        )
+        data = self._json(response)
+        if response.is_client_error:
+            return YapeResult("", False, str(data.get("message", "bad_request")), amount_cents)
+        payment_id = str(data.get("id", ""))
+        status, detail = data.get("status"), str(data.get("status_detail", ""))
+        if status != "approved":
+            return YapeResult(payment_id, False, detail or str(status), amount_cents)
+        self._confirm(payment_id, amount_cents, reference, auth)
+        return YapeResult(payment_id, True, detail, amount_cents)
+
+    def _confirm(self, payment_id: str, amount_cents: int, reference: str, auth: dict) -> None:
+        """No basta con la primera respuesta: se vuelve a consultar el pago y se exige que esté
+        aprobado, por el mismo monto y con la referencia de esta venta."""
+        data = self._json(self._send("GET", f"/v1/payments/{payment_id}", headers=auth))
+        amount = data.get("transaction_amount")
+        if (
+            data.get("status") != "approved"
+            or not isinstance(amount, int | float)
+            or round(amount * 100) != amount_cents
+            or data.get("external_reference") != reference
+        ):
+            raise PaymentError(f"El pago {payment_id} no coincide con la venta {reference}")
+
+
+YAPE_MESSAGES = {
+    "invalid_phone_or_otp": "Celular o código de aprobación incorrecto o vencido. "
+    "Genera un código nuevo en Yape",
+    "cc_rejected_bad_filled_security_code": "Código de aprobación incorrecto o vencido. "
+    "Genera un código nuevo en Yape",
+    "cc_rejected_call_for_authorize": "Yape pidió autorizar el pago. Revisa tu app e intenta de nuevo",
+    "cc_amount_rate_limit_exceeded": "Superaste el límite de tu Yape. Usa otro medio de pago",
+    "cc_rejected_insufficient_amount": "Saldo insuficiente en Yape",
+    "cc_rejected_max_attempts": "Demasiados intentos en Yape. Usa otro medio de pago",
+    "cc_rejected_form_error": "Revisa el número de celular y el código",
+}
+YAPE_DEFAULT_MESSAGE = "Yape rechazó el pago. Intenta de nuevo o pide ayuda"
+
+
+def yape_message(status_detail: str) -> str:
+    """Texto para el cliente según el motivo de rechazo de Mercado Pago."""
+    return YAPE_MESSAGES.get(status_detail, YAPE_DEFAULT_MESSAGE)

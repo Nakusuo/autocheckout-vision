@@ -9,7 +9,15 @@ from kiosk.catalog import Catalog
 from kiosk.checkout import MAX_ITEMS, Checkout, State, TransitionError
 from kiosk.fusion import Cart, build_cart, check_weight
 from kiosk.metrics import SessionRecorder
-from kiosk.payments import Charge, JwtVerifier, PaymentError, PaymentGateway
+from kiosk.payments import (
+    Charge,
+    JwtVerifier,
+    PaymentError,
+    PaymentGateway,
+    YapeProvider,
+    YapeResult,
+    yape_message,
+)
 from kiosk.pos import SimulatedPos
 from kiosk.scale import ScaleReader
 from kiosk.stability import StabilityFilter
@@ -20,6 +28,7 @@ log = logging.getLogger(__name__)
 RESET_AFTER_S = 10.0
 PAYMENT_TIMEOUT_S = 120.0
 POLL_EVERY_S = 1.0
+MAX_YAPE_ATTEMPTS = 3  # rechazos seguidos antes de pedir ayuda en caja
 # Margen antes de alertar por peso: el cliente pasa el producto y lo deja en la bandeja
 # un instante después. PAGAR sigue bloqueado mientras el peso no coincida.
 WEIGHT_GRACE_S = 2.0
@@ -52,12 +61,15 @@ class KioskService:
         detector: Detector,
         scale: ScaleReader | None,
         gateway: PaymentGateway,
-        verifier: JwtVerifier,
+        verifier: JwtVerifier | None,
         clock: Callable[[], float] = time.monotonic,
         pos: SimulatedPos | None = None,
         sessions: SessionRecorder | None = None,
         on_cart: Callable[[Cart], None] | None = None,
+        yape: YapeProvider | None = None,
     ):
+        """`yape`: si se da, el cobro es con Yape (celular + código de aprobación) en vez del QR
+        de la pasarela; `gateway` y `verifier` quedan sin usar."""
         self.catalog = catalog
         self._detector = detector
         self._open_camera = getattr(detector, "open", None)
@@ -89,6 +101,10 @@ class KioskService:
         self._reference = ""
         self._last_poll = float("-inf")
         self._references = itertools.count(1)
+        self._yape = yape
+        self._yape_busy = False  # hay una llamada a Mercado Pago en curso
+        self._yape_error: str | None = None
+        self._yape_attempts = 0
 
     def _do(self, action: Callable[[], None]) -> None:
         before = self.checkout.state
@@ -99,6 +115,8 @@ class KioskService:
                 self._stability.reset()
             if self.checkout.state is not State.PAYING:
                 self._charge = None
+                self._yape_error = None
+                self._yape_attempts = 0
             if self._close_camera is not None:
                 camera_action = self._open_camera if self.wants_reading() else self._close_camera
                 if camera_action is not None:
@@ -118,6 +136,8 @@ class KioskService:
 
     def cancel(self) -> None:
         """El cliente abandona la compra: se descarta la lista (y el cobro, si había QR)."""
+        if self._yape_busy:
+            raise TransitionError("Espere: se está procesando el pago con Yape")
         screen = SCREEN[self.checkout.state]
         self._do(self.checkout.cancel)
         self._scanned = Counter()
@@ -147,6 +167,10 @@ class KioskService:
             self._do(self.checkout.pay)  # lanza TransitionError con el motivo
             return
         reference = f"venta-{next(self._references)}"
+        if self._yape is not None:  # Yape: el cliente escribe celular y código en la pantalla
+            self._do(self.checkout.pay)
+            self._reference = reference
+            return
         try:
             charge = self._gateway.create_charge(cart.total_cents, reference)
         except PaymentError as e:
@@ -155,6 +179,84 @@ class KioskService:
         self._charge = charge
         self._reference = reference
         self._last_poll = float("-inf")
+
+    def begin_yape(self) -> tuple[int, str]:
+        """Reserva el cobro con Yape: valida el estado y devuelve (monto, referencia).
+
+        No hace red. Mientras dure el cobro no se puede cancelar ni vence el tiempo, para no
+        cobrar una compra que ya se descartó."""
+        cart = self.checkout.cart
+        if self._yape is None:
+            raise TransitionError("Este quiosco no cobra con Yape")
+        if self.checkout.state is not State.PAYING or cart is None:
+            raise TransitionError("No hay un cobro en curso")
+        if self._yape_busy:
+            raise TransitionError("Ya se está procesando el pago")
+        if self._yape_attempts >= MAX_YAPE_ATTEMPTS:
+            raise TransitionError("Demasiados intentos. Pida ayuda en caja")
+        self._yape_busy = True
+        self._yape_error = None
+        return cart.total_cents, self._reference
+
+    def charge_yape(
+        self, amount_cents: int, reference: str, phone: str, otp: str
+    ) -> YapeResult | PaymentError:
+        """La parte lenta (red): puede correr en otro hilo, no toca el estado."""
+        if self._yape is None:
+            return PaymentError("Este quiosco no cobra con Yape")
+        try:
+            return self._yape.charge(amount_cents, reference, phone, otp)
+        except PaymentError as e:
+            return e
+
+    def finish_yape(
+        self, reference: str, amount_cents: int, outcome: YapeResult | PaymentError
+    ) -> None:
+        """Aplica el resultado del cobro (en el bucle principal)."""
+        self._yape_busy = False
+        if isinstance(outcome, PaymentError):
+            log.warning("Cobro con Yape fallido: %s", outcome)
+            self._yape_error = "No se pudo conectar con Yape. Intente de nuevo"
+            return
+        if not outcome.approved:
+            self._yape_attempts += 1
+            log.info("Yape rechazó %s: %s", reference, outcome.status_detail)
+            self._yape_error = yape_message(outcome.status_detail)
+            if self._yape_attempts >= MAX_YAPE_ATTEMPTS:
+                self._yape_error += ". Demasiados intentos: pida ayuda en caja"
+            return
+        cart = self.checkout.cart
+        if (
+            cart is None
+            or self.checkout.state is not State.PAYING
+            or reference != self._reference
+            or not cart.total_cents == amount_cents == outcome.amount_cents
+        ):
+            self._orphan_payment(outcome, reference)
+            return
+        self._do(self.checkout.payment_confirmed)
+        self.pos.issue_receipt(reference, outcome.payment_id, cart.lines, cart.total_cents)
+        self._close_alert("pagada")
+        self.sessions.finish(self._clock(), "paid", cart.item_count, cart.total_cents)
+
+    def _orphan_payment(self, outcome: YapeResult, reference: str) -> None:
+        """Mercado Pago aprobó un cobro que ya no corresponde a la compra en pantalla: la caja
+        debe devolverlo. Queda como alerta que nunca se descarta (outcome «pagada»)."""
+        alert = {
+            "id": self._next_alert_id,
+            "reason": (
+                f"Pago Yape aprobado sin compra en curso ({reference}, operación "
+                f"{outcome.payment_id}, S/ {outcome.amount_cents / 100:.2f}): devolver"
+            ),
+            "screen": SCREEN[self.checkout.state],
+            "at": self._clock(),
+            "times": 1,
+            "outcome": "pagada",
+        }
+        self._next_alert_id += 1
+        self.security_alerts.append(alert)
+        self._trim_alerts()
+        log.error("Pago Yape %s aprobado sin compra en curso", outcome.payment_id)
 
     def recover(self) -> None:
         self._do(self.checkout.recover)
@@ -192,6 +294,8 @@ class KioskService:
         if state is State.PAID and elapsed >= RESET_AFTER_S:
             self._do(self.checkout.reset)
             return
+        if state is State.PAYING and self._yape_busy:
+            return  # no vence ni se consulta mientras Mercado Pago responde
         if state is State.PAYING and elapsed >= PAYMENT_TIMEOUT_S:
             self._do(self.checkout.payment_timeout)
             self.sessions.note("payment_timeouts")
@@ -315,7 +419,7 @@ class KioskService:
 
     def _poll_payment(self) -> None:
         now = self._clock()
-        if self._charge is None or now - self._last_poll < POLL_EVERY_S:
+        if self._charge is None or self._verifier is None or now - self._last_poll < POLL_EVERY_S:
             return
         self._last_poll = now
         try:
@@ -395,4 +499,7 @@ class KioskService:
             "seconds_in_state": round(self._clock() - self._entered_at, 1),
             "help_pending": bool(self.help_requests),
             "qr_payload": self._charge.qr_payload if self._charge else None,
+            "payment_method": "yape" if self._yape is not None else "qr",
+            "payment_error": self._yape_error,
+            "payment_processing": self._yape_busy,
         }
