@@ -67,6 +67,7 @@ export function CajaPanel() {
   const known = useRef(new Set<number>());
   const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
   const knownAlerts = useRef(new Set<number>());
+  const [accepting, setAccepting] = useState(false);
 
   const toggleSound = () => {
     const next = !sound;
@@ -154,6 +155,17 @@ export function CajaPanel() {
   const resolve = (id: number) =>
     request<HelpRequest[]>("DELETE", `/api/help/${id}`).then(apply).catch(fail);
   const recover = () => request("POST", "/api/recover").then(() => setError(null)).catch(fail);
+  const acceptPayment = () => {
+    setAccepting(true);
+    request("POST", "/api/caja/accept-payment")
+      .then(() => request<Sales>("GET", "/api/sales"))
+      .then((updated) => {
+        setSales(updated);
+        setError(null);
+      })
+      .catch(fail)
+      .finally(() => setAccepting(false));
+  };
   const [calibrating, setCalibrating] = useState(false);
   const recalibrate = () =>
     request("POST", "/api/recalibrate")
@@ -272,6 +284,15 @@ export function CajaPanel() {
                 </div>
               </div>
             )}
+            {snapshot?.screen === "QR" && lines.length > 0 && (
+              <>
+                <p className="muted">Pago por QR pendiente de aprobación.</p>
+                <button type="button" className="pbtn go" onClick={acceptPayment} disabled={!connected || accepting}>
+                  {accepting ? "Confirmando pago…" : "Aceptar pago simulado"}
+                </button>
+              </>
+            )}
+            {snapshot?.screen === "W4" && <p>Pago confirmado. Compra finalizada.</p>}
           </section>
 
           <section className="card">

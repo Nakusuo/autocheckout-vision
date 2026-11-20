@@ -129,6 +129,10 @@ def create_app(
     async def pay() -> dict:
         return act(service.pay)
 
+    @app.post("/api/caja/accept-payment")
+    async def accept_payment() -> dict:
+        return act(service.accept_payment)
+
     @app.post("/api/recalibrate")
     async def recalibrate() -> dict:
         return act(service.recalibrate)

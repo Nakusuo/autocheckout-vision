@@ -36,7 +36,7 @@ npm run dev
 |---|---|
 | http://localhost:5173/ | Quiosco (cliente), formato vertical |
 | http://localhost:5173/sim | Simulador para la presentación: pasar cada producto por la cámara (o ponerlo «sin escanear»), escenarios paso a paso, balanza, acciones del quiosco, enlace al «celular» que paga y vista en vivo del quiosco |
-| http://localhost:5173/caja | Panel de caja: solicitudes de ayuda, alertas de seguridad, ventas de hoy, reactivar el quiosco y recalibrar la cámara |
+| http://localhost:5173/caja | Panel de caja: compra en curso, aprobación del pago simulado pendiente por QR, solicitudes de ayuda, alertas, ventas y estado del quiosco |
 
 **Panel de caja (`/caja`):**
 - **Alertas de seguridad** (`GET /api/alerts`, `DELETE /api/alerts/{id}` al marcarla revisada): una por compra cuando pasa algo no reconocido frente a la cámara («Producto no reconocido frente a la cámara»). Cuenta las veces (`times`) y dice cómo terminó la compra: en curso, pagada, cancelada o quiosco fuera de servicio. Si la caja la marca revisada y vuelve a pasar en la misma compra, se crea otra.
@@ -44,7 +44,7 @@ npm run dev
 - Pitido (880 Hz) con cada ayuda o alerta nueva; el botón «Sonido: sí/no» se recuerda en el navegador.
 - Se guardan hasta 50 ayudas y 50 alertas sin atender.
 
-Para pagar: en la pantalla del QR, abre en `/sim` el enlace «Abrir el celular simulado» y pulsa «Pagar con Yape/Plin (simulado)». El quiosco consulta la pasarela por HTTPS (TLS 1.3), verifica la firma RS256 y muestra el ticket.
+Para pagar: después de CONFIRMAR y PAGAR en el quiosco, `/caja` muestra las líneas y el total de la compra. Cuando aparece el QR, la caja puede pulsar «Aceptar pago simulado». También se puede abrir el enlace del QR y pagar desde el celular simulado. En ambos casos el quiosco consulta la pasarela por HTTPS (TLS 1.3), verifica la firma RS256 y muestra el ticket. La aprobación de caja solo está disponible mientras haya un cobro pendiente.
 
 La API escucha en 127.0.0.1:8000 y solo acepta peticiones desde http://localhost:5173 (Vite usa ese puerto fijo; si está ocupado, libéralo).
 
@@ -92,6 +92,28 @@ export KIOSK_MODE=camera
 export KIOSK_MODEL=../ml/data/models/autocaja-416.onnx   # modelo entrenado (M1)
 export KIOSK_CAMERA=0      # índice de la webcam
 export KIOSK_IMGSZ=416     # tamaño con el que se exportó
+python -m kiosk
+```
+
+**Quiosco con personas al fondo (YOLO + galería):** configura `KIOSK_MODEL` y
+`KIOSK_GALLERY` a la vez. YOLO propone el producto y su zona; la galería debe
+identificar el mismo SKU con parecido mínimo de `0.90` (ajustable mediante
+`KIOSK_HYBRID_THRESHOLD`). Una propuesta sin acuerdo se descarta y no se cobra.
+Este modo no aprende el fondo, por lo que las personas pueden permanecer detrás
+del producto. Presenta un solo empaque, de frente y cerca del centro de la lente.
+En la prueba local, Morochas se registró y una falsa propuesta de Guaraná sobre
+personas no entró en el carrito. La galería y el modelo deben existir antes de
+arrancar; el resultado depende de las fotos y del entrenamiento disponibles.
+El recorte directo acelera los cuadros claros; los ambiguos usan segmentación.
+Para pasar dos unidades del mismo SKU, retira por completo la primera durante
+al menos tres segundos antes de presentar la segunda. Otro SKU puede entrar
+en cuanto se verifique, sin esa espera.
+
+```bash
+export KIOSK_MODE=camera
+export KIOSK_MODEL=../ml/data/models/autocaja-416.onnx
+export KIOSK_GALLERY=../ml/data/models/galeria.npz
+export KIOSK_CAMERA=0
 python -m kiosk
 ```
 

@@ -150,14 +150,25 @@ class YoloOnnxDetector:
     ) -> "YoloOnnxDetector":
         import onnxruntime as ort
 
-        session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = 4
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        session = ort.InferenceSession(str(model_path), options, providers=["CPUExecutionProvider"])
         names = class_names_from_metadata(session.get_modelmeta().custom_metadata_map)
         return cls(session, names, source, imgsz, conf, iou)
 
     def detect(self) -> list[str]:
         frame = self._source.read()
+        return [self._names[d.class_id] for d in self.detections(frame)]
+
+    def detections(self, frame: np.ndarray) -> list[Detection]:
+        """Devuelve las propuestas del modelo para un cuadro ya leído."""
         output = self._session.run(None, {self._input: letterbox(frame, self._imgsz)})[0]
-        return [self._names[d.class_id] for d in decode_yolov8(output, self._conf, self._iou)]
+        return decode_yolov8(output, self._conf, self._iou)
+
+    @property
+    def class_names(self) -> list[str]:
+        return self._names
 
     def open(self) -> None:
         open_source = getattr(self._source, "open", None)

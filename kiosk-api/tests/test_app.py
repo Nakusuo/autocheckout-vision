@@ -51,6 +51,23 @@ def test_full_flow_over_http():
     assert client.get("/api/state").json()["screen"] == "W4"
 
 
+def test_cashier_accepts_pending_qr_and_finishes_purchase():
+    svc, client, _ = make()
+    assert client.post("/api/caja/accept-payment").status_code == 409
+    client.post("/api/start")
+    client.post("/sim/tray", json={"skus": ["AGUA"]})
+    for _ in range(3):
+        svc.tick()
+    assert client.post("/api/confirm").json()["screen"] == "W3"
+    pending = client.post("/api/pay").json()
+    assert pending["screen"] == "QR"
+    assert pending["lines"][0]["name"] == "Agua"
+    completed = client.post("/api/caja/accept-payment")
+    assert completed.status_code == 200
+    assert completed.json()["screen"] == "W4"
+    assert client.post("/api/caja/accept-payment").status_code == 409
+
+
 def test_unknown_sku_in_sim_tray_is_422():
     _, client, _ = make()
     assert client.post("/sim/tray", json={"skus": ["X"]}).status_code == 422

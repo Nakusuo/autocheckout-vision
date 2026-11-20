@@ -66,6 +66,12 @@ def create_app(private_key_pem: bytes, api_key: str, public_url: str) -> FastAPI
             out["token"] = sign_payment(charge, private_key_pem)
         return out
 
+    @app.post("/charges/{charge_id}/confirm")
+    def confirm_charge(charge_id: str, x_api_key: str | None = Header(default=None)) -> dict:
+        require_key(x_api_key)
+        charge = store.mark_paid(find(charge_id).id)
+        return {"charge_id": charge.id, "status": charge.status}
+
     @app.get("/pay/{charge_id}", response_class=HTMLResponse)
     def pay_page(charge_id: str) -> str:
         charge = find(charge_id)

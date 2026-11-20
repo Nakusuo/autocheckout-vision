@@ -20,13 +20,14 @@ Uso (las opciones --galeria y --embedder van antes del comando):
 import argparse
 import threading
 import time
+from collections import Counter, deque
 from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-from kiosk.vision import CameraSource, FrameSource
+from kiosk.vision import CameraSource, Detection, FrameSource, YoloOnnxDetector
 
 REPO = Path(__file__).resolve().parents[3]
 MODELS = REPO / "ml" / "data" / "models"
@@ -113,6 +114,7 @@ class Embedder:
 
         options = ort.SessionOptions()
         options.intra_op_num_threads = 4  # el mejor en la laptop de desarrollo (8 núcleos)
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
         session = ort.InferenceSession(str(path), options, providers=["CPUExecutionProvider"])
         return cls(session, size)
 
@@ -133,7 +135,10 @@ class Segmenter:
     def from_model(cls, path: Path = DEFAULT_SEGMENTER) -> "Segmenter":
         import onnxruntime as ort
 
-        return cls(ort.InferenceSession(str(path), providers=["CPUExecutionProvider"]))
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = 4
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        return cls(ort.InferenceSession(str(path), options, providers=["CPUExecutionProvider"]))
 
     def __call__(self, bgr: np.ndarray) -> np.ndarray:
         out = self._session.run(None, {self._input: _normalize(bgr, 320)[None]})[0][0, 0]
@@ -441,6 +446,120 @@ class SimilarityDetector:
         self.last = ranking[0]
         sku, score = ranking[0]
         return [sku] if score >= self._threshold else [UNKNOWN]
+
+
+class VerifiedYoloDetector:
+    """Cobra solo cuando YOLO y la galería identifican el mismo empaque.
+
+    YOLO propone una zona aunque haya personas detrás. La galería comprueba la
+    apariencia del producto; un falso positivo sobre una persona se descarta.
+    """
+
+    def __init__(
+        self,
+        model: Path,
+        gallery: Path,
+        source: FrameSource,
+        *,
+        imgsz: int = 416,
+        threshold: float = 0.90,
+        embedder: Path = DEFAULT_EMBEDDER,
+        segmenter: Path = DEFAULT_SEGMENTER,
+    ):
+        self._source = source
+        self._yolo = YoloOnnxDetector.from_model(model, source, imgsz=imgsz, conf=0.35)
+        self._gallery = Gallery.load(gallery)
+        self._embed = Embedder.from_model(embedder, self._gallery.size)
+        self._segment = Segmenter.from_model(segmenter)
+        self._threshold = threshold
+        self._imgsz = imgsz
+        self._votes: deque[str | None] = deque(maxlen=12)
+        self._held_sku: str | None = None
+        self._last_seen = 0.0
+        self.last: tuple[str, float] | None = None
+
+    def _crop(self, frame: np.ndarray, detection: Detection) -> np.ndarray | None:
+        rows, cols = frame.shape[:2]
+        scale = min(self._imgsz / rows, self._imgsz / cols)
+        top = (self._imgsz - round(rows * scale)) // 2
+        left = (self._imgsz - round(cols * scale)) // 2
+        x, y, width, height = detection.box
+        x0 = max(0, int((x - left) / scale))
+        y0 = max(0, int((y - top) / scale))
+        x1 = min(cols, int((x + width - left) / scale))
+        y1 = min(rows, int((y + height - top) / scale))
+        if x1 <= x0 or y1 <= y0:
+            return None
+        # Un recuadro casi de pantalla completa incluye caras y fondo. El empaque
+        # se presenta en el centro de la lente; conservar esa zona evita mezclarlo.
+        if (x1 - x0) * (y1 - y0) > 0.5 * rows * cols:
+            cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
+            half_w, half_h = int(0.325 * (x1 - x0)), int(0.275 * (y1 - y0))
+            x0, x1 = max(0, cx - half_w), min(cols, cx + half_w)
+            y0, y1 = max(0, cy - half_h), min(rows, cy + half_h)
+        return frame[y0:y1, x0:x1]
+
+    def detect(self) -> list[str]:
+        frame = self._source.read()
+        self.last = None
+        proposals = self._yolo.detections(frame)
+        now = time.monotonic()
+        if self._held_sku is not None:
+            if any(self._yolo.class_names[d.class_id] == self._held_sku for d in proposals):
+                self._last_seen = now
+                return [self._held_sku]
+            # Dos cuadros perdidos no representan una segunda unidad. Para otro
+            # SKU se permite cambiar en cuanto pase dos verificaciones; para el
+            # mismo SKU se exige una salida real y sostenida del encuadre.
+            if now - self._last_seen >= 3.0:
+                self._held_sku = None
+                self._votes.clear()
+        vote = None
+        for detection in proposals:
+            sku = self._yolo.class_names[detection.class_id]
+            crop = self._crop(frame, detection)
+            if crop is None:
+                continue
+            # Primero se comprueba el recuadro de YOLO directamente (~150 ms).
+            # La segmentación completa queda para resultados débiles o confusos.
+            fast = isolate(crop, np.ones(crop.shape[:2], np.float32))
+            if fast is not None:
+                ranking = self._gallery.ranking(fingerprints(self._embed, *fast)[0])
+                gallery_score = next((score for label, score in ranking if label == sku), -1.0)
+                competitor = max((score for label, score in ranking if label != sku), default=-1.0)
+                if gallery_score >= 0.92 and gallery_score - competitor >= 0.04:
+                    self.last = (sku, gallery_score)
+                    vote = sku
+                    break
+            if (found := isolate(crop, self._segment(crop))) is None:
+                continue
+            ranking = self._gallery.ranking(fingerprints(self._embed, *found)[0])
+            if ranking:
+                self.last = ranking[0]
+                gallery_score = next((score for label, score in ranking if label == sku), -1.0)
+                if gallery_score >= self._threshold and ranking[0][1] - gallery_score <= 0.03:
+                    vote = sku
+                    break
+        self._votes.append(vote)
+        counts = Counter(label for label in self._votes if label is not None)
+        for sku, hits in counts.most_common():
+            if hits >= 2 and sku != self._held_sku:
+                self._held_sku = sku
+                self._last_seen = now
+                self._votes.clear()
+                return [sku]
+        if self._held_sku is not None:
+            return [self._held_sku]
+        return []
+
+    def open(self) -> None:
+        self._yolo.open()
+
+    def close(self) -> None:
+        self._yolo.close()
+
+    def recalibrate(self) -> None:
+        """No requiere aprender el fondo; conserva la acción de la interfaz."""
 
 
 def benchmark(gallery: Path, embedder: Path, raw: Path, frames: int) -> int:
