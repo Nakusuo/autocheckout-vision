@@ -37,14 +37,14 @@ function stubCamera(getUserMedia: () => Promise<unknown>) {
 
 describe("CamaraWeb", () => {
   it("sin cámara en el navegador lo dice", () => {
-    render(<CamaraWeb disabled={false} onAdd={() => undefined} />);
+    render(<CamaraWeb disabled={false} onAdd={async () => true} />);
     expect(screen.getByRole("alert")).toHaveTextContent("no permite usar la cámara");
     expect(screen.getByText("Pon un producto dentro del recuadro amarillo.")).toBeInTheDocument();
   });
 
   it("si el permiso se niega, pide permitir el acceso", async () => {
     stubCamera(() => Promise.reject(new Error("NotAllowed")));
-    render(<CamaraWeb disabled={false} onAdd={() => undefined} />);
+    render(<CamaraWeb disabled={false} onAdd={async () => true} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Permite el acceso");
   });
 
@@ -52,7 +52,7 @@ describe("CamaraWeb", () => {
     const stop = vi.fn();
     const stream = { getTracks: () => [{ stop }] };
     stubCamera(() => Promise.resolve(stream));
-    const { unmount } = render(<CamaraWeb disabled={false} onAdd={() => undefined} />);
+    const { unmount } = render(<CamaraWeb disabled={false} onAdd={async () => true} />);
     const video = screen.getByLabelText("Vista de la cámara") as HTMLVideoElement;
     await act(async () => undefined);
     expect(video.srcObject).toBe(stream);
@@ -64,7 +64,7 @@ describe("CamaraWeb", () => {
     const stop = vi.fn();
     let resolve!: (s: unknown) => void;
     stubCamera(() => new Promise((r) => (resolve = r)));
-    const { unmount } = render(<CamaraWeb disabled={false} onAdd={() => undefined} />);
+    const { unmount } = render(<CamaraWeb disabled={false} onAdd={async () => true} />);
     unmount();
     await act(async () => resolve({ getTracks: () => [{ stop }] }));
     expect(stop).toHaveBeenCalled();
@@ -100,7 +100,7 @@ describe("CamaraWeb: agregado automático", () => {
   it("agrega solo tras verlo igual 3 veces y avisa «Agregado»", async () => {
     vi.useFakeTimers();
     stubFrames(["CASINO-43", "CASINO-43", "CASINO-43", "CASINO-43"]);
-    const onAdd = vi.fn();
+    const onAdd = vi.fn(async () => true);
     render(<CamaraWeb disabled={false} onAdd={onAdd} />);
     await frames(2);
     expect(screen.getByText("Producto CASINO-43")).toBeInTheDocument();
@@ -114,12 +114,38 @@ describe("CamaraWeb: agregado automático", () => {
 
   it("deshabilitada (sin conexión o agregando) no agrega nada", async () => {
     vi.useFakeTimers();
-    stubFrames(Array(5).fill("CASINO-43"));
-    const onAdd = vi.fn();
+    const fetch = stubFrames([]);
+    fetch.mockClear();
+    const onAdd = vi.fn(async () => true);
     render(<CamaraWeb disabled onAdd={onAdd} />);
     await frames(5);
     expect(onAdd).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled(); // ni siquiera manda cuadros
     expect(screen.getByText("Pon un producto dentro del recuadro amarillo.")).toBeInTheDocument();
+  });
+
+  it("no agrega dos veces si la API tarda mientras el producto sigue en el recuadro", async () => {
+    vi.useFakeTimers();
+    stubFrames(Array(12).fill("CASINO-43"));
+    const onAdd = vi.fn(async () => true);
+    const { rerender } = render(<CamaraWeb disabled={false} onAdd={onAdd} />);
+    await frames(3);
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    rerender(<CamaraWeb disabled onAdd={onAdd} />); // agregando: la petición tarda
+    await frames(4);
+    rerender(<CamaraWeb disabled={false} onAdd={onAdd} />);
+    await frames(4);
+    expect(onAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it("si la API rechaza el producto no dice «Agregado»", async () => {
+    vi.useFakeTimers();
+    stubFrames(Array(4).fill("CASINO-43"));
+    const onAdd = vi.fn(async () => false);
+    render(<CamaraWeb disabled={false} onAdd={onAdd} />);
+    await frames(4);
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Agregado:/)).not.toBeInTheDocument();
   });
 });
 

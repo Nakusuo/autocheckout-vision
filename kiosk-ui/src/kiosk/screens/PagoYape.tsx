@@ -48,7 +48,7 @@ export function PagoYape({ snapshot, offline }: { snapshot: Snapshot; offline: b
           <p className="pay-label">Total a pagar con Yape</p>
           <p className="amount">{formatPEN(snapshot.total_cents)}</p>
         </div>
-        <p className="speed-sign" aria-label={`Quedan ${left} segundos para pagar`}>{left} s</p>
+        <p className="speed-sign" role="timer" aria-label={`Quedan ${left} segundos para pagar`}>{left} s</p>
       </div>
 
       <div className="yape-fields">
@@ -94,7 +94,7 @@ export function PagoYape({ snapshot, offline }: { snapshot: Snapshot; offline: b
             type="button"
             className={`key${key.length > 1 ? " key-text" : ""}`}
             disabled={processing}
-            aria-label={key === "borrar" ? "Borrar un dígito" : key === "limpiar" ? "Borrar todo" : key}
+            aria-label={key === "borrar" ? "Borrar un dígito" : key === "limpiar" ? "Borrar todo" : undefined}
             onClick={() => press(key)}
           >
             {key === "borrar" ? <BackspaceGlyph className="key-icon" /> : key === "limpiar" ? "Borrar" : key}

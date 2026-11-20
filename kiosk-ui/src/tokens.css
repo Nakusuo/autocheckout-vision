@@ -196,7 +196,7 @@ body:has(.kiosk) {
   font-size: calc(4.2 * var(--u));
   font-weight: 700;
   border-bottom: calc(0.35 * var(--u)) solid var(--rule);
-  animation: line-in 220ms var(--ease-out);
+  animation: line-in 220ms var(--ease-out) backwards;
 }
 @keyframes line-in {
   from { opacity: 0; transform: translateX(calc(-3 * var(--u))); }
@@ -212,7 +212,6 @@ body:has(.kiosk) {
   border-radius: calc(1.2 * var(--u));
   font-weight: 900;
 }
-.line-name { line-height: 1.2; }
 .line-price { font-weight: 800; }
 .total {
   display: flex;
@@ -273,7 +272,6 @@ body:has(.kiosk) {
 }
 @keyframes live-pulse { 50% { opacity: 0.25; } }
 
-.line { animation-fill-mode: backwards; }
 .line.removable { grid-template-columns: auto 1fr auto auto; }
 .line-remove {
   width: calc(8 * var(--u));
@@ -348,7 +346,6 @@ body:has(.kiosk) {
   animation: spin 0.9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.weight.bad { color: var(--ink); }
 
 .alert {
   display: flex;
@@ -419,12 +416,9 @@ body:has(.kiosk) {
   box-shadow: inset 0 0 0 calc(0.5 * var(--u)) var(--disabled-bg), inset 0 0 0 calc(1 * var(--u)) var(--disabled-ink);
   cursor: not-allowed;
 }
-.btn-small { min-height: calc(11 * var(--u)); font-size: calc(4.4 * var(--u)); }
-.btn-small .btn-icon { width: calc(5.4 * var(--u)); margin-top: calc(-0.8 * var(--u)); }
 .hint { margin: 0; font-size: calc(3.6 * var(--u)); font-weight: 700; color: var(--ink-soft); }
 .actions { display: flex; flex-direction: column; gap: calc(2.4 * var(--u)); }
 
-/* Ayuda: siempre al pie, placa blanca más baja que la acción principal. */
 /* Aviso de privacidad (Ley 29733) mientras la cámara mira la bandeja. */
 .privacy {
   display: flex;
@@ -440,6 +434,7 @@ body:has(.kiosk) {
 .privacy-icon { width: calc(4.4 * var(--u)); flex: none; }
 .privacy > span { text-wrap: balance; }
 
+/* Ayuda: siempre al pie, placa blanca más baja que la acción principal. */
 .help {
   padding: 0 calc(5 * var(--u)) calc(4 * var(--u));
   display: flex;
@@ -671,8 +666,8 @@ body:has(.kiosk) {
   .screen-scan-web .title { font-size: calc(7 * var(--u)); }
   .screen-scan-web .lines { max-height: calc(25 * var(--u)); }
   .screen-scan-web .line { padding: calc(2.2 * var(--u)) calc(3 * var(--u)) calc(1.6 * var(--u)); font-size: calc(3.9 * var(--u)); }
-  .screen-scan-web .line-qty, .screen-scan-web .line-remove { min-width: calc(7 * var(--u)); width: auto; height: calc(7 * var(--u)); }
-  .screen-scan-web .line-remove { width: calc(7 * var(--u)); }
+  .screen-scan-web .line-qty { min-width: calc(7 * var(--u)); width: auto; height: calc(7 * var(--u)); }
+  .screen-scan-web .line-remove { width: calc(7 * var(--u)); min-width: calc(7 * var(--u)); height: calc(7 * var(--u)); }
   .screen-scan-web .total { padding: calc(2 * var(--u)) calc(3 * var(--u)) calc(1.6 * var(--u)); }
   .screen-scan-web .total-amount { font-size: calc(6.4 * var(--u)); }
   /* CANCELAR a la izquierda (callado) y CONFIRMAR a la derecha (la acción). */
@@ -690,12 +685,11 @@ body:has(.kiosk) {
 }
 /* La sugerencia y la pista ocupan siempre el mismo alto: aparecer o desaparecer no mueve nada. */
 .webcam-status { min-height: calc(13 * var(--u)); display: flex; flex-direction: column; justify-content: center; }
-.webcam-status > /* Resultado bajo la cámara: «viendo» con barra de progreso y «agregado» con el visto bueno. */
-.scan-result {
+/* Resultado bajo la cámara: «viendo» con barra de progreso y «agregado» con el visto bueno. */
+.webcam-status > .scan-result {
   display: flex;
   align-items: center;
   gap: calc(3 * var(--u));
-  min-height: calc(13 * var(--u));
   padding: calc(1.6 * var(--u)) calc(4 * var(--u)) calc(1.2 * var(--u));
   border-radius: var(--radius);
   box-shadow: inset 0 0 0 var(--border) var(--ink);
@@ -764,7 +758,6 @@ body:has(.kiosk) {
   .plate { grid-area: plate; }
   .privacy {
     grid-area: privacy;
-    align-self: center;
     padding: calc(2 * var(--u)) calc(4 * var(--u));
     border-top: calc(0.35 * var(--u)) solid var(--rule);
     height: 100%;
@@ -858,6 +851,8 @@ body:has(.kiosk) {
 /* Laptop o monitor con altura normal: todo cabe en una pantalla, sin desplazarse. */
 @media (orientation: landscape) and (min-height: 560px) {
   .kiosk { height: 100dvh; overflow: hidden; }
+  /* Con zoom o una ventana más baja, la pantalla se desplaza en vez de cortarse. */
+  .plate { overflow-y: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
