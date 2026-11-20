@@ -114,6 +114,7 @@ class Embedder:
 
         options = ort.SessionOptions()
         options.intra_op_num_threads = 4  # el mejor en la laptop de desarrollo (8 núcleos)
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
         session = ort.InferenceSession(str(path), options, providers=["CPUExecutionProvider"])
         return cls(session, size)
 
@@ -134,7 +135,10 @@ class Segmenter:
     def from_model(cls, path: Path = DEFAULT_SEGMENTER) -> "Segmenter":
         import onnxruntime as ort
 
-        return cls(ort.InferenceSession(str(path), providers=["CPUExecutionProvider"]))
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = 4
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        return cls(ort.InferenceSession(str(path), options, providers=["CPUExecutionProvider"]))
 
     def __call__(self, bgr: np.ndarray) -> np.ndarray:
         out = self._session.run(None, {self._input: _normalize(bgr, 320)[None]})[0][0, 0]
@@ -470,6 +474,8 @@ class VerifiedYoloDetector:
         self._threshold = threshold
         self._imgsz = imgsz
         self._votes: deque[str | None] = deque(maxlen=12)
+        self._held_sku: str | None = None
+        self._last_seen = 0.0
         self.last: tuple[str, float] | None = None
 
     def _crop(self, frame: np.ndarray, detection: Detection) -> np.ndarray | None:
@@ -496,11 +502,36 @@ class VerifiedYoloDetector:
     def detect(self) -> list[str]:
         frame = self._source.read()
         self.last = None
+        proposals = self._yolo.detections(frame)
+        now = time.monotonic()
+        if self._held_sku is not None:
+            if any(self._yolo.class_names[d.class_id] == self._held_sku for d in proposals):
+                self._last_seen = now
+                return [self._held_sku]
+            # Dos cuadros perdidos no representan una segunda unidad. Para otro
+            # SKU se permite cambiar en cuanto pase dos verificaciones; para el
+            # mismo SKU se exige una salida real y sostenida del encuadre.
+            if now - self._last_seen >= 3.0:
+                self._held_sku = None
+                self._votes.clear()
         vote = None
-        for detection in self._yolo.detections(frame):
+        for detection in proposals:
             sku = self._yolo.class_names[detection.class_id]
             crop = self._crop(frame, detection)
-            if crop is None or (found := isolate(crop, self._segment(crop))) is None:
+            if crop is None:
+                continue
+            # Primero se comprueba el recuadro de YOLO directamente (~150 ms).
+            # La segmentación completa queda para resultados débiles o confusos.
+            fast = isolate(crop, np.ones(crop.shape[:2], np.float32))
+            if fast is not None:
+                ranking = self._gallery.ranking(fingerprints(self._embed, *fast)[0])
+                gallery_score = next((score for label, score in ranking if label == sku), -1.0)
+                competitor = max((score for label, score in ranking if label != sku), default=-1.0)
+                if gallery_score >= 0.92 and gallery_score - competitor >= 0.04:
+                    self.last = (sku, gallery_score)
+                    vote = sku
+                    break
+            if (found := isolate(crop, self._segment(crop))) is None:
                 continue
             ranking = self._gallery.ranking(fingerprints(self._embed, *found)[0])
             if ranking:
@@ -511,10 +542,14 @@ class VerifiedYoloDetector:
                     break
         self._votes.append(vote)
         counts = Counter(label for label in self._votes if label is not None)
-        if counts:
-            sku, hits = counts.most_common(1)[0]
-            if hits >= 2:
+        for sku, hits in counts.most_common():
+            if hits >= 2 and sku != self._held_sku:
+                self._held_sku = sku
+                self._last_seen = now
+                self._votes.clear()
                 return [sku]
+        if self._held_sku is not None:
+            return [self._held_sku]
         return []
 
     def open(self) -> None:

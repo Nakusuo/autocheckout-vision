@@ -61,12 +61,28 @@ def test_verified_yolo_requires_gallery_agreement(gallery_sku, expected):
     detector._threshold = 0.90
     detector._imgsz = 416
     detector._votes = deque(maxlen=12)
+    detector._held_sku = None
+    detector._last_seen = 0.0
     detector._yolo = type("Yolo", (), {
         "class_names": ["MOROCHAS-30"],
         "detections": lambda self, frame: [Detection(0, 0.8, (169, 169, 78, 78))],
     })()
     assert detector.detect() == []
     assert detector.detect() == expected
+    if expected:
+        detector._segment = lambda _: pytest.fail("No debe repetir la segmentación")
+        assert detector.detect() == expected
+        detector._yolo.detections = lambda _: []
+        assert detector.detect() == expected  # un cuadro perdido no cuenta otro producto
+        detector._last_seen -= 4
+        assert detector.detect() == []
+        detector._yolo.detections = lambda _: [Detection(0, 0.8, (169, 169, 78, 78))]
+        assert detector.detect() == []
+        assert detector.detect() == expected  # otra unidad tras retirar la primera
+        detector._gallery.labels = np.array(["CHOCMAN-39"])
+        detector._yolo.class_names = ["CHOCMAN-39"]
+        assert detector.detect() == expected
+        assert detector.detect() == ["CHOCMAN-39"]  # cambio de SKU sin esperar tres segundos
 
 
 def test_isolate_crops_largest_blob_on_gray_square():

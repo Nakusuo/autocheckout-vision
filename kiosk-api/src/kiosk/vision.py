@@ -150,7 +150,10 @@ class YoloOnnxDetector:
     ) -> "YoloOnnxDetector":
         import onnxruntime as ort
 
-        session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = 4
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        session = ort.InferenceSession(str(model_path), options, providers=["CPUExecutionProvider"])
         names = class_names_from_metadata(session.get_modelmeta().custom_metadata_map)
         return cls(session, names, source, imgsz, conf, iou)
 
