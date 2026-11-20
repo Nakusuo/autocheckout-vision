@@ -95,3 +95,8 @@ def test_health_is_public_and_reveals_nothing(client):
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
+
+
+def test_health_reports_the_deployed_commit_on_render(client, monkeypatch):
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "abc123")
+    assert client.get("/health").json() == {"status": "ok", "revision": "abc123"}

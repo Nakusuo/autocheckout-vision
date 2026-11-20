@@ -107,6 +107,7 @@ jobs:
   # completa (interfaz → API → pasarela TLS 1.3 → ticket). Si esto pasa, el CD puede publicar.
   docker:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - name: Clave de prueba (solo para este job)

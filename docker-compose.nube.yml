@@ -1,4 +1,4 @@
-# Quiosco en el local (edge) + pasarela en la nube (Render). Ver docs/CLOUD_DEVOPS.md, sección 7.
+# Quiosco en el local (edge) + pasarela en la nube (Render). Ver docs/CLOUD_DEVOPS.md, sección 6.3.
 # NO PROBADO contra Render: falta crear el servicio (lo hace el equipo con su cuenta).
 #
 #   docker compose -f docker-compose.yml -f docker-compose.nube.yml up --build --no-deps kiosk-api kiosk-ui

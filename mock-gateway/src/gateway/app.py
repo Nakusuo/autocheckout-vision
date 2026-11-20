@@ -1,4 +1,5 @@
 import hmac
+import os
 from html import escape
 
 from fastapi import FastAPI, Header, HTTPException, Query
@@ -77,8 +78,12 @@ def create_app(private_key_pem: bytes, api_key: str, public_url: str) -> FastAPI
 
     @app.get("/health")
     def health() -> dict:
-        """Sonda de salud para Docker y el proveedor de nube: no expone datos."""
-        return {"status": "ok"}
+        """Sonda de salud para Docker y el proveedor de nube: no expone datos.
+
+        En Render incluye el commit desplegado (RENDER_GIT_COMMIT, público en el repo): el CD
+        espera a que sea el que pasó el CI, no la versión anterior que aún responde."""
+        revision = os.environ.get("RENDER_GIT_COMMIT")
+        return {"status": "ok", "revision": revision} if revision else {"status": "ok"}
 
     # --- Imitación de Yape de Mercado Pago (ver gateway/yape.py) ---------------------------
 

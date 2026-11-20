@@ -4,8 +4,8 @@
 #   docker compose up --build   # http://localhost:5173  (/sim, /caja)
 #
 # Con imágenes ya publicadas por el CD (GitHub Container Registry), sin compilar:
-#   AUTOCAJA_IMAGEN=ghcr.io/nakusuo/autocaja AUTOCAJA_VERSION=latest \
-#     docker compose pull && docker compose up -d --no-build
+#   export AUTOCAJA_IMAGEN=ghcr.io/nakusuo/autocaja AUTOCAJA_VERSION=latest
+#   docker compose pull && docker compose up -d --no-build
 name: autocaja
 
 x-clave: &clave

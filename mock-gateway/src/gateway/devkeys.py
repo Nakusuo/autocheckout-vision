@@ -18,11 +18,13 @@ NO_PASSWORD = serialization.NoEncryption()
 
 
 def _write_private(path: Path, key) -> None:
+    """Clave privada en PEM, legible solo por su dueño (0600)."""
     path.write_bytes(
         key.private_bytes(
             serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, NO_PASSWORD
         )
     )
+    path.chmod(0o600)
 
 
 def write_signing_keys(out: Path) -> None:

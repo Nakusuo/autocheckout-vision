@@ -1,7 +1,8 @@
 name: CD
 
 # Despliegue continuo. Solo corre cuando el CI terminó en verde sobre un push a main
-# (o a mano desde la pestaña Actions). Así nunca se publica un commit que no pasó las pruebas.
+# (o a mano desde la pestaña Actions, solo sobre main). Así nunca se publica un commit que no
+# pasó las pruebas.
 on:
   workflow_run:
     workflows: [CI]
@@ -9,9 +10,8 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  packages: write
+# Mínimos permisos: nada por defecto; cada job pide solo lo suyo.
+permissions: {}
 
 # Un despliegue a la vez; si llega otro, espera (no se cancela uno a medias).
 concurrency:
@@ -22,9 +22,12 @@ jobs:
   imagenes:
     name: Publicar ${{ matrix.servicio }} en GHCR
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     strategy:
       matrix:
         servicio: [kiosk-api, mock-gateway, kiosk-ui]
@@ -76,22 +79,24 @@ jobs:
           fi
           curl -fsS -X POST "$HOOK" > /dev/null
           echo "Despliegue solicitado a Render"
-      - name: Verificar que responde (/health)
+      - name: Verificar que responde con el commit probado (/health)
         env:
           HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
           URL: ${{ vars.PASARELA_URL }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           if [ -z "$HOOK" ] || [ -z "$URL" ]; then
             echo "::warning::Sin RENDER_DEPLOY_HOOK_URL o PASARELA_URL: no se verifica"
             exit 0
           fi
           # Render tarda en construir y el plan gratuito arranca en frío: hasta ~10 min.
+          # Mientras tanto responde la versión anterior: se espera a que /health traiga este commit.
           for _ in $(seq 1 40); do
-            if curl -fsS "$URL/health" | grep -q '"ok"'; then
-              echo "La pasarela responde en $URL"
+            if curl -fsS "$URL/health" | grep -q "\"revision\":\"$SHA\""; then
+              echo "La pasarela responde en $URL con el commit $SHA"
               exit 0
             fi
             sleep 15
           done
-          echo "::error::La pasarela no respondió en $URL/health"
+          echo "::error::$URL/health no respondió con el commit $SHA (¿Render desplegó otro commit?)"
           exit 1

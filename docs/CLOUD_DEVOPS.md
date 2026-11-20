@@ -132,10 +132,10 @@ flowchart LR
 
 1. **Deploy solo de lo que pasó las pruebas.** El CD no se dispara con un `push`, sino con `workflow_run` cuando el CI de `main` termina **en verde**. Además, construye el **commit exacto** que se probó (`head_sha`), no el último de la rama.
 2. **La prueba de humo en contenedores es la puerta de calidad del CD.** El job `docker` del CI construye las tres imágenes, las levanta con `docker compose up --wait` y recorre una compra real: interfaz → API → pasarela por TLS 1.3 con certificado verificado → ticket W4 → boleta. Si alguien rompe un Dockerfile, la configuración de nginx o el TLS entre servicios, el PR no pasa. Las pruebas unitarias no detectan esos fallos.
-3. **Versiones inmutables y vuelta atrás.** Cada imagen lleva la etiqueta del SHA del commit. Para volver a una versión anterior en el quiosco basta con `AUTOCAJA_VERSION=<sha> docker compose up -d`.
+3. **Versiones inmutables y vuelta atrás.** Cada imagen lleva la etiqueta del SHA del commit. Para volver a una versión anterior en el quiosco se usan los mismos comandos de la sección 6.4 con `AUTOCAJA_VERSION=<sha>` en lugar de `latest` (con `--no-build`, para que no se construya el código local).
 4. **Entrega continua para el quiosco, despliegue continuo para la nube.** La pasarela se despliega sola, porque un servicio en la nube se reemplaza sin cortar a nadie y la sonda `/health` confirma que quedó bien. El quiosco recibe la imagen, pero se actualiza a mano: es un equipo físico atendiendo clientes y no conviene reiniciarlo en medio de una compra.
 5. **Un despliegue a la vez** (`concurrency`), en el entorno `produccion` de GitHub. Ahí se pueden exigir aprobaciones y ver el historial de despliegues.
-6. **Mínimos permisos.** El CI solo lee. El CD solo pide `packages: write` para GHCR. El deploy hook es un secreto del repositorio.
+6. **Mínimos permisos.** El CI solo lee. El CD no da permisos por defecto: solo el job que publica pide `packages: write` para GHCR. A mano (`workflow_dispatch`) solo se puede lanzar sobre `main`. El deploy hook es un secreto del repositorio.
 
 **Cómo se mediría el beneficio (métricas DORA).** Frecuencia de despliegue: ejecuciones del CD por semana. Tiempo de entrega: del merge a `/health` en verde, según los tiempos del workflow. Tasa de fallos de cambio: despliegues que requieren volver atrás. Tiempo de recuperación: cuánto se tarda en desplegar el SHA anterior. **Aún no hay datos**, porque el CD no se ha ejecutado. Se llenan después de las primeras semanas de uso.
 
@@ -188,7 +188,7 @@ GHCR crea los paquetes como privados. Para bajarlos hay que hacer `docker login 
 ## 7. Limitaciones y riesgos
 
 - **Arranque en frío del plan gratuito.** Render apaga el servicio tras un rato sin tráfico y la primera petición tarda en despertarlo. Eso puede romper ON-01 (cobro en ≤ 45 s) en el primer pago. Mitigación para la demo: abrir `PASARELA_URL/health` unos minutos antes, o pasar a un plan de pago en un piloto.
-- **Render construye desde el repositorio**, no reutiliza la imagen de GHCR. Por eso la imagen de la nube no es byte a byte la misma que se probó. El Dockerfile y el commit sí son los mismos. Se podría cambiar a un servicio basado en imagen (imagen de GHCR + credenciales de registro) a cambio de más configuración.
+- **Render construye desde el repositorio**, no reutiliza la imagen de GHCR. Por eso la imagen de la nube no es byte a byte la misma que se probó, y si entra otro merge mientras corre el CI, Render podría construir ese commit más nuevo. El CD lo detecta: espera a que `/health` devuelva `revision` igual al commit probado (Render pone `RENDER_GIT_COMMIT`) y, si no, falla. Se podría cambiar a un servicio basado en imagen (imagen de GHCR + credenciales de registro) a cambio de más configuración.
 - **Los cobros pendientes viven en memoria.** Si Render reinicia la pasarela, se pierden los QR abiertos en ese momento. Para un piloto haría falta una base de datos administrada (PaaS).
 - **El quiosco no se actualiza solo.** Es una decisión, no un olvido: ver la sección 5, punto 4. Con varios quioscos convendría una herramienta de flota (p. ej. Watchtower con ventana de mantenimiento, o un orquestador edge).
 - **Docker en el quiosco** añade una capa. Para la cámara hay que pasar `/dev/video0` y el grupo `video`. Está escrito en `docker-compose.camara.yml`, pero no está probado.

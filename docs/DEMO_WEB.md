@@ -22,7 +22,7 @@ docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
 | http://localhost:5173/sim | Panel del presentador: la tarjeta **«Notificación de Yape»** simula el aviso de pago |
 | http://localhost:5173/caja | Panel del cajero: ventas de hoy, ayudas |
 
-Mientras no pongas tu QR, la pantalla de pago muestra una imagen de ejemplo que indica dónde colocarlo.
+El QR del comercio va en `privado/yape-qr.png` (fuera de git; `chmod a+r` para que el contenedor lo lea). Si falta, la API no arranca y el log dice dónde ponerlo.
 
 ## 2. Flujo
 
