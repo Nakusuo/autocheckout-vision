@@ -1,0 +1,24 @@
+# Demo web «el celular es la máquina»: cámara del navegador con recuadro guía, pago con TU QR de
+# Yape/Plin y la notificación de pago simulada desde /sim. Ver docs/DEMO_WEB.md.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
+#   → http://localhost:5173 (quiosco)  ·  http://localhost:5173/sim (simular el yapeo)
+#
+# Requiere: ml/data/models/ (galería y modelos, ver docs/ml/reconocimiento.md) y la imagen de tu
+# QR en privado/yape-qr.png (fuera de git; legible: chmod a+r privado/yape-qr.png).
+services:
+  kiosk-api:
+    build:
+      args:
+        EXTRAS: vision
+    image: ${AUTOCAJA_IMAGEN:-autocaja}-kiosk-api-vision:${AUTOCAJA_VERSION:-local}
+    environment:
+      KIOSK_MODE: web
+      KIOSK_PAYMENT: yape-qr
+      KIOSK_GALLERY: /app/ml/data/models/galeria.npz
+      KIOSK_YAPE_QR: /app/privado/yape-qr.png
+      KIOSK_SIMULAR_PAGO: "on"
+      # KIOSK_THRESHOLD: "1.10"   # parecido mínimo para sugerir un producto (ver el log)
+    volumes:
+      - ./ml/data:/app/ml/data:ro
+      - ./privado:/app/privado:ro

@@ -13,6 +13,8 @@ server {
     add_header X-Frame-Options "DENY" always;
 
     location /api/ {
+        # Recuadro de la cámara del navegador (~30 KB); la API rechaza más de 2 MB
+        client_max_body_size 2m;
         proxy_pass http://${KIOSK_API};
         proxy_set_header Host $host;
     }

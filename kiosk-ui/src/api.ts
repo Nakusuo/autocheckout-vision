@@ -16,8 +16,17 @@ export type Snapshot = {
   seconds_in_state: number;
   help_pending: boolean;
   qr_payload: string | null;
-  /** "yape": el cliente paga escribiendo celular y código de aprobación (Mercado Pago). */
-  payment_method?: "qr" | "yape";
+  /**
+   * "yape": el cliente escribe celular y código de aprobación (Mercado Pago).
+   * "yape-qr": QR propio de Yape/Plin del comercio; el pago llega como notificación.
+   */
+  payment_method?: "qr" | "yape" | "yape-qr";
+  /** Imagen del QR propio del comercio (solo con "yape-qr"). */
+  wallet_qr?: string | null;
+  /** La cámara está en el navegador: sugiere productos que el cliente agrega con un toque. */
+  browser_camera?: boolean;
+  /** Boleta de la venta recién pagada (en W4). */
+  receipt?: { number: string; issued_at: string; payer: string | null } | null;
   /** Motivo del último rechazo de Yape, en palabras del cliente. */
   payment_error?: string | null;
   /** true mientras el quiosco espera la respuesta de Mercado Pago. */
@@ -34,6 +43,12 @@ const isLine = (v: unknown) =>
   typeof v.name === "string" &&
   isNum(v.quantity) &&
   isNum(v.unit_price_cents);
+
+const isReceipt = (v: unknown) =>
+  isObj(v) &&
+  typeof v.number === "string" &&
+  typeof v.issued_at === "string" &&
+  (v.payer === null || typeof v.payer === "string");
 
 /** Comprueba la forma del estado que llega por WebSocket: si no cuadra, la pantalla no lo usa. */
 export function isSnapshot(v: unknown): v is Snapshot {
@@ -53,7 +68,10 @@ export function isSnapshot(v: unknown): v is Snapshot {
     isNum(v.seconds_in_state) &&
     typeof v.help_pending === "boolean" &&
     (v.qr_payload === null || typeof v.qr_payload === "string") &&
-    (v.payment_method === undefined || v.payment_method === "qr" || v.payment_method === "yape") &&
+    (v.payment_method === undefined || ["qr", "yape", "yape-qr"].includes(v.payment_method as string)) &&
+    (v.wallet_qr === undefined || v.wallet_qr === null || typeof v.wallet_qr === "string") &&
+    (v.browser_camera === undefined || typeof v.browser_camera === "boolean") &&
+    (v.receipt === undefined || v.receipt === null || isReceipt(v.receipt)) &&
     (v.payment_error === undefined || v.payment_error === null || typeof v.payment_error === "string") &&
     (v.payment_processing === undefined || typeof v.payment_processing === "boolean")
   );

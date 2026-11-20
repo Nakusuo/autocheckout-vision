@@ -9,6 +9,12 @@ Con ~5 fotos por producto no alcanza para entrenar un detector, así que no se e
 
 Agregar un producto es agregar sus fotos y volver a generar la galería.
 
+Dos formas de encontrar el producto en el cuadro (KIOSK_FONDO):
+- «fijo» (por defecto): cámara cenital sobre una bandeja; lo que difiere de la bandeja vacía.
+- «libre»: cualquier fondo (pantalla vertical, producto en la mano, a futuro el celular). Cada
+  cuadro pasa por el mismo modelo que recorta las fotos de la galería (U²-Net «silueta»). Lo que
+  no se parece a ningún producto no se suma ni genera alerta: la cámara ve personas y el cuarto.
+
 Uso (las opciones --galeria y --embedder van antes del comando):
     python -m kiosk.recognizer galeria
     python -m kiosk.recognizer evaluar
@@ -18,8 +24,10 @@ Uso (las opciones --galeria y --embedder van antes del comando):
 """
 
 import argparse
+import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,6 +41,8 @@ MODELS = REPO / "ml" / "data" / "models"
 DEFAULT_EMBEDDER = MODELS / "dinov2-small.onnx"
 DEFAULT_SEGMENTER = MODELS / "silueta.onnx"
 DEFAULT_GALLERY = MODELS / "galeria.npz"
+
+log = logging.getLogger(__name__)
 
 UNKNOWN = "DESCONOCIDO"
 GRAY = 124
@@ -367,7 +377,12 @@ class SimilarityDetector:
         warmup_frames: int = 10,
         zone: Zone | None = None,
         hands: bool = True,
+        segmenter: Callable[[np.ndarray], np.ndarray] | None = None,
+        free_min_blob: float = 0.02,
     ):
+        """`segmenter`: con él, modo «fondo libre» (ver el docstring del módulo); sin él, el
+        fondo es la bandeja vacía que se aprende al arrancar. `free_min_blob`: fracción mínima
+        del cuadro que debe ocupar el objeto en modo libre (el producto se acerca a la cámara)."""
         self._embed = embed
         self._gallery = gallery
         self._source = source
@@ -377,16 +392,32 @@ class SimilarityDetector:
         self._warmup = warmup_frames
         self._zone = zone  # solo se mira este recuadro: la zona de escaneo, no toda la bandeja
         self._hands = hands
+        self._segmenter = segmenter
+        self._free_min_blob = free_min_blob
+        self._seen: str | None = None  # último resultado registrado en el log
         self._background = BackgroundModel()
         self._lock = threading.Lock()  # detect corre en otro hilo; recalibrate llega desde la API
         self.last: tuple[str, float] | None = None  # para depurar: mejor SKU y parecido
 
     @classmethod
     def from_files(
-        cls, gallery: Path, source: FrameSource, embedder: Path = DEFAULT_EMBEDDER, **kwargs
+        cls,
+        gallery: Path,
+        source: FrameSource,
+        embedder: Path = DEFAULT_EMBEDDER,
+        segmenter: Path | None = None,
+        **kwargs,
     ) -> "SimilarityDetector":
+        """`segmenter`: ruta de silueta.onnx para el modo «fondo libre»."""
         loaded = Gallery.load(gallery)
-        return cls(Embedder.from_model(embedder, loaded.size), loaded, source, **kwargs)
+        segment = Segmenter.from_model(segmenter) if segmenter is not None else None
+        return cls(
+            Embedder.from_model(embedder, loaded.size), loaded, source, segmenter=segment, **kwargs
+        )
+
+    @property
+    def free_background(self) -> bool:
+        return self._segmenter is not None
 
     def _blobs(self, mask: np.ndarray) -> int:
         return len(foreground_regions(mask, self._min_blob))
@@ -414,8 +445,46 @@ class SimilarityDetector:
             if close_source is not None:
                 close_source()
 
+    def _report(self, result: list[str]) -> list[str]:
+        """Registra en el log cada cambio de lo que se ve (con el mejor parecido), para ajustar
+        KIOSK_THRESHOLD con pruebas reales sin inundar el log con cada cuadro."""
+        label = result[0] if result else "nada"
+        if label != self._seen:
+            best = f"{self.last[0]} {self.last[1]:.2f}" if self.last else "—"
+            log.info("Cámara: %s (mejor parecido: %s)", label, best)
+            self._seen = label
+        return result
+
     def _detect(self) -> list[str]:
         frame = crop_zone(self._source.read(), self._zone)
+        if self._segmenter is not None:
+            return self._report(self._detect_free(frame, self._segmenter))
+        return self._report(self._detect_fixed(frame))
+
+    def _detect_free(
+        self, frame: np.ndarray, segment: Callable[[np.ndarray], np.ndarray]
+    ) -> list[str]:
+        """Fondo libre: el objeto más grande que separa «silueta», sin la mano que lo sostiene."""
+        mask = (segment(frame) > 0.5).astype(np.float32)
+        if self._hands:
+            mask = remove_hands(frame, mask)
+        regions = foreground_regions(mask, self._free_min_blob)
+        if not regions:
+            self.last = None
+            return []
+        x0, y0, x1, y1 = max(regions, key=lambda r: (r[2] - r[0]) * (r[3] - r[1]))
+        product_mask = np.zeros_like(mask)
+        product_mask[y0:y1, x0:x1] = mask[y0:y1, x0:x1]
+        if (found := isolate(frame, product_mask, merge_components=True)) is None:
+            self.last = None
+            return []
+        ranking = self._gallery.ranking(fingerprints(self._embed, *found)[0])
+        self.last = ranking[0]
+        sku, score = ranking[0]
+        # Bajo el umbral no es «desconocido»: con fondo libre la cámara ve caras, manos y el cuarto
+        return [sku] if score >= self._threshold else []
+
+    def _detect_fixed(self, frame: np.ndarray) -> list[str]:
         if self._warmup > 0:  # los primeros cuadros, con la bandeja vacía, son el fondo
             self._warmup -= 1
             self._background.learn(frame)
@@ -441,6 +510,53 @@ class SimilarityDetector:
         self.last = ranking[0]
         sku, score = ranking[0]
         return [sku] if score >= self._threshold else [UNKNOWN]
+
+
+# Con recuadro guía el recorte trae algo de fondo: los aciertos dan ~1,2 (mediana con las fotos del
+# Drive, recorte central) y fotos completas con mucho fondo bajan a ~1,0. Como el cliente confirma
+# con «Agregar», se prefiere sugerir de más. Se ajusta con KIOSK_THRESHOLD mirando el log.
+BOX_THRESHOLD = 1.0
+MAX_UPLOAD_BYTES = 2_000_000
+
+
+class CropRecognizer:
+    """Reconoce el «recuadro guía» que manda el navegador (y, a futuro, la app del celular).
+
+    El cliente centra el producto en un recuadro de la pantalla y solo esa parte de la imagen
+    llega aquí. No hay modelo de fondo ni segmentación (U²-Net tarda >1 s por cuadro en la laptop
+    de desarrollo): el recorte va directo a la huella, ~100 ms. Medido con las fotos del Drive
+    (recorte central del 60 %, dejando cada foto fuera): 83/107 = 78 % de aciertos. Por eso la
+    cámara solo *sugiere* el producto y el cliente lo agrega con un toque.
+    """
+
+    def __init__(self, embed: Embedder, gallery: Gallery, threshold: float = BOX_THRESHOLD):
+        self._embed = embed
+        self._gallery = gallery
+        self.threshold = threshold
+        self._lock = threading.Lock()  # una sesión ONNX: una imagen a la vez
+
+    @classmethod
+    def from_files(
+        cls, gallery: Path, embedder: Path = DEFAULT_EMBEDDER, threshold: float = BOX_THRESHOLD
+    ) -> "CropRecognizer":
+        loaded = Gallery.load(gallery)
+        return cls(Embedder.from_model(embedder, loaded.size), loaded, threshold)
+
+    def recognize(self, bgr: np.ndarray) -> tuple[str, float]:
+        """Mejor producto y su parecido (el que llama decide con `threshold`)."""
+        mask = np.ones(bgr.shape[:2], np.uint8)
+        with self._lock:
+            vector = fingerprints(self._embed, bgr, mask)[0]
+        return self._gallery.ranking(vector)[0]
+
+    def recognize_bytes(self, data: bytes) -> tuple[str, float] | None:
+        """Imagen JPEG/PNG tal como llega por HTTP. None si no es una imagen válida."""
+        if not data or len(data) > MAX_UPLOAD_BYTES:
+            return None
+        image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+        if image is None or min(image.shape[:2]) < 32:
+            return None
+        return self.recognize(image)
 
 
 def benchmark(gallery: Path, embedder: Path, raw: Path, frames: int) -> int:
@@ -530,6 +646,10 @@ def main(argv: list[str] | None = None) -> int:
     live.add_argument("--camera", type=int, default=0)
     live.add_argument("--frames", type=int, default=100)
     live.add_argument("--zona", type=parse_zone, default=None, help="x0,y0,x1,y1 (KIOSK_ZONE)")
+    live.add_argument(
+        "--fondo", choices=["fijo", "libre"], default="fijo", help="KIOSK_FONDO (ver el inicio)"
+    )
+    live.add_argument("--segmenter", type=Path, default=DEFAULT_SEGMENTER)
     frame_zone = sub.add_parser("zona", help="guarda una foto con la zona de escaneo dibujada")
     frame_zone.add_argument(
         "zona", type=parse_zone, help="x0,y0,x1,y1 en fracciones, p. ej. 0.25,0.1,0.75,0.9"
@@ -581,7 +701,11 @@ def main(argv: list[str] | None = None) -> int:
     source = CameraSource(args.camera)
     try:
         detector = SimilarityDetector.from_files(
-            args.galeria, source, args.embedder, zone=args.zona
+            args.galeria,
+            source,
+            args.embedder,
+            segmenter=args.segmenter if args.fondo == "libre" else None,
+            zone=args.zona,
         )
         for _ in range(args.frames):
             start = time.perf_counter()

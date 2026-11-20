@@ -68,6 +68,9 @@ def test_snapshot_on_w1_is_exact():
         "payment_method": "qr",
         "payment_error": None,
         "payment_processing": False,
+        "wallet_qr": None,
+        "browser_camera": False,
+        "receipt": None,
     }
 
 
@@ -96,6 +99,9 @@ def test_snapshot_while_scanning_is_exact():
         "payment_method": "qr",
         "payment_error": None,
         "payment_processing": False,
+        "wallet_qr": None,
+        "browser_camera": False,
+        "receipt": None,
     }
 
 

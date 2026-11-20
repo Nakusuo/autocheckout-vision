@@ -566,6 +566,77 @@ body:has(.kiosk) {
 }
 .waiting, .countdown .muted { max-width: 30ch; text-align: left; font-weight: 700; }
 
+/* Cámara del navegador con recuadro guía (demo web; a futuro, la app del celular). */
+.webcam { display: flex; flex-direction: column; gap: 2cqw; }
+.webcam-frame {
+  position: relative;
+  aspect-ratio: 3 / 2;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--asphalt);
+}
+/* Absoluto: el tamaño natural del video (p. ej. 640×480) no debe empujar el diseño. */
+.webcam-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Lado = 60 % del alto (BOX_FRACTION en kiosk/camara.ts): lo que se ve aquí es lo que se manda. */
+.webcam-box {
+  position: absolute;
+  top: 20%;
+  left: 50%;
+  height: 60%;
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  border: 1.2cqw solid var(--sign-yellow);
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 0.4cqw var(--ink), 0 0 0 100cqw rgb(0 0 0 / 0.35);
+}
+.webcam-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 6cqw;
+  color: var(--sign-white);
+  font-weight: 800;
+  text-align: center;
+}
+.webcam-hint { text-align: center; }
+/* En el escaneo con cámara del navegador, la cámara toma el alto que sobra y la lista no se
+   aplasta: si hay muchos productos, la lista se desplaza. */
+.screen-scan-web .webcam { flex: 1 1 0; }
+.screen-scan-web .webcam-frame { flex: 1 1 0; min-height: 30cqw; aspect-ratio: auto; }
+.screen-scan-web .board { flex: none; }
+.screen-scan-web .lines { max-height: 24cqw; }
+.suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3cqw;
+  padding: 2cqw 2cqw 2cqw 4cqw;
+  border-radius: var(--radius);
+  background: var(--sign-yellow-soft);
+  box-shadow: inset 0 0 0 var(--border) var(--ink);
+}
+.suggestion-text { display: flex; flex-direction: column; min-width: 0; }
+.suggestion-name { font-weight: 900; font-size: 4.4cqw; line-height: 1.15; }
+.suggestion-price { font-weight: 800; color: var(--ink-soft); }
+.suggestion-add { width: auto; flex: none; }
+
+/* Boleta en el ticket */
+.receipt {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2cqw;
+  padding: 3cqw 4cqw;
+  border: var(--border) dashed var(--ink);
+  border-radius: var(--radius);
+}
+.receipt-ok { margin: 0; font-size: 5cqw; font-weight: 900; color: var(--ink); }
+.receipt-data { display: grid; grid-template-columns: auto 1fr; gap: 0.6cqw 4cqw; margin: 0; }
+.receipt-data dt { color: var(--ink-soft); font-weight: 700; }
+.receipt-data dd { margin: 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+.qr-wallet { object-fit: contain; background: var(--sign-white); }
+
 /* Ticket */
 .thanks { display: flex; align-items: center; gap: 3.6cqw; }
 .thanks-icon { width: 12cqw; flex: none; }

@@ -4,6 +4,7 @@ import { CancelButton } from "../CancelButton";
 import { ArrowRight, CheckDisc, TraySign } from "../signs";
 import { useAction } from "../useAction";
 import { Alert } from "./Alert";
+import { CamaraWeb } from "./CamaraWeb";
 import { Lines } from "./Lines";
 
 const TICK_MS = 300;
@@ -49,7 +50,7 @@ export function Escaneo({ snapshot, offline }: { snapshot: Snapshot; offline: bo
   const added = useRecentlyAdded(snapshot.lines);
 
   return (
-    <section className="screen">
+    <section className={snapshot.browser_camera ? "screen screen-scan-web" : "screen"}>
       <div className="scan-head">
         <h1 className="title">Escaneando</h1>
         <span className="live">
@@ -57,7 +58,10 @@ export function Escaneo({ snapshot, offline }: { snapshot: Snapshot; offline: bo
           En vivo
         </span>
       </div>
-      {empty ? (
+      {snapshot.browser_camera && (
+        <CamaraWeb disabled={offline || pending} onAdd={(sku) => run("/api/cart/add", { sku })} />
+      )}
+      {empty && snapshot.browser_camera ? null : empty ? (
         <div className="empty">
           <TraySign className="empty-sign" scanning />
           <p className="lead">Pasa tus productos uno por uno frente a la cámara. Cada uno se suma aquí.</p>
@@ -78,7 +82,7 @@ export function Escaneo({ snapshot, offline }: { snapshot: Snapshot; offline: bo
       )}
       {snapshot.alert && <Alert>{snapshot.alert}</Alert>}
       {error && <Alert>{error}</Alert>}
-      {!empty && !snapshot.alert && (
+      {!empty && !snapshot.alert && !snapshot.browser_camera && (
         <p className="hint">Pasa el siguiente producto o pulsa CONFIRMAR si ya están todos.</p>
       )}
       <button

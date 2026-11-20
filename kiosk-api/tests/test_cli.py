@@ -94,7 +94,10 @@ def test_build_detector_camera_with_gallery_uses_similarity(monkeypatch, tmp_pat
     detector, tray_ = entry.build_detector(
         "camera", None, None, {"KIOSK_GALLERY": str(tmp_path / "g.npz"), "KIOSK_THRESHOLD": "1.1"}
     )
-    assert detector == ("similar", {"threshold": 1.1, "zone": None, "hands": True})
+    assert detector == (
+        "similar",
+        {"segmenter": None, "threshold": 1.1, "zone": None, "hands": True},
+    )
     assert tray_ is None
 
 

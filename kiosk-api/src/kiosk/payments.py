@@ -1,3 +1,4 @@
+import re
 import ssl
 import time
 import uuid
@@ -260,3 +261,41 @@ YAPE_DEFAULT_MESSAGE = "Yape rechazó el pago. Intenta de nuevo o pide ayuda"
 def yape_message(status_detail: str) -> str:
     """Texto para el cliente según el motivo de rechazo de Mercado Pago."""
     return YAPE_MESSAGES.get(status_detail, YAPE_DEFAULT_MESSAGE)
+
+
+# --- QR propio de Yape/Plin + notificación de pago ----------------------------------------
+#
+# El comercio muestra su QR de Yape (estático, el de su app). Cuando un cliente paga, al celular
+# del comercio llega una notificación («Juan Pérez te yapeó S/ 4.30»). La futura app Android la
+# leerá (NotificationListenerService) y mandará el texto; hoy se simula desde /sim.
+# FORMATOS SUPUESTOS: no se han verificado con notificaciones reales de Yape ni de Plin. Por eso
+# el intérprete solo exige un monto «S/ …» y toma el nombre si lo encuentra.
+
+_AMOUNT = re.compile(r"S/\.?\s*(\d{1,5}(?:[.,]\d{1,2})?)", re.IGNORECASE)
+_PAYER_BEFORE = re.compile(
+    r"^\W*(?:yape\W+)?(?P<name>[^\n]+?)\s+te\s+(?:yape[oó]|envi[oó]|pag[oó]|pline[oó])", re.IGNORECASE
+)
+_PAYER_AFTER = re.compile(r"\bde\s+(?P<name>[^\n.!]+?)\s*[.!]?\s*$", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class WalletNotice:
+    """Lo que se entiende de una notificación de pago recibido."""
+
+    amount_cents: int
+    payer: str | None
+
+
+def parse_wallet_notification(text: str) -> WalletNotice | None:
+    """«Juan Pérez te yapeó S/ 4.30» → WalletNotice(430, "Juan Pérez"). None sin monto."""
+    text = text.strip()[:500]
+    found = _AMOUNT.search(text)
+    if found is None:
+        return None
+    amount = found.group(1).replace(",", ".")
+    cents = round(float(amount) * 100)
+    if cents <= 0:
+        return None
+    match = _PAYER_BEFORE.search(text) or _PAYER_AFTER.search(text[found.end() :])
+    payer = match.group("name").strip(" :¡!") if match else None
+    return WalletNotice(cents, payer or None)

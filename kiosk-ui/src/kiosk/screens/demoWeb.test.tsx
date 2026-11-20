@@ -1,0 +1,170 @@
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import type { Snapshot } from "../../api";
+import { WalletNotifier } from "../../panels/WalletNotifier";
+import { CamaraWeb } from "./CamaraWeb";
+import { Escaneo } from "./Escaneo";
+import { PagoQrPropio } from "./PagoQrPropio";
+import { Ticket } from "./Ticket";
+
+const base: Snapshot = {
+  state: "SCANNING",
+  screen: "W2",
+  can_pay: false,
+  lines: [],
+  total_cents: 0,
+  item_count: 0,
+  weight: null,
+  weight_enabled: false,
+  camera: false,
+  alert: null,
+  seconds_in_state: 10,
+  help_pending: false,
+  qr_payload: null,
+  payment_method: "yape-qr",
+  wallet_qr: "/api/pay/wallet-qr",
+  browser_camera: true,
+  receipt: null,
+};
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  Object.defineProperty(navigator, "mediaDevices", { value: undefined, configurable: true });
+});
+
+function stubCamera(getUserMedia: () => Promise<unknown>) {
+  Object.defineProperty(navigator, "mediaDevices", { value: { getUserMedia }, configurable: true });
+}
+
+describe("CamaraWeb", () => {
+  it("sin cámara en el navegador lo dice", () => {
+    render(<CamaraWeb disabled={false} onAdd={() => undefined} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("no permite usar la cámara");
+    expect(screen.getByText("Pon un producto dentro del recuadro amarillo.")).toBeInTheDocument();
+  });
+
+  it("si el permiso se niega, pide permitir el acceso", async () => {
+    stubCamera(() => Promise.reject(new Error("NotAllowed")));
+    render(<CamaraWeb disabled={false} onAdd={() => undefined} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Permite el acceso");
+  });
+
+  it("muestra la vista en vivo y apaga la cámara al salir", async () => {
+    const stop = vi.fn();
+    const stream = { getTracks: () => [{ stop }] };
+    stubCamera(() => Promise.resolve(stream));
+    const { unmount } = render(<CamaraWeb disabled={false} onAdd={() => undefined} />);
+    const video = screen.getByLabelText("Vista de la cámara") as HTMLVideoElement;
+    await act(async () => undefined);
+    expect(video.srcObject).toBe(stream);
+    unmount();
+    expect(stop).toHaveBeenCalled();
+  });
+
+  it("si la cámara llega después de salir, se apaga enseguida", async () => {
+    const stop = vi.fn();
+    let resolve!: (s: unknown) => void;
+    stubCamera(() => new Promise((r) => (resolve = r)));
+    const { unmount } = render(<CamaraWeb disabled={false} onAdd={() => undefined} />);
+    unmount();
+    await act(async () => resolve({ getTracks: () => [{ stop }] }));
+    expect(stop).toHaveBeenCalled();
+  });
+});
+
+describe("Escaneo con la cámara del navegador", () => {
+  it("muestra la cámara en vez de la bandeja", () => {
+    render(<Escaneo snapshot={base} offline={false} />);
+    expect(screen.getByText("Pon un producto dentro del recuadro amarillo.")).toBeInTheDocument();
+    expect(screen.queryByText(/Pasa tus productos uno por uno/)).not.toBeInTheDocument();
+  });
+
+  it("con productos, mantiene la cámara y la lista", () => {
+    const lines = [{ sku: "CASINO-43", name: "Galletas Casino 43 g", quantity: 1, unit_price_cents: 150 }];
+    render(<Escaneo snapshot={{ ...base, lines, item_count: 1, total_cents: 150 }} offline={false} />);
+    expect(screen.getByText("Galletas Casino 43 g")).toBeInTheDocument();
+    expect(screen.getByText("Pon un producto dentro del recuadro amarillo.")).toBeInTheDocument();
+    expect(screen.queryByText(/Pasa el siguiente producto/)).not.toBeInTheDocument();
+  });
+});
+
+describe("PagoQrPropio", () => {
+  const paying = { ...base, state: "PAYING", screen: "QR" as const, total_cents: 280 };
+
+  it("muestra el QR del comercio, el monto exacto y el tiempo", () => {
+    render(<PagoQrPropio snapshot={paying} offline={false} />);
+    expect(screen.getByRole("img", { name: "Código QR de Yape del comercio" })).toHaveAttribute("src", "/api/pay/wallet-qr");
+    expect(screen.getByText("S/ 2.80")).toBeInTheDocument();
+    expect(screen.getByText("Escanea con Yape o Plin")).toBeInTheDocument();
+    expect(screen.getByText("110 s")).toBeInTheDocument();
+    expect(screen.getByText("Esperando la confirmación del pago")).toBeInTheDocument();
+  });
+
+  it("sin imagen configurada lo avisa", () => {
+    render(<PagoQrPropio snapshot={{ ...paying, wallet_qr: null }} offline={false} />);
+    expect(screen.getByText("Falta el QR del comercio")).toBeInTheDocument();
+  });
+
+  it("CANCELAR llama a la API", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(paying)));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<PagoQrPropio snapshot={paying} offline={false} />);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "CANCELAR COMPRA" })));
+    expect(fetchMock).toHaveBeenCalledWith("/api/cancel", expect.objectContaining({ method: "POST" }));
+  });
+});
+
+describe("Ticket con boleta", () => {
+  const paid = {
+    ...base,
+    state: "PAID",
+    screen: "W4" as const,
+    seconds_in_state: 2,
+    receipt: { number: "B001-00000007", issued_at: "2026-11-20T02:05:00+00:00", payer: "Juan Pérez" },
+  };
+
+  it("muestra cobro exitoso, número, fecha y quién pagó", () => {
+    render(<Ticket snapshot={paid} />);
+    expect(screen.getByText("Cobro exitoso")).toBeInTheDocument();
+    expect(screen.getByText("B001-00000007")).toBeInTheDocument();
+    expect(screen.getByText("19/11/2026, 21:05")).toBeInTheDocument();
+    expect(screen.getByText("Juan Pérez")).toBeInTheDocument();
+  });
+
+  it("sin nombre del pagador no muestra esa fila", () => {
+    render(<Ticket snapshot={{ ...paid, receipt: { ...paid.receipt, payer: null } }} />);
+    expect(screen.queryByText("Pagó")).not.toBeInTheDocument();
+  });
+});
+
+describe("WalletNotifier", () => {
+  const paying = { ...base, state: "PAYING", screen: "QR" as const, total_cents: 280 };
+
+  it("propone el texto con el monto y avisa si el pago se aceptó", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ matched: true, receipt: "B001-00000001" })));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<WalletNotifier snapshot={paying} />);
+    expect(screen.getByPlaceholderText("Juan Pérez te yapeó S/ 2.80")).toBeInTheDocument();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Simular yapeo recibido" })));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/sim/wallet-notification",
+      expect.objectContaining({ body: JSON.stringify({ text: "Juan Pérez te yapeó S/ 2.80" }) }),
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Pago aceptado: boleta B001-00000001");
+  });
+
+  it("manda el texto escrito y muestra por qué no se aceptó", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ matched: false, reason: "Monto distinto" }))));
+    render(<WalletNotifier snapshot={paying} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Ana te yapeó S/ 1.00" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Simular yapeo recibido" })));
+    expect(screen.getByRole("status")).toHaveTextContent("No se aceptó: Monto distinto");
+  });
+
+  it("antes del QR avisa que no se aceptará, y muestra errores de la API", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ detail: "Este quiosco no cobra con QR" }), { status: 409 })));
+    render(<WalletNotifier snapshot={base} />);
+    expect(screen.getByText(/aún no muestra el QR/)).toBeInTheDocument();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Simular yapeo recibido" })));
+    expect(screen.getByRole("status")).toHaveTextContent("Este quiosco no cobra con QR");
+  });
+});

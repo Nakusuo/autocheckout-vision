@@ -1,5 +1,6 @@
 import type { Snapshot } from "../../api";
 import { CheckDisc } from "../signs";
+import { formatDateTime } from "../../format";
 import { Lines } from "./Lines";
 
 export function Ticket({ snapshot }: { snapshot: Snapshot }) {
@@ -10,6 +11,23 @@ export function Ticket({ snapshot }: { snapshot: Snapshot }) {
         <CheckDisc className="thanks-icon" />
         <h1 className="title">Gracias por su compra</h1>
       </div>
+      {snapshot.receipt && (
+        <div className="receipt">
+          <p className="receipt-ok">Cobro exitoso</p>
+          <dl className="receipt-data">
+            <dt>Boleta</dt>
+            <dd>{snapshot.receipt.number}</dd>
+            <dt>Fecha</dt>
+            <dd>{formatDateTime(snapshot.receipt.issued_at)}</dd>
+            {snapshot.receipt.payer && (
+              <>
+                <dt>Pagó</dt>
+                <dd>{snapshot.receipt.payer}</dd>
+              </>
+            )}
+          </dl>
+        </div>
+      )}
       <Lines snapshot={snapshot} subtotal />
       <div className="countdown">
         <span className="speed-sign" aria-hidden="true">{left}</span>

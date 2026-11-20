@@ -152,3 +152,88 @@ def test_no_qr_gateway_refuses_qr():
     with pytest.raises(PaymentError, match="Yape"):
         NoQrGateway().create_charge(100, "venta-1")
     assert NoQrGateway().poll("x") is None
+
+
+def test_background_mode_defaults_to_fixed_tray(tmp_path):
+    from kiosk.__main__ import background_segmenter
+
+    assert background_segmenter({}) is None
+    assert background_segmenter({"KIOSK_FONDO": "fijo"}) is None
+
+
+def test_free_background_needs_the_segmenter_model(tmp_path):
+    from kiosk.__main__ import background_segmenter
+
+    model = tmp_path / "silueta.onnx"
+    with pytest.raises(SystemExit, match="falta el modelo"):
+        background_segmenter({"KIOSK_FONDO": "libre", "KIOSK_SEGMENTER": str(model)})
+    model.write_bytes(b"x")
+    assert background_segmenter({"KIOSK_FONDO": "libre", "KIOSK_SEGMENTER": str(model)}) == model
+
+
+def test_unknown_background_mode_exits():
+    from kiosk.__main__ import background_segmenter
+
+    with pytest.raises(SystemExit, match="KIOSK_FONDO"):
+        background_segmenter({"KIOSK_FONDO": "verde"})
+
+
+def test_payment_mode_accepts_own_wallet_qr():
+    from kiosk.__main__ import payment_mode
+
+    assert payment_mode({"KIOSK_PAYMENT": "yape-qr"}) == "yape-qr"
+
+
+def test_wallet_settings(tmp_path):
+    from kiosk.__main__ import wallet_settings
+
+    qr = tmp_path / "mi-qr.png"
+    with pytest.raises(SystemExit, match="falta la imagen"):
+        wallet_settings({"KIOSK_YAPE_QR": str(qr)})
+    qr.write_bytes(b"png")
+    assert wallet_settings({"KIOSK_YAPE_QR": str(qr)}) == (qr, True, None)
+    env = {"KIOSK_YAPE_QR": str(qr), "KIOSK_SIMULAR_PAGO": "off", "KIOSK_NOTIFIER_KEY": "k" * 16}
+    assert wallet_settings(env) == (qr, False, "k" * 16)
+    with pytest.raises(SystemExit, match="16 caracteres"):
+        wallet_settings({"KIOSK_YAPE_QR": str(qr), "KIOSK_NOTIFIER_KEY": "corta"})
+    txt = tmp_path / "qr.txt"
+    txt.write_text("x")
+    with pytest.raises(SystemExit, match="PNG o JPG"):
+        wallet_settings({"KIOSK_YAPE_QR": str(txt)})
+
+
+def test_wallet_settings_default_path_is_private_folder(tmp_path, monkeypatch):
+    import kiosk.__main__ as main
+
+    monkeypatch.setattr(main, "REPO", tmp_path)
+    with pytest.raises(SystemExit, match=str(tmp_path / "privado" / "yape-qr.png")):
+        main.wallet_settings({})
+
+
+def test_web_mode_has_no_kiosk_camera():
+    from kiosk.__main__ import NoCamera
+
+    detector, tray = build_detector("web", CATALOG, SimulatedScale(), {})
+    assert isinstance(detector, NoCamera)
+    assert tray is None
+    assert detector.detect() == []
+
+
+def test_build_recognizer_needs_a_gallery(tmp_path, monkeypatch):
+    import kiosk.recognizer as rec
+    from kiosk.__main__ import build_recognizer
+
+    with pytest.raises(SystemExit, match="KIOSK_GALLERY"):
+        build_recognizer({})
+    with pytest.raises(SystemExit, match="KIOSK_GALLERY"):
+        build_recognizer({"KIOSK_GALLERY": str(tmp_path / "no.npz")})
+    gallery = tmp_path / "g.npz"
+    gallery.write_bytes(b"x")
+    seen = {}
+    monkeypatch.setattr(
+        rec.CropRecognizer, "from_files", classmethod(lambda cls, g, threshold: seen.update(g=g, t=threshold))
+    )
+    build_recognizer({"KIOSK_GALLERY": str(gallery)})
+    assert seen == {"g": gallery, "t": rec.BOX_THRESHOLD}
+    build_recognizer({"KIOSK_GALLERY": str(gallery), "KIOSK_THRESHOLD": "1.3"})
+    assert seen["t"] == 1.3

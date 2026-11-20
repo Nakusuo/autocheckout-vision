@@ -42,3 +42,6 @@ playwright-report/
 docs/informe/
 .coverage
 kiosk.log*
+
+# Datos del comercio (QR de Yape, etc.): nunca van a git
+privado/

@@ -26,7 +26,16 @@ it("acepta los campos del pago con Yape (y su ausencia, de un backend anterior)"
   expect(isSnapshot({ ...ok, payment_method: "qr", payment_error: null, payment_processing: false })).toBe(true);
 });
 
+it("acepta el QR propio, la cámara del navegador y la boleta", () => {
+  const receipt = { number: "B001-00000001", issued_at: "2026-11-20T02:05:00+00:00", payer: null };
+  expect(isSnapshot({ ...ok, payment_method: "yape-qr", wallet_qr: "/api/pay/wallet-qr", browser_camera: true, receipt })).toBe(true);
+  expect(isSnapshot({ ...ok, wallet_qr: null, receipt: null })).toBe(true);
+});
+
 it.each([
+  ["QR propio numérico", { ...ok, wallet_qr: 1 }],
+  ["cámara no booleana", { ...ok, browser_camera: "sí" }],
+  ["boleta sin número", { ...ok, receipt: { issued_at: "x", payer: null } }],
   ["método de pago desconocido", { ...ok, payment_method: "tarjeta" }],
   ["error de pago numérico", { ...ok, payment_error: 3 }],
   ["procesando no booleano", { ...ok, payment_processing: "sí" }],
