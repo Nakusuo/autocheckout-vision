@@ -96,6 +96,7 @@ def test_cloud_settings(tmp_path):
     [
         ({"KIOSK_ORIGINS": SITE}, "KIOSK_CAJA_KEY"),
         ({"K_SERVICE": "autocaja"}, "KIOSK_CAJA_KEY"),
+        ({"KIOSK_PUBLICO": "on"}, "KIOSK_CAJA_KEY"),
         ({"KIOSK_ORIGINS": "http://inseguro.test", "KIOSK_CAJA_KEY": KEY}, "https"),
         ({"KIOSK_ORIGINS": f"{SITE}/ruta", "KIOSK_CAJA_KEY": KEY}, "sin ruta"),
         ({"KIOSK_CAJA_KEY": "corta"}, "16 caracteres"),

@@ -1,4 +1,33 @@
-# AutoCaja en la nube: Google Cloud Run (nivel gratuito)
+# AutoCaja en internet
+
+Dos formas de publicar el quiosco completo (API + reconocimiento + interfaz) con una dirección
+https, para abrirlo desde el celular:
+
+| | Plan B: tu PC + túnel de Cloudflare (**el que se usa**) | Google Cloud Run |
+|---|---|---|
+| Costo | Gratis, sin cuenta ni tarjeta | Gratis dentro del nivel gratuito, pero pide tarjeta |
+| Estado | **Funcionando** (2026-11-20) | Código listo; la cuenta de pago fue rechazada (OR_BACR2_59) |
+| En contra | La PC debe estar prendida; la dirección cambia cada vez | Arranque en frío; tarjeta |
+
+## Plan B: tu PC + túnel de Cloudflare
+
+```bash
+docker compose -f docker-compose.publico.yml up -d --build
+docker compose -f docker-compose.publico.yml logs tunel | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com'
+```
+
+- Esa dirección `https://….trycloudflare.com` se abre en el celular quiosco; `…/ayuda` es la caja.
+- `.env` debe tener `KIOSK_CAJA_KEY` (clave de `/ayuda`; verla con `grep KIOSK_CAJA_KEY .env`) y
+  `KIOSK_NOTIFIER_KEY`. Con `KIOSK_PUBLICO=on` el quiosco no arranca sin la clave de caja.
+- El túnel es la imagen oficial `cloudflare/cloudflared` (túnel rápido): no abre puertos del
+  router, la conexión sale de la PC. Cloudflare no garantiza disponibilidad de los túneles rápidos.
+- **Medido por internet (2026-11-20):** ~0,5–0,9 s por cuadro de 320 px (en la laptop, sin red,
+  ~0,13 s). Con 3 cuadros iguales, un producto se agrega en ~2–3 s.
+- Al terminar: `docker compose -f docker-compose.publico.yml down` (la dirección deja de existir).
+
+---
+
+## Google Cloud Run (nivel gratuito)
 
 Todo el quiosco (API, reconocimiento e interfaz) corre en un solo contenedor en Cloud Run, con una
 dirección `https://autocaja-….us-central1.run.app`:
@@ -13,7 +42,7 @@ dirección `https://autocaja-….us-central1.run.app`:
 > gratis para cuentas nuevas. El repositorio privado `Nakusuo/autocaja-modelos` sí se usa: de ahí
 > se bajan los modelos y el QR al arrancar.
 
-## Cómo se evita el cobro
+### Cómo se evita el cobro
 
 Cloud Run pide una tarjeta para activar la cuenta, pero no cobra mientras el uso quede dentro del
 nivel gratuito mensual (180 000 vCPU-segundos, 360 000 GiB-segundos, 2 millones de peticiones).
@@ -39,21 +68,21 @@ gcloud run services delete autocaja --region us-central1
 gcloud artifacts repositories delete autocaja --location us-central1
 ```
 
-## Pasos (una sola vez)
+### Pasos (una sola vez)
 
-### 1. Cuenta y proyecto
+#### 1. Cuenta y proyecto
 
 1. Entrar a <https://console.cloud.google.com> con tu cuenta de Google y activar la facturación
    (pide la tarjeta; no cobra dentro del nivel gratuito).
 2. Crear un proyecto, por ejemplo `autocaja`, y elegirlo arriba en la consola.
 
-### 2. Modelos en Hugging Face (repositorio privado, ya creado)
+#### 2. Modelos en Hugging Face (repositorio privado, ya creado)
 
 En `Nakusuo/autocaja-modelos`, **Files → Add file → Upload files**:
 `ml/data/models/dinov2-small.onnx`, `ml/data/models/galeria-recuadro.npz` y `privado/yape-qr.png`.
 Crear un token de **lectura** en Hugging Face (*Settings → Access Tokens*).
 
-### 3. Preparar Google Cloud
+#### 3. Preparar Google Cloud
 
 Abrir **Cloud Shell** (el ícono `>_` arriba a la derecha en la consola), subir el archivo
 `deploy/nube/preparar_gcp.sh` (menú ⋮ → *Upload*) y correr:
@@ -67,13 +96,13 @@ Pide el token de lectura de Hugging Face (no se ve al pegarlo). Al final muestra
 - tres comandos `gh variable set …` para pegar en la terminal de tu PC (no son secretos);
 - la **clave de caja** para entrar a `/ayuda`.
 
-### 4. Primer despliegue
+#### 4. Primer despliegue
 
 Con el código en `main`: **Actions → CD → Run workflow**. El job «Desplegar el quiosco en Cloud
 Run» construye la imagen, la sube y despliega. Al terminar, el resumen del job muestra la dirección.
 El primer arranque baja los modelos (~1 min).
 
-## Cómo está armado
+### Cómo está armado
 
 - `deploy/nube/Dockerfile`: compila la interfaz (Node) y la copia junto a la API (Python con el
   extra `vision`). La API la sirve (`KIOSK_UI_DIR`), sin nginx, con las mismas cabeceras de
@@ -84,7 +113,7 @@ El primer arranque baja los modelos (~1 min).
 - GitHub despliega con **Workload Identity Federation**: no hay claves de Google guardadas en
   GitHub, y el permiso solo vale para este repositorio.
 
-## Límites (decirlos en el informe)
+### Límites (decirlos en el informe)
 
 - **Arranque en frío:** tras un rato sin visitas, la primera visita tarda (arrancar + bajar los
   modelos, ~1 min). Abrir la dirección unos minutos antes de presentar.
