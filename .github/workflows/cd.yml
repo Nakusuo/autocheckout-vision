@@ -45,7 +45,7 @@ jobs:
       - name: Nombre de la imagen (GHCR exige minúsculas)
         id: imagen
         run: echo "nombre=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/autocaja-${{ matrix.servicio }}" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.servicio }}/Dockerfile
