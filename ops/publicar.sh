@@ -23,9 +23,11 @@ if ! "${COMPOSE[@]}" up -d --build --wait >/dev/null 2>&1; then
   exit 1
 fi
 
+# Solo desde el último arranque del túnel: si se reinició, las direcciones anteriores ya no sirven.
+DESDE="$(docker inspect -f '{{.State.StartedAt}}' "$("${COMPOSE[@]}" ps -q tunel)")"
 URL=""
 for _ in $(seq 1 30); do
-  URL="$("${COMPOSE[@]}" logs tunel 2>&1 | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' | tail -1 || true)"
+  URL="$("${COMPOSE[@]}" logs --since "$DESDE" tunel 2>&1 | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' | tail -1 || true)"
   [ -n "$URL" ] && break
   sleep 2
 done
