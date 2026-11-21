@@ -1,6 +1,6 @@
 # Interfaz del quiosco: se compila con Node y se sirve con nginx (sin root).
 # Build desde la raíz del repo:  docker build -f kiosk-ui/Dockerfile .
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /ui
 COPY kiosk-ui/package.json kiosk-ui/package-lock.json ./
 RUN npm ci --no-audit --no-fund
