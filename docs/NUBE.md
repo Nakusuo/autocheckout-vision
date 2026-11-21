@@ -38,7 +38,7 @@ dirección `https://autocaja-….us-central1.run.app`:
 |---|---|
 | `/` | Pantalla del cliente: se abre en el celular quiosco (la cámara funciona porque es https) |
 | `/ayuda` | Vista de la caja: solicitudes de ayuda y alertas. Pide la **clave de caja** |
-| `/api/pay/notification` | Donde la app Android del comercio manda la notificación de Yape (con su clave) |
+| `/api/pay/notification` | Donde el celular del comercio manda la notificación de Yape, con su clave (hoy MacroDroid, ver DEMO_WEB §4.1; luego la app Android) |
 
 > Primero se intentó Hugging Face Spaces, pero desde julio de 2026 los Spaces de Docker ya no son
 > gratis para cuentas nuevas. El repositorio privado `Nakusuo/autocaja-modelos` sí se usa: de ahí

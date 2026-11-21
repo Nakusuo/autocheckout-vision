@@ -124,6 +124,10 @@ body:has(.panel) { background: #f3f1ec; }
 .request-info { display: flex; flex-direction: column; }
 .request-title { font-weight: 900; font-size: 1.1rem; }
 
+.request.sale { grid-template-columns: minmax(0, 1fr); background: var(--sign-white); }
+.card-paying { border-color: var(--sign-red); box-shadow: inset 0 0 0 2px var(--sign-red); }
+.card-paying p { margin: 0.4rem 0 0.8rem; }
+
 .card-down { border-color: var(--sign-red); box-shadow: inset 0 0 0 2px var(--sign-red); }
 .down { display: flex; align-items: center; gap: 0.9rem; font-weight: 700; }
 .down p { margin: 0; }

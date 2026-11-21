@@ -20,6 +20,17 @@ def _utc_now() -> str:
     return dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
 
 
+def payment_method(charge_id: str) -> str:
+    """Cómo se pagó, según el identificador del cobro guardado en la boleta."""
+    if charge_id.startswith("sim-"):
+        return "Simulado"
+    if charge_id.startswith("caja-"):
+        return "Aprobado en caja"
+    if charge_id.startswith("billetera-"):
+        return "Yape (notificación)"
+    return "Pasarela"
+
+
 class SimulatedPos:
     def __init__(self, path: Path | None = None, now: Callable[[], str] = _utc_now):
         self._path = path
@@ -32,8 +43,14 @@ class SimulatedPos:
             self._last = int(rows[-1]["number"].rsplit("-", 1)[1]) if rows else 0
 
     def issue_receipt(
-        self, reference: str, charge_id: str, lines: Iterable[CartLine], total_cents: int
+        self,
+        reference: str,
+        charge_id: str,
+        lines: Iterable[CartLine],
+        total_cents: int,
+        payer: str | None = None,
     ) -> dict:
+        """Emite la boleta simulada. `payer` es el nombre que trajo la notificación de Yape."""
         self._last += 1
         receipt = {
             "number": f"{SERIES}-{self._last:08d}",
@@ -51,6 +68,8 @@ class SimulatedPos:
             ],
             "total_cents": total_cents,
         }
+        if payer is not None:
+            receipt["payer"] = payer
         self.receipts.append(receipt)
         del self.receipts[: -jsonl.KEEP_IN_MEMORY]
         if self._path is not None:
@@ -59,7 +78,8 @@ class SimulatedPos:
         return receipt
 
     def sales_today(self, today: dt.date | None = None, limit: int = 20) -> dict:
-        """Resumen para la caja: ventas del día (hora local) y las últimas boletas."""
+        """Resumen para la caja: ventas del día (hora local) y las últimas boletas con su detalle
+        (productos, quién pagó y cómo)."""
         rows = jsonl.read_rows(self._path) if self._path is not None else self.receipts
         day = today or dt.datetime.now().astimezone().date()
         mine = [
@@ -74,6 +94,11 @@ class SimulatedPos:
                     "issued_at": r["issued_at"],
                     "items": sum(line["quantity"] for line in r["lines"]),
                     "total_cents": r["total_cents"],
+                    "lines": [
+                        {"name": line["name"], "quantity": line["quantity"]} for line in r["lines"]
+                    ],
+                    "payer": r.get("payer"),
+                    "method": payment_method(r["charge_id"]),
                 }
                 for r in reversed(mine[-limit:])
             ],

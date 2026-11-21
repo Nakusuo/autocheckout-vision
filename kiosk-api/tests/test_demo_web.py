@@ -33,8 +33,15 @@ class Clock:
 
 def make_service(**kwargs) -> KioskService:
     return KioskService(
-        CATALOG, NoCamera(), None, FakeGateway(), None, Clock(), wallet_qr="/api/pay/wallet-qr",
-        browser_camera=True, **kwargs,
+        CATALOG,
+        NoCamera(),
+        None,
+        FakeGateway(),
+        None,
+        Clock(),
+        wallet_qr="/api/pay/wallet-qr",
+        browser_camera=True,
+        **kwargs,
     )
 
 
@@ -58,6 +65,18 @@ def to_payment(svc: KioskService, skus=("CASINO-43", "RITZ-20")) -> None:
         ("¡Luis R. te yapeó S/4,30!", WalletNotice(430, "Luis R.")),
         ("Recibiste S/ 12 de María López", WalletNotice(1200, "María López")),
         ("Te yapearon S/. 3.5", WalletNotice(350, None)),
+        # Notificación real de Yape (2026-11-20): título en otra línea y monto sin el cero final
+        (
+            (
+                "Confirmación de Pago\nAlessandra Rod* te envió un pago por S/ 1.5. "
+                "El cód. de seguridad es: 305"
+            ),
+            WalletNotice(150, "Alessandra Rod*", "305"),
+        ),
+        (
+            "Recibiste S/ 2 de Ana. Código de seguridad: 123",
+            WalletNotice(200, "Ana", "123"),
+        ),
     ],
 )
 def test_parses_amount_and_payer(text, notice):
@@ -121,7 +140,10 @@ def test_matching_notification_completes_the_sale_with_a_receipt():
 
 def test_wrong_amount_or_no_payment_waiting_is_ignored():
     svc = make_service()
-    assert svc.wallet_notification("Ana te yapeó S/ 2.80")["reason"] == "No hay un cobro esperando pago"
+    assert (
+        svc.wallet_notification("Ana te yapeó S/ 2.80")["reason"]
+        == "No hay un cobro esperando pago"
+    )
     to_payment(svc)
     wrong = svc.wallet_notification("Ana te yapeó S/ 2.00")
     assert wrong == {
@@ -130,6 +152,51 @@ def test_wrong_amount_or_no_payment_waiting_is_ignored():
     }
     assert svc.wallet_notification("Promoción del día")["matched"] is False
     assert svc.snapshot()["screen"] == "QR"
+
+
+def test_money_that_does_not_match_alerts_the_cashier():
+    svc = make_service()
+    svc.wallet_notification("Luis te envió un pago por S/ 9. El cód. de seguridad es: 777")
+    to_payment(svc)
+    svc.wallet_notification("Promoción del día")  # sin monto: no es dinero, no alerta
+    svc.wallet_notification("Ana te yapeó S/ 2.00")
+    reasons = [a["reason"] for a in svc.security_alerts if a["outcome"] == "pagada"]
+    assert reasons == [
+        (
+            "Yape de Luis por S/ 9.00, cód. 777 sin compra que calce "
+            "(no hay un cobro esperando pago): revisar"
+        ),
+        (
+            "Yape de Ana por S/ 2.00 sin compra que calce "
+            "(monto distinto: llegó S/ 2.00, se espera S/ 2.80): revisar"
+        ),
+    ]
+
+
+def test_real_yape_notification_pays_and_the_sale_keeps_its_detail():
+    svc = make_service()
+    to_payment(svc, skus=("CASINO-43",))
+    total = svc.snapshot()["total_cents"]
+    text = (
+        "Confirmación de Pago\nAlessandra Rod* te envió un pago por "
+        f"S/ {total / 100:g}. El cód. de seguridad es: 305"
+    )
+    assert svc.wallet_notification(text)["matched"] is True
+    sale = svc.pos.sales_today()["receipts"][0]
+    assert sale["payer"] == "Alessandra Rod*"
+    assert sale["method"] == "Yape (notificación)"
+    assert sale["lines"] == [{"name": svc.catalog.get("CASINO-43").name, "quantity": 1}]
+
+
+def test_cashier_can_approve_a_wallet_qr_payment_by_hand():
+    svc = make_service()
+    to_payment(svc)
+    svc.accept_payment()
+    assert svc.snapshot()["screen"] == "W4"
+    assert svc.pos.receipts[-1]["charge_id"] == "caja-billetera-venta-1"
+    assert svc.pos.sales_today()["receipts"][0]["method"] == "Aprobado en caja"
+    with pytest.raises(TransitionError, match="pago pendiente"):
+        svc.accept_payment()
 
 
 def test_receipt_disappears_when_the_kiosk_returns_to_start():
@@ -266,11 +333,22 @@ def client(qr_file, **kwargs):
 def test_frame_endpoint_suggests_a_product_during_scanning(qr_file):
     svc, http = client(qr_file)
     headers = {"Content-Type": "image/jpeg"}
-    assert http.post("/api/vision/frame", content=jpeg(solid((30, 30, 200))), headers=headers).status_code == 409
+    assert (
+        http.post(
+            "/api/vision/frame", content=jpeg(solid((30, 30, 200))), headers=headers
+        ).status_code
+        == 409
+    )
     svc.start()
-    body = http.post("/api/vision/frame", content=jpeg(solid((30, 30, 200))), headers=headers).json()
+    body = http.post(
+        "/api/vision/frame", content=jpeg(solid((30, 30, 200))), headers=headers
+    ).json()
     assert body["match"] is True
-    assert (body["sku"], body["name"], body["price_cents"]) == ("CASINO-43", "Galletas Casino 43 g", 150)
+    assert (body["sku"], body["name"], body["price_cents"]) == (
+        "CASINO-43",
+        "Galletas Casino 43 g",
+        150,
+    )
     assert svc.snapshot()["item_count"] == 0  # sugerir no agrega
 
 
@@ -278,7 +356,9 @@ def test_frame_endpoint_low_similarity_is_no_match(qr_file):
     svc, http = client(qr_file, recognizer=recognizer(threshold=9.0))
     svc.start()
     body = http.post(
-        "/api/vision/frame", content=jpeg(solid((30, 30, 200))), headers={"Content-Type": "image/jpeg"}
+        "/api/vision/frame",
+        content=jpeg(solid((30, 30, 200))),
+        headers={"Content-Type": "image/jpeg"},
     ).json()
     assert (body["match"], body["sku"], body["name"]) == (False, None, None)
     assert body["score"] > 0
@@ -288,9 +368,19 @@ def test_frame_endpoint_low_similarity_is_no_match(qr_file):
 def test_frame_endpoint_validates_the_upload(qr_file):
     svc, http = client(qr_file)
     svc.start()
-    assert http.post("/api/vision/frame", content=b"x", headers={"Content-Type": "text/plain"}).status_code == 415
+    assert (
+        http.post(
+            "/api/vision/frame", content=b"x", headers={"Content-Type": "text/plain"}
+        ).status_code
+        == 415
+    )
     big = b"x" * 2_000_001
-    assert http.post("/api/vision/frame", content=big, headers={"Content-Type": "image/jpeg"}).status_code == 413
+    assert (
+        http.post(
+            "/api/vision/frame", content=big, headers={"Content-Type": "image/jpeg"}
+        ).status_code
+        == 413
+    )
     bad = http.post("/api/vision/frame", content=b"x", headers={"Content-Type": "image/png; q=1"})
     assert bad.status_code == 422
 

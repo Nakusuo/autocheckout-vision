@@ -15,6 +15,7 @@ from kiosk.payments import (
     PaymentError,
     PaymentGateway,
     UnverifiedPayment,
+    WalletNotice,
     YapeProvider,
     YapeResult,
     parse_wallet_notification,
@@ -207,7 +208,16 @@ class KioskService:
         self._last_poll = float("-inf")
 
     def accept_payment(self) -> None:
-        """La caja aprueba el cobro simulado vigente; se valida el token firmado."""
+        """La caja aprueba el cobro vigente.
+
+        Con la pasarela simulada se valida su token firmado. Con el QR propio de Yape/Plin el
+        encargado lo hace tras ver el pago en su celular (respaldo si la notificación no llega):
+        la boleta queda con `charge_id` «caja-billetera-…»."""
+        cart = self.checkout.cart
+        if self._wallet_qr is not None and self.checkout.state is State.PAYING and cart is not None:
+            self._complete_sale(self._reference, f"caja-billetera-{self._reference}", cart)
+            log.info("Pago por QR aprobado en caja para %s", self._reference)
+            return
         if self.checkout.state is not State.PAYING or self._charge is None:
             raise TransitionError("No hay un pago pendiente para aprobar")
         try:
@@ -301,24 +311,38 @@ class KioskService:
             return {"matched": False, "reason": "No se encontró un monto en la notificación"}
         cart = self.checkout.cart
         if self.checkout.state is not State.PAYING or cart is None:
-            return {"matched": False, "reason": "No hay un cobro esperando pago"}
+            return self._unmatched_payment(notice, "No hay un cobro esperando pago")
         if notice.amount_cents != cart.total_cents:
-            return {
-                "matched": False,
-                "reason": f"Monto distinto: llegó S/ {notice.amount_cents / 100:.2f}, "
+            return self._unmatched_payment(
+                notice,
+                f"Monto distinto: llegó S/ {notice.amount_cents / 100:.2f}, "
                 f"se espera S/ {cart.total_cents / 100:.2f}",
-            }
+            )
         charge_id = f"{'sim-' if simulated else ''}billetera-{self._reference}"
-        self._complete_sale(self._reference, charge_id, cart)
         self._payer = notice.payer
+        self._complete_sale(self._reference, charge_id, cart)
         receipt = self._receipt or {}
         log.info("Pago por QR recibido para %s (%s)", self._reference, receipt.get("number"))
         return {"matched": True, "receipt": receipt.get("number")}
 
+    def _unmatched_payment(self, notice: WalletNotice, reason: str) -> dict:
+        """Llegó dinero que no calza con la compra en pantalla: la caja debe verlo y revisarlo
+        (devolverlo o cobrarlo a mano). La alerta no se descarta sola."""
+        who = notice.payer or "alguien"
+        code = f", cód. {notice.security_code}" if notice.security_code else ""
+        self._cashier_alert(
+            f"Yape de {who} por S/ {notice.amount_cents / 100:.2f}{code} sin compra que calce "
+            f"({reason[:1].lower()}{reason[1:]}): revisar"
+        )
+        log.warning("Pago por QR sin compra que calce: %s", reason)
+        return {"matched": False, "reason": reason}
+
     def _complete_sale(self, reference: str, charge_id: str, cart: Cart) -> None:
         """Cierra la venta pagada: W4, boleta, alerta de la compra y registro de la sesión."""
         self._do(self.checkout.payment_confirmed)
-        self._receipt = self.pos.issue_receipt(reference, charge_id, cart.lines, cart.total_cents)
+        self._receipt = self.pos.issue_receipt(
+            reference, charge_id, cart.lines, cart.total_cents, payer=self._payer
+        )
         self._close_alert("pagada")
         self.sessions.finish(self._clock(), "paid", cart.item_count, cart.total_cents)
 
@@ -474,9 +498,11 @@ class KioskService:
 
     def _cart(self) -> Cart:
         # En la prueba con cámara solo se cobran los productos registrados que se reconocieron.
-        unknown = [] if self._close_camera is not None else [
-            sku for sku in self._view.elements() if self.catalog.get(sku) is None
-        ]
+        unknown = (
+            []
+            if self._close_camera is not None
+            else [sku for sku in self._view.elements() if self.catalog.get(sku) is None]
+        )
         return build_cart(sorted([*self._scanned.elements(), *unknown]), self.catalog)
 
     def _cart_changed(self) -> None:

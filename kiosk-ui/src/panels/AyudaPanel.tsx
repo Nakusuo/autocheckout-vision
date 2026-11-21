@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, request, useKioskState } from "../api";
+import { formatDateTime, formatPEN } from "../format";
 import { CautionDiamond, StopOctagon } from "../kiosk/signs";
 import { PanelHeader } from "./common";
 import { SCREEN_NAME } from "./screens";
@@ -12,6 +13,17 @@ type SecurityAlert = {
   times: number;
   outcome: string;
 };
+
+type Sale = {
+  number: string;
+  issued_at: string;
+  items: number;
+  total_cents: number;
+  lines?: { name: string; quantity: number }[];
+  payer?: string | null;
+  method?: string;
+};
+type Sales = { count: number; total_cents: number; receipts: Sale[] };
 
 const SOUND_KEY = "ayuda.sound";
 const CAJA_KEY = "ayuda.key"; // clave de caja (solo en la nube; en local no se pide)
@@ -56,8 +68,11 @@ function beep() {
 }
 
 /**
- * Vista del encargado (/ayuda): pedidos de SOLICITAR AYUDA y alertas de seguridad, con aviso
- * sonoro. Si el quiosco queda fuera de servicio, aparece arriba con el botón para reactivarlo.
+ * Vista del encargado (/ayuda): pedidos de SOLICITAR AYUDA, alertas de seguridad (también los
+ * Yape que llegan sin compra que calce) con aviso sonoro, y las ventas de hoy con su detalle.
+ * Mientras el cliente está en la pantalla de pago aparece «Aprobar pago», para cuando el encargado
+ * ve el Yape en su celular pero la notificación no llegó al quiosco. Si el quiosco queda fuera de
+ * servicio, aparece arriba con el botón para reactivarlo.
  */
 export function AyudaPanel() {
   const { snapshot, connected } = useKioskState();
@@ -74,6 +89,7 @@ export function AyudaPanel() {
   const cajaKey = useRef(readCajaKey());
   const [needKey, setNeedKey] = useState(false);
   const [keyDraft, setKeyDraft] = useState("");
+  const [sales, setSales] = useState<Sales | null>(null);
 
   const toggleSound = () => {
     const next = !sound;
@@ -175,6 +191,29 @@ export function AyudaPanel() {
     return () => clearInterval(poll);
   }, [applyAlerts, caja, fail]);
 
+  const loadSales = useCallback(
+    () =>
+      caja<Sales>("GET", "/api/sales")
+        .then((s) => setSales(Array.isArray(s?.receipts) ? s : null))
+        .catch(fail),
+    [caja, fail],
+  );
+
+  useEffect(() => {
+    const load = () => document.hidden || loadSales();
+    load();
+    const poll = setInterval(load, 5000);
+    return () => clearInterval(poll);
+  }, [loadSales]);
+
+  const approve = () =>
+    caja("POST", "/api/caja/accept-payment")
+      .then(() => {
+        setError(null);
+        return loadSales();
+      })
+      .catch(fail);
+
   const review = (id: number) =>
     caja<SecurityAlert[]>("DELETE", `/api/alerts/${id}`).then(applyAlerts).catch(fail);
 
@@ -182,6 +221,7 @@ export function AyudaPanel() {
     caja<HelpRequest[]>("DELETE", `/api/help/${id}`).then(apply).catch(fail);
   const recover = () => caja("POST", "/api/recover").then(() => setError(null)).catch(fail);
   const down = snapshot?.screen === "FUERA_DE_SERVICIO";
+  const paying = snapshot?.screen === "QR";
 
   return (
     <div className="panel">
@@ -213,6 +253,19 @@ export function AyudaPanel() {
             </div>
             <button type="button" className="pbtn go" onClick={recover}>
               Reactivar quiosco
+            </button>
+          </section>
+        )}
+        {!needKey && paying && snapshot && (
+          <section className="card card-paying" aria-label="Cobro en curso">
+            <div className="card-head">
+              <h2 className="card-title">Cliente pagando {formatPEN(snapshot.total_cents)}</h2>
+            </div>
+            <p className="muted">
+              Si ya ves el Yape por este monto en tu celular y la pantalla no avanza, apruébalo aquí.
+            </p>
+            <button type="button" className="pbtn go" onClick={approve}>
+              Aprobar pago
             </button>
           </section>
         )}
@@ -266,6 +319,40 @@ export function AyudaPanel() {
                     </span>
                   </div>
                   <button type="button" className="pbtn go" onClick={() => review(a.id)}>Revisado</button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="card-head alerts-head">
+            <h2 className="card-title">Ventas de hoy</h2>
+            {sales && sales.count > 0 && (
+              <span className="muted">
+                {sales.count} {sales.count === 1 ? "venta" : "ventas"}<span className="sep">–</span>
+                {formatPEN(sales.total_cents)}
+              </span>
+            )}
+          </div>
+          {!sales || sales.receipts.length === 0 ? (
+            <p className="muted">Sin ventas todavía. Cada venta cobrada aparece aquí con su detalle.</p>
+          ) : (
+            <ul className="requests">
+              {sales.receipts.map((v) => (
+                <li key={v.number} className="request sale">
+                  <div className="request-info">
+                    <span className="request-title">
+                      {v.number}<span className="sep">–</span>{formatPEN(v.total_cents)}
+                    </span>
+                    <span>
+                      {(v.lines ?? []).map((l) => `${l.quantity} × ${l.name}`).join(", ") ||
+                        `${v.items} ${v.items === 1 ? "producto" : "productos"}`}
+                    </span>
+                    <span className="muted">
+                      {formatDateTime(v.issued_at)}
+                      {v.method && (<><span className="sep">–</span>{v.method}</>)}
+                      {v.payer && (<><span className="sep">–</span>{v.payer}</>)}
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>
