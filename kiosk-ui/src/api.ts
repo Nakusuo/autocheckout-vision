@@ -81,12 +81,26 @@ export async function post(path: string, body?: unknown): Promise<Snapshot> {
   return request<Snapshot>("POST", path, body);
 }
 
-export async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+/** Error de la API con su código HTTP (401: falta la clave de caja). */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+export async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  headers: Record<string, string> = {},
+): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
       method,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...headers },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -100,7 +114,7 @@ export async function request<T>(method: string, path: string, body?: unknown): 
     } catch {
       /* respuesta sin JSON */
     }
-    throw new Error(detail);
+    throw new ApiError(detail, res.status);
   }
   return res.json();
 }
@@ -115,6 +129,9 @@ export function useKioskState(): { snapshot: Snapshot | null; connected: boolean
     let closed = false;
 
     const connect = () => {
+      // Con la pantalla apagada o la pestaña oculta no se conecta: en la nube (Cloud Run) se cobra
+      // mientras haya una conexión abierta. Se reconecta al volver (ver onVisible).
+      if (document.hidden) return;
       const proto = location.protocol === "https:" ? "wss" : "ws";
       ws = new WebSocket(`${proto}://${location.host}/ws`);
       ws.onopen = () => setConnected(true);
@@ -133,11 +150,23 @@ export function useKioskState(): { snapshot: Snapshot | null; connected: boolean
         timer = setTimeout(connect, 1000);
       };
     };
+    const onVisible = () => {
+      if (document.hidden) {
+        clearTimeout(timer);
+        ws?.close(); // su reintento no conecta: connect() sale mientras esté oculta
+        ws = null;
+      } else if (!ws) {
+        clearTimeout(timer);
+        connect();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
     connect();
 
     return () => {
       closed = true;
       clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
       ws?.close();
     };
   }, []);

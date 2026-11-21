@@ -198,3 +198,55 @@ def test_cli_imprime_la_comparacion(capsys):
     assert main(["--peso", "238"]) == 0
     salida = capsys.readouterr().out
     assert "BFS" in salida and "A*" in salida and "HC" in salida
+
+
+# --- Umbrales del reconocedor (Hill Climbing con casos medidos) ---------------------------------
+
+
+def _casos_umbral():
+    """Conocidos con parecido alto y margen claro; desconocidos por debajo (separables)."""
+    from kiosk.busqueda.problemas import UmbralReconocedor
+
+    casos = []
+    for k in range(20):
+        casos.append((1.40 + 0.01 * k, 0.20, 1, f"P{k % 4}"))
+        casos.append((1.00 + 0.01 * k, 0.02, 0, f"P{k % 4}"))
+    return UmbralReconocedor, casos
+
+
+def test_umbral_score_vecinos_y_exhaustiva():
+    UmbralReconocedor, casos = _casos_umbral()
+    problema = UmbralReconocedor((p, m, c) for p, m, c, _ in casos)
+    perfecto = UmbralReconocedor.estado(1.3, 0.1)
+    assert problema.score(perfecto) == 1.0
+    assert problema.score(UmbralReconocedor.estado(1.8, 0.3)) == 0.0  # no acepta nada
+    assert UmbralReconocedor.valores(perfecto) == (1.3, 0.1)
+    assert len(list(problema.neighbors((0, 0)))) == 3  # esquina de la rejilla
+    assert len(list(problema.neighbors((10, 10)))) == 8
+    assert problema.exhaustiva()[1] == 1.0
+    import random
+
+    i, j = problema.random_state(random.Random(0))
+    assert 0 <= i < 51 and 0 <= j < 31
+    with pytest.raises(ValueError, match="casos"):
+        UmbralReconocedor([])
+
+
+def test_ajustar_umbrales_y_cli(tmp_path, capsys):
+    from kiosk.busqueda.__main__ import ajustar_umbrales, main
+
+    _, casos = _casos_umbral()
+    r = ajustar_umbrales(casos)
+    assert r["exhaustiva"][1] == 1.0 and r["exhaustiva"][2] == 51 * 31
+    assert r["hc_reinicios"][1] == 1.0 and r["hc_reinicios"][2] < 51 * 31 * 10
+    assert r["fuera_de_muestra"]["hill_climbing"] == 1.0
+
+    pares = tmp_path / "pares.csv"
+    pares.write_text(
+        "parecido,margen,conocido,sku\n" + "".join(f"{p},{m},{c},{s}\n" for p, m, c, s in casos)
+    )
+    assert main(["--umbral", str(pares)]) == 0
+    out = capsys.readouterr().out
+    assert "Umbrales del reconocedor" in out and "Fuera de muestra" in out
+    with pytest.raises(SystemExit):
+        main(["--umbral", str(tmp_path / "no.csv")])

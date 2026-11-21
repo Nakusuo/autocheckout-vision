@@ -141,3 +141,15 @@ body:has(.panel) { background: #f3f1ec; }
   .request { animation: none; }
   .pbtn { transition: none; }
 }
+
+/* Clave de caja (solo cuando el quiosco está en internet) */
+.key-form { display: flex; flex-direction: column; gap: 0.9rem; max-width: 420px; }
+.field { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 700; }
+.field input {
+  min-height: 2.6rem;
+  padding: 0.4rem 0.7rem;
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 600;
+}

@@ -185,6 +185,22 @@ AUTOCAJA_IMAGEN=ghcr.io/nakusuo/autocaja AUTOCAJA_VERSION=latest docker compose 
 
 GHCR crea los paquetes como privados. Para bajarlos hay que hacer `docker login ghcr.io` con un token de lectura o marcarlos como públicos en GitHub.
 
+## 6.5 Publicar el quiosco completo para el celular (2026-11-20)
+
+La demo web necesita una dirección **https** (el navegador del celular solo da la cámara en un
+sitio seguro). Se evaluaron tres caminos, con el costo como restricción:
+
+| Opción | Resultado | Lo que deja en el repositorio |
+|---|---|---|
+| Hugging Face Spaces (PaaS) | Descartado: desde julio de 2026 los Spaces de Docker ya no son gratis | — |
+| **Google Cloud Run** (serverless, PaaS) | Listo en código; **no desplegado**: Google rechazó la tarjeta (OR_BACR2_59) | `deploy/nube/` (Dockerfile y arranque), job `cloudrun` del CD con **Workload Identity Federation** (sin claves en GitHub) y topes de costo como código: 0–1 instancias, CPU solo por petición, 512 MiB, limpieza de imágenes, presupuesto con avisos (`docs/NUBE.md`) |
+| **PC + túnel de Cloudflare** (red de borde) | **En uso**: gratis y sin tarjeta | `docker-compose.publico.yml` y `ops/publicar.sh` (muestra un QR) |
+
+El mismo contenedor (`deploy/nube/Dockerfile`) sirve para los dos últimos: la API sirve también
+la interfaz y exige la clave de caja cuando está en internet. Medido por el túnel: ~0,5–0,9 s por
+cuadro frente a 0,13 s en local, lo que confirma la decisión de dejar la inferencia en el borde
+(§2.4).
+
 ## 7. Limitaciones y riesgos
 
 - **Arranque en frío del plan gratuito.** Render apaga el servicio tras un rato sin tráfico y la primera petición tarda en despertarlo. Eso puede romper ON-01 (cobro en ≤ 45 s) en el primer pago. Mitigación para la demo: abrir `PASARELA_URL/health` unos minutos antes, o pasar a un plan de pago en un piloto.

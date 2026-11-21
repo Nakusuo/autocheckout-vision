@@ -100,3 +100,75 @@ jobs:
           done
           echo "::error::$URL/health no respondió con el commit $SHA (¿Render desplegó otro commit?)"
           exit 1
+
+  # Quiosco completo (API + reconocimiento + interfaz) en Cloud Run, dentro del nivel gratuito.
+  # Preparación única: deploy/nube/preparar_gcp.sh. Sin las variables GCP_* se salta con un aviso.
+  cloudrun:
+    name: Desplegar el quiosco en Cloud Run
+    needs: imagenes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # GitHub se identifica ante Google sin claves guardadas (Workload Identity)
+    env:
+      PROYECTO: ${{ vars.GCP_PROYECTO }}
+      REGION: us-central1
+      IMAGEN: us-central1-docker.pkg.dev/${{ vars.GCP_PROYECTO }}/autocaja/kiosk
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: ¿Está configurado?
+        id: listo
+        run: |
+          if [ -z "${{ vars.GCP_PROYECTO }}" ] || [ -z "${{ vars.GCP_WIF_PROVIDER }}" ] || [ -z "${{ vars.GCP_SA_DEPLOY }}" ]; then
+            echo "::warning::Faltan las variables GCP_PROYECTO, GCP_WIF_PROVIDER o GCP_SA_DEPLOY: no se desplegó (ver docs/NUBE.md)"
+            echo "si=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "si=si" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.listo.outputs.si == 'si'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+      - if: steps.listo.outputs.si == 'si'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SA_DEPLOY }}
+      - if: steps.listo.outputs.si == 'si'
+        uses: google-github-actions/setup-gcloud@v2
+      - name: Construir y subir la imagen (Artifact Registry guarda solo las 2 últimas)
+        if: steps.listo.outputs.si == 'si'
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker build -f deploy/nube/Dockerfile -t "$IMAGEN:$SHA" .
+          docker push "$IMAGEN:$SHA"
+      - name: Desplegar con los topes de costo
+        if: steps.listo.outputs.si == 'si'
+        # Topes para no salir del nivel gratuito:
+        #   --max-instances 1 / --min-instances 0: una sola copia (las alertas no se reparten) y
+        #     cero copias sin visitas (no se cobra nada mientras duerme).
+        #   --cpu-throttling: CPU solo mientras atiende una petición (facturación por petición).
+        #   512 MiB y 1 vCPU: medido ~240 MB reconociendo; el gratis da ~200 h de memoria y ~50 h
+        #     de CPU activa al mes.
+        run: |
+          gcloud run deploy autocaja \
+            --image "$IMAGEN:$SHA" --region "$REGION" --project "$PROYECTO" \
+            --allow-unauthenticated \
+            --max-instances 1 --min-instances 0 --cpu-throttling \
+            --cpu 1 --memory 512Mi --concurrency 40 --timeout 3600 \
+            --service-account "autocaja-run@$PROYECTO.iam.gserviceaccount.com" \
+            --set-env-vars "HF_MODELOS=Nakusuo/autocaja-modelos" \
+            --set-secrets "KIOSK_CAJA_KEY=kiosk-caja-key:latest,KIOSK_NOTIFIER_KEY=kiosk-notifier-key:latest,HF_TOKEN=hf-token:latest" \
+            --quiet
+          URL="$(gcloud run services describe autocaja --region "$REGION" --project "$PROYECTO" --format='value(status.url)')"
+          echo "### Quiosco: $URL · Caja: $URL/ayuda" >> "$GITHUB_STEP_SUMMARY"
+      - name: Verificar que responde
+        if: steps.listo.outputs.si == 'si'
+        run: |
+          URL="$(gcloud run services describe autocaja --region "$REGION" --project "$PROYECTO" --format='value(status.url)')"
+          # El primer arranque baja los modelos: puede tardar ~1 min.
+          for _ in $(seq 1 20); do
+            if curl -fsS "$URL/api/state" > /dev/null; then echo "Responde en $URL"; exit 0; fi
+            sleep 10
+          done
+          echo "::error::$URL no respondió"; exit 1

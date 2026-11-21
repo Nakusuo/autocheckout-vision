@@ -1,0 +1,52 @@
+# Quiosco en tu PC, publicado en internet con un túnel de Cloudflare (gratis, sin cuenta ni tarjeta).
+# Plan B de docs/NUBE.md: el mismo contenedor que iría a la nube, pero corriendo aquí.
+#
+#   docker compose -f docker-compose.publico.yml up -d --build
+#   docker compose -f docker-compose.publico.yml logs tunel | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com'
+#   → https://….trycloudflare.com (quiosco, ábrelo en el celular)  ·  …/ayuda (caja, pide la clave)
+#
+# .env debe tener KIOSK_CAJA_KEY (clave de /ayuda) y KIOSK_NOTIFIER_KEY (app de Yape), ≥ 16
+# caracteres. La dirección cambia cada vez que se levanta el túnel. Detener al terminar:
+#   docker compose -f docker-compose.publico.yml down
+name: autocaja-publico
+
+services:
+  kiosco:
+    build:
+      context: .
+      dockerfile: deploy/nube/Dockerfile
+    image: autocaja-nube:local
+    environment:
+      # Está en internet: sin KIOSK_CAJA_KEY no arranca.
+      KIOSK_PUBLICO: "on"
+      KIOSK_CAJA_KEY: ${KIOSK_CAJA_KEY:?Define KIOSK_CAJA_KEY en .env}
+      KIOSK_NOTIFIER_KEY: ${KIOSK_NOTIFIER_KEY:?Define KIOSK_NOTIFIER_KEY en .env}
+      KIOSK_YAPE_QR: /privado/yape-qr.png
+      # KIOSK_THRESHOLD / KIOSK_MARGIN: como en docker-compose.demo.yml
+    volumes:
+      - ./ml/data/models:/app/ml/data/models:ro
+      - ./privado:/privado:ro
+      - datos:/datos
+    # También en la PC, solo para ti: http://localhost:5173 (el origen local que acepta la API)
+    ports:
+      - "127.0.0.1:5173:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/api/state', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 3
+
+  # Túnel rápido de Cloudflare: da una dirección https pública que llega a «kiosco».
+  # No abre ningún puerto del router; la conexión sale desde tu PC.
+  tunel:
+    image: cloudflare/cloudflared:2026.10.7
+    command: tunnel --no-autoupdate --url http://kiosco:8080
+    depends_on:
+      kiosco:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  datos:

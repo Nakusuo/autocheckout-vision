@@ -216,3 +216,72 @@ class PesoBandeja:
     def random_state(self, rng: random.Random) -> State:
         n = rng.randint(1, self.max_items)
         return tuple(sorted(rng.choice(self._products).sku for _ in range(n)))
+
+
+# --- 3. Umbrales del reconocedor -----------------------------------------------------------------
+
+# Rejilla de valores posibles: el estado es un par de índices (umbral de parecido, margen).
+UMBRALES = tuple(round(0.80 + 0.02 * i, 2) for i in range(51))  # 0,80 … 1,80
+MARGENES = tuple(round(0.01 * i, 2) for i in range(31))  # 0,00 … 0,30
+
+
+class UmbralReconocedor:
+    """¿Con qué umbral de parecido y qué margen se acepta un producto en el recuadro?
+
+    Búsqueda local sobre una rejilla de 51 × 31 = 1581 pares. El estado es (i, j): el umbral
+    UMBRALES[i] y el margen MARGENES[j]. Un vecino mueve uno o los dos un paso. La función objetivo
+    es el F1 de «producto conocido» en casos medidos (parecido, margen, conocido): aceptar uno
+    desconocido cobra mal; rechazar uno conocido molesta al cliente. Hill Climbing evalúa unos
+    pocos pares en vez de los 1581; la búsqueda exhaustiva sirve para comprobar si llegó al óptimo.
+    """
+
+    def __init__(self, casos: Iterable[tuple[float, float, int]]):
+        self.casos = [(float(p), float(m), int(c)) for p, m, c in casos]
+        if not self.casos:
+            raise ValueError("No hay casos para ajustar los umbrales")
+
+    @staticmethod
+    def valores(state: State) -> tuple[float, float]:
+        """(umbral de parecido, margen) de un estado."""
+        return UMBRALES[state[0]], MARGENES[state[1]]
+
+    def acepta(self, state: State, parecido: float, margen: float) -> bool:
+        """La regla del reconocedor con estos umbrales."""
+        umbral, minimo = self.valores(state)
+        return parecido >= umbral and margen >= minimo
+
+    def score(self, state: State) -> float:
+        """F1 de «conocido» con estos umbrales (0 si no acepta nada)."""
+        vp = fp = fn = 0
+        for parecido, margen, conocido in self.casos:
+            acepta = self.acepta(state, parecido, margen)
+            vp += acepta and conocido == 1
+            fp += acepta and conocido == 0
+            fn += not acepta and conocido == 1
+        return 2 * vp / (2 * vp + fp + fn) if vp else 0.0
+
+    def neighbors(self, state: State) -> Iterable[State]:
+        """Los 8 pares de alrededor en la rejilla."""
+        i, j = state
+        for di in (-1, 0, 1):
+            for dj in (-1, 0, 1):
+                ni, nj = i + di, j + dj
+                if (di, dj) != (0, 0) and 0 <= ni < len(UMBRALES) and 0 <= nj < len(MARGENES):
+                    yield (ni, nj)
+
+    def random_state(self, rng: random.Random) -> State:
+        """Un par al azar de la rejilla (para los reinicios)."""
+        return (rng.randrange(len(UMBRALES)), rng.randrange(len(MARGENES)))
+
+    def exhaustiva(self) -> tuple[State, float]:
+        """El mejor par probando los 1581 (referencia para comparar con Hill Climbing)."""
+        estados = [(i, j) for i in range(len(UMBRALES)) for j in range(len(MARGENES))]
+        mejor = max(estados, key=self.score)
+        return mejor, self.score(mejor)
+
+    @staticmethod
+    def estado(umbral: float, margen: float) -> State:
+        """El estado de la rejilla más cercano a (umbral, margen)."""
+        i = min(range(len(UMBRALES)), key=lambda k: abs(UMBRALES[k] - umbral))
+        j = min(range(len(MARGENES)), key=lambda k: abs(MARGENES[k] - margen))
+        return (i, j)

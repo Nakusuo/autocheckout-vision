@@ -10,7 +10,9 @@ dependencies = ["numpy>=1.26", "opencv-python-headless>=4.9"]
 
 [project.optional-dependencies]
 bench = ["onnxruntime>=1.18"]
-dev = ["pytest>=8", "ruff>=0.6", "bandit>=1.7"]
+# Modelos de la rúbrica APF3 (regresión, logística, SVM, KNN, árboles, boosting): mltools.apf3
+apf3 = ["scikit-learn>=1.5"]
+dev = ["pytest>=8", "ruff>=0.6", "bandit>=1.7", "scikit-learn>=1.5"]
 heic = ["pillow>=10", "pillow-heif>=0.16"]
 train = ["ultralytics>=8.3"]
 
