@@ -1,11 +1,14 @@
 import asyncio
 import hmac
+import json
 import logging
+import re
 import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Protocol
+from urllib.parse import parse_qs
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, StringConstraints
@@ -79,13 +82,34 @@ def notifier_problem(token: str | None, key: str) -> str:
     return "la clave tiene el largo correcto pero no coincide"
 
 
+_JSON_FIELD = re.compile(r'"(?P<name>text|key)"\s*:\s*"(?P<value>.*?)"\s*(?=,\s*"(?:text|key)"|\}\s*$)', re.DOTALL)
+
+
+def parse_notifier_body(raw: str) -> dict[str, str]:
+    """Lee {"text", "key"} del cuerpo que mandan las apps de automatización, con tolerancia.
+
+    MacroDroid pega el texto de la notificación tal cual dentro del JSON: si trae saltos de línea
+    o comillas, el JSON queda inválido. Se prueba en orden: JSON normal, JSON que permite saltos
+    de línea (strict=False), los campos con una expresión regular y, por último, un formulario
+    (text=…&key=…). Si nada funciona, el cuerpo entero se toma como el texto."""
+    raw = raw.strip()
+    try:
+        data = json.loads(raw, strict=False)
+        if isinstance(data, dict):
+            return {k: str(v) for k, v in data.items() if k in ("text", "key") and v is not None}
+    except ValueError:
+        pass
+    found = {m["name"]: m["value"] for m in _JSON_FIELD.finditer(raw)}
+    if found:
+        return found
+    form = {k: v[0] for k, v in parse_qs(raw).items() if k in ("text", "key")}
+    return form or {"text": raw}
+
+
 class NotificationIn(BaseModel):
     """Texto de la notificación de pago recibido (Yape/Plin) tal como la muestra el celular."""
 
     text: str = Field(min_length=1, max_length=500)
-    # Alternativa a la cabecera Authorization: algunas apps de automatización (MacroDroid) no la
-    # mandan bien. En el cuerpo no queda en el log de accesos, a diferencia de la URL.
-    key: str | None = Field(default=None, max_length=200)
 
 
 class FrameMatch(Protocol):
@@ -380,14 +404,26 @@ def create_app(
 
         @app.post("/api/pay/notification")
         async def pay_notification(
-            body: NotificationIn, authorization: str | None = Header(default=None)
+            request: Request, authorization: str | None = Header(default=None)
         ) -> dict:
-            token = notifier_token(authorization) or notifier_token(body.key)
+            raw = (await request.body())[:4000].decode("utf-8", errors="replace")
+            fields = parse_notifier_body(raw)
+            text = (fields.get("text") or "").strip()[:500]
+            token = notifier_token(authorization) or notifier_token(fields.get("key"))
             if token is None or not hmac.compare_digest(token.encode(), notifier_key.encode()):
                 # Se dice por qué, sin escribir la clave: ayuda a configurar el celular.
                 log.warning("Notificación rechazada: %s", notifier_problem(token, notifier_key))
                 raise HTTPException(status_code=401, detail="Clave del notificador inválida")
-            return notify(body.text)
+            if not text:
+                log.warning(
+                    "Notificación sin texto (%s, %d bytes): %r",
+                    request.headers.get("content-type", "sin tipo"),
+                    len(raw),
+                    raw.replace(notifier_key, "<clave>")[:300],
+                )
+                raise HTTPException(status_code=422, detail="Falta el texto de la notificación")
+            log.info("Notificación recibida: %r", text[:200])
+            return notify(text)
 
     if tray is not None and scale is not None:
 

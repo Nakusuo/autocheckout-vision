@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from payment_helpers import FakeGateway
 
-from kiosk.app import create_app, notifier_problem, notifier_token
+from kiosk.app import create_app, notifier_problem, notifier_token, parse_notifier_body
 from kiosk.catalog import Catalog, Product
 from kiosk.checkout import TransitionError
 from kiosk.payments import WalletNotice, parse_wallet_notification
@@ -455,6 +455,33 @@ def test_notifier_key_can_travel_in_the_body(qr_file):
     assert http.post("/api/pay/notification", json=wrong).status_code == 401
     body = {"text": "Juan te yapeó S/ 2.80", "key": " clave-del-notificador-123 "}
     assert http.post("/api/pay/notification", json=body).json()["matched"] is True
+
+
+REAL = "Alessandra Rod* te envió un pago por S/ 2.8. El cód. de seguridad es: 305"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ('{"text": "Juan", "key": "k"}', {"text": "Juan", "key": "k"}),
+        ('{"text": "Pago\nde Juan", "key": "k"}', {"text": "Pago\nde Juan", "key": "k"}),
+        ('{"text": "Dijo "hola" S/ 2", "key": "k"}', {"text": 'Dijo "hola" S/ 2', "key": "k"}),
+        ('{"key": "k", "text": "a "b""}', {"key": "k", "text": 'a "b"'}),
+        ("text=Juan+S%2F+2&key=k", {"text": "Juan S/ 2", "key": "k"}),
+        ("Juan te yapeó S/ 2", {"text": "Juan te yapeó S/ 2"}),
+    ],
+)
+def test_parse_notifier_body_tolerates_broken_json(raw, expected):
+    assert parse_notifier_body(raw) == expected
+
+
+def test_notifier_accepts_newlines_in_the_text_and_rejects_empty(qr_file):
+    svc, http = client(qr_file)
+    to_payment(svc)
+    raw = '{"text": "' + REAL.replace(". El", ".\nEl") + '", "key": "clave-del-notificador-123"}'
+    empty = '{"text": "", "key": "clave-del-notificador-123"}'
+    assert http.post("/api/pay/notification", content=empty).status_code == 422
+    assert http.post("/api/pay/notification", content=raw).json()["matched"] is True
 
 
 def test_notifier_token_empty_header_is_none():
