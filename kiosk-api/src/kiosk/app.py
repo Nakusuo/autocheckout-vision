@@ -58,6 +58,27 @@ class YapeIn(BaseModel):
     otp: Annotated[str, StringConstraints(pattern=r"^\d{6}$")]
 
 
+def notifier_token(authorization: str | None) -> str | None:
+    """Clave de la cabecera Authorization, tolerante con lo que escriben las apps de automatización
+    (MacroDroid): «Bearer x», «bearer  x», espacios o saltos de línea al pegar, o la clave sola."""
+    value = (authorization or "").strip()
+    if not value:
+        return None
+    scheme, _, rest = value.partition(" ")
+    return rest.strip() if scheme.lower() == "bearer" else value
+
+
+def notifier_problem(token: str | None, key: str) -> str:
+    """Motivo del rechazo para el log. Nunca incluye la clave ni lo recibido."""
+    if token is None:
+        return "no llegó la cabecera Authorization"
+    if token.startswith("KIOSK_NOTIFIER_KEY"):
+        return "se pegó también «KIOSK_NOTIFIER_KEY=»: va solo lo que sigue al «=»"
+    if len(token) != len(key):
+        return f"la clave tiene {len(token)} caracteres y se esperaban {len(key)}"
+    return "la clave tiene el largo correcto pero no coincide"
+
+
 class NotificationIn(BaseModel):
     """Texto de la notificación de pago recibido (Yape/Plin) tal como la muestra el celular."""
 
@@ -139,7 +160,11 @@ def create_app(
         «El propio sitio por https» (Origin == https://<Host>) es la misma página que sirve esta
         API, p. ej. en Cloud Run, cuya dirección no se conoce antes del primer despliegue. Por
         http no se acepta: un dominio ajeno que apunte a 127.0.0.1 (DNS rebinding) coincidiría."""
-        return origin is None or origin in origins or (host is not None and origin == f"https://{host}")
+        return (
+            origin is None
+            or origin in origins
+            or (host is not None and origin == f"https://{host}")
+        )
 
     def require_caja(x_caja_key: str | None = Header(default=None)) -> None:
         """Dependencia de las rutas de la caja: compara la clave en tiempo constante."""
@@ -314,7 +339,11 @@ def create_app(
             label = sku if match else "nada"
             if label != last_seen["label"]:  # solo los cambios: sirve para ajustar el umbral
                 log.info(
-                    "Recuadro: %s (mejor %s %.2f, margen %.2f)", label, sku, found.score, found.margin
+                    "Recuadro: %s (mejor %s %.2f, margen %.2f)",
+                    label,
+                    sku,
+                    found.score,
+                    found.margin,
                 )
                 last_seen["label"] = label
             return {
@@ -350,8 +379,10 @@ def create_app(
         async def pay_notification(
             body: NotificationIn, authorization: str | None = Header(default=None)
         ) -> dict:
-            scheme, _, token = (authorization or "").partition(" ")
-            if scheme != "Bearer" or not hmac.compare_digest(token.encode(), notifier_key.encode()):
+            token = notifier_token(authorization)
+            if token is None or not hmac.compare_digest(token.encode(), notifier_key.encode()):
+                # Se dice por qué, sin escribir la clave: ayuda a configurar el celular.
+                log.warning("Notificación rechazada: %s", notifier_problem(token, notifier_key))
                 raise HTTPException(status_code=401, detail="Clave del notificador inválida")
             return notify(body.text)
 

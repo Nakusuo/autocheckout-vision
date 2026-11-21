@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from payment_helpers import FakeGateway
 
-from kiosk.app import create_app
+from kiosk.app import create_app, notifier_problem, notifier_token
 from kiosk.catalog import Catalog, Product
 from kiosk.checkout import TransitionError
 from kiosk.payments import WalletNotice, parse_wallet_notification
@@ -419,6 +419,38 @@ def test_notifier_endpoint_requires_the_key(qr_file):
     assert http.post("/api/pay/notification", json=body, headers=bad).status_code == 401
     good = {"Authorization": "Bearer clave-del-notificador-123"}
     assert http.post("/api/pay/notification", json=body, headers=good).json()["matched"] is True
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "Bearer clave-del-notificador-123",
+        "bearer   clave-del-notificador-123 ",
+        " clave-del-notificador-123\t",
+    ],
+)
+def test_notifier_token_tolerates_how_apps_paste_it(header):
+    assert notifier_token(header) == "clave-del-notificador-123"
+
+
+@pytest.mark.parametrize(
+    ("token", "reason"),
+    [
+        (None, "no llegó"),
+        ("KIOSK_NOTIFIER_KEY=abc", "KIOSK_NOTIFIER_KEY="),
+        ("abc", "tiene 3 caracteres y se esperaban 4"),
+        ("abce", "no coincide"),
+    ],
+)
+def test_notifier_problem_explains_without_the_key(token, reason):
+    problem = notifier_problem(token, "abcd")
+    assert reason in problem
+    assert "abcd" not in problem
+
+
+def test_notifier_token_empty_header_is_none():
+    assert notifier_token(None) is None
+    assert notifier_token("   ") is None
 
 
 def test_routes_are_absent_unless_configured(qr_file):
