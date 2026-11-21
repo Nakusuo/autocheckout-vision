@@ -1,6 +1,6 @@
 # Pasarela de pago simulada (en la nube o local). Build desde la raíz del repo:
 #   docker build -f mock-gateway/Dockerfile .
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
