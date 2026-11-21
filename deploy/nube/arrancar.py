@@ -1,11 +1,11 @@
-"""Arranque en Hugging Face Spaces: baja los archivos privados y lanza el quiosco.
+"""Arranque en la nube (Cloud Run): baja los archivos privados y lanza el quiosco.
 
 Los modelos (DINOv2, galería del recuadro) y el QR de Yape no están en git: viven en un
 repositorio **privado** de Hugging Face (HF_MODELOS, p. ej. «usuario/autocaja-modelos») y se bajan
 con el secreto HF_TOKEN (solo lectura). Si ya están en disco (prueba local), no baja nada.
 
-La dirección pública del Space (SPACE_HOST, la pone Hugging Face) se acepta como origen. La clave
-de caja (KIOSK_CAJA_KEY) es obligatoria: sin ella el quiosco no arranca en internet.
+Cloud Run da el puerto en PORT. La API acepta su propia dirección https sin configurarla y no
+arranca sin la clave de caja (KIOSK_CAJA_KEY): ver kiosk/__main__.py, cloud_settings.
 """
 
 import os
@@ -43,9 +43,8 @@ def main() -> None:
     """Prepara el entorno y reemplaza este proceso por `python -m kiosk`."""
     env = dict(os.environ)
     download(env)
-    host = env.get("SPACE_HOST")
-    if host and not env.get("KIOSK_ORIGINS"):
-        os.environ["KIOSK_ORIGINS"] = f"https://{host}"
+    if env.get("PORT"):
+        os.environ["KIOSK_PORT"] = env["PORT"]
     os.execvp(sys.executable, [sys.executable, "-m", "kiosk"])  # nosec B606: sin shell, fijo
 
 

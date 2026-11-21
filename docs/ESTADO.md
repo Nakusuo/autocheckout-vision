@@ -6,7 +6,7 @@
 >
 > **Decisión (2026-11-20): solo dos vistas.** El quiosco (`/`) y la del encargado (`/ayuda`: ayuda y alertas de seguridad). Se quitaron `/sim` y `/caja` (ventas, compra en curso, aprobar pago, recalibrar). El pago con QR real se confirmará solo con la app Android; hasta entonces no se completa.
 >
-> **Nube (2026-11-20):** el quiosco completo (API + reconocimiento + interfaz) se despliega en Hugging Face Spaces gratis ([`NUBE_HF.md`](NUBE_HF.md)); `/ayuda` y las rutas de caja piden `KIOSK_CAJA_KEY`. Falta que el equipo cree la cuenta y el Space. Probado en local con el mismo contenedor: reconocimiento ~0,13 s por cuadro en la laptop (en el Space aún **no medido**).
+> **Nube (2026-11-20):** el quiosco completo (API + reconocimiento + interfaz) se despliega en Google Cloud Run dentro del nivel gratuito ([`NUBE.md`](NUBE.md), con los topes de costo); `/ayuda` y las rutas de caja piden `KIOSK_CAJA_KEY`. Hugging Face Spaces se descartó: Docker ya no es gratis. Falta que el equipo active la cuenta de Google Cloud y corra `deploy/nube/preparar_gcp.sh`. Probado en local con el mismo contenedor: reconocimiento ~0,13 s por cuadro en la laptop (en el Space aún **no medido**).
 >
 > **Decisión (2026-10-12): reconocimiento por parecido, sin entrenar.** Con las 56 fotos del Drive (11 productos) no alcanza para YOLOv8; el modo cámara usa una galería de fotos + DINOv2 + color (91 % de aciertos, 98 % sin reversos). Ver [`ml/reconocimiento.md`](ml/reconocimiento.md). El **catálogo** pasó a esos 11 productos, con precios de bodega fijados para la demo (aprobados por el equipo; se cambian en `catalog/products.csv`).
 >

@@ -129,6 +129,9 @@ export function useKioskState(): { snapshot: Snapshot | null; connected: boolean
     let closed = false;
 
     const connect = () => {
+      // Con la pantalla apagada o la pestaña oculta no se conecta: en la nube (Cloud Run) se cobra
+      // mientras haya una conexión abierta. Se reconecta al volver (ver onVisible).
+      if (document.hidden) return;
       const proto = location.protocol === "https:" ? "wss" : "ws";
       ws = new WebSocket(`${proto}://${location.host}/ws`);
       ws.onopen = () => setConnected(true);
@@ -147,11 +150,23 @@ export function useKioskState(): { snapshot: Snapshot | null; connected: boolean
         timer = setTimeout(connect, 1000);
       };
     };
+    const onVisible = () => {
+      if (document.hidden) {
+        clearTimeout(timer);
+        ws?.close(); // su reintento no conecta: connect() sale mientras esté oculta
+        ws = null;
+      } else if (!ws) {
+        clearTimeout(timer);
+        connect();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
     connect();
 
     return () => {
       closed = true;
       clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
       ws?.close();
     };
   }, []);

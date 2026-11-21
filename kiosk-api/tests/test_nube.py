@@ -61,6 +61,16 @@ def test_extra_origin_is_accepted_and_others_still_rejected():
         assert ws.receive_json()["screen"] == "W2"  # el POST de arriba ya empezó la compra
 
 
+def test_own_https_site_is_accepted_without_listing_it():
+    http = make()
+    host = "autocaja-123.us-central1.run.app"
+    ok = http.post("/api/start", headers={"Origin": f"https://{host}", "Host": host})
+    assert ok.status_code == 200
+    # Por http no (DNS rebinding), ni otro sitio aunque sea https.
+    assert http.post("/api/start", headers={"Origin": f"http://{host}", "Host": host}).status_code == 403
+    assert http.post("/api/start", headers={"Origin": "https://otro.test", "Host": host}).status_code == 403
+
+
 def test_api_serves_the_interface_with_security_headers(tmp_path):
     (tmp_path / "index.html").write_text('<div id="root"></div>')
     (tmp_path / "app.js").write_text("console.log(1)")
@@ -85,6 +95,7 @@ def test_cloud_settings(tmp_path):
     ("env", "message"),
     [
         ({"KIOSK_ORIGINS": SITE}, "KIOSK_CAJA_KEY"),
+        ({"K_SERVICE": "autocaja"}, "KIOSK_CAJA_KEY"),
         ({"KIOSK_ORIGINS": "http://inseguro.test", "KIOSK_CAJA_KEY": KEY}, "https"),
         ({"KIOSK_ORIGINS": f"{SITE}/ruta", "KIOSK_CAJA_KEY": KEY}, "sin ruta"),
         ({"KIOSK_CAJA_KEY": "corta"}, "16 caracteres"),

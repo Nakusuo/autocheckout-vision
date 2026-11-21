@@ -192,8 +192,8 @@ def cloud_settings(env: Mapping[str, str]) -> tuple[set[str], str | None, Path |
     """Quiosco publicado en internet (p. ej. Hugging Face Spaces): (orígenes, clave de caja, UI).
 
     - KIOSK_ORIGINS: direcciones https desde las que se abre la interfaz, separadas por comas.
-    - KIOSK_CAJA_KEY (≥ 16 caracteres): clave de /ayuda. Obligatoria si hay KIOSK_ORIGINS: en
-      internet, sin ella cualquiera podría ver y borrar las alertas.
+    - KIOSK_CAJA_KEY (≥ 16 caracteres): clave de /ayuda. Obligatoria si hay KIOSK_ORIGINS o si
+      corre en Cloud Run (K_SERVICE): en internet, sin ella cualquiera vería y borraría las alertas.
     - KIOSK_UI_DIR: carpeta con la interfaz compilada (npm run build) que sirve la propia API.
     """
     origins = {o.strip().rstrip("/") for o in env.get("KIOSK_ORIGINS", "").split(",") if o.strip()}
@@ -204,8 +204,8 @@ def cloud_settings(env: Mapping[str, str]) -> tuple[set[str], str | None, Path |
     key = env.get("KIOSK_CAJA_KEY") or None
     if key is not None and len(key) < 16:
         sys.exit("KIOSK_CAJA_KEY debe tener al menos 16 caracteres")
-    if origins and key is None:
-        sys.exit("KIOSK_ORIGINS publica el quiosco en internet: define también KIOSK_CAJA_KEY")
+    if (origins or env.get("K_SERVICE")) and key is None:
+        sys.exit("El quiosco está en internet (KIOSK_ORIGINS o Cloud Run): define KIOSK_CAJA_KEY")
     ui = env.get("KIOSK_UI_DIR")
     ui_dir = Path(ui) if ui else None
     if ui_dir is not None and not (ui_dir / "index.html").is_file():

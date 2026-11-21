@@ -93,6 +93,28 @@ describe("useKioskState", () => {
     expect(result.current.connected).toBe(true);
   });
 
+  it("con la pantalla oculta cierra la conexión y la abre al volver (Cloud Run cobra por conexión)", () => {
+    vi.useFakeTimers();
+    let hidden = false;
+    vi.spyOn(document, "hidden", "get").mockImplementation(() => hidden);
+    const { result } = renderHook(() => useKioskState());
+    FakeSocket.all[0].open();
+    expect(result.current.connected).toBe(true);
+
+    hidden = true;
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    expect(result.current.connected).toBe(false);
+    act(() => vi.advanceTimersByTime(5000));
+    expect(FakeSocket.all).toHaveLength(1); // oculta: no reintenta
+
+    hidden = false;
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    expect(FakeSocket.all).toHaveLength(2);
+    FakeSocket.all[1].open();
+    expect(result.current.connected).toBe(true);
+    vi.restoreAllMocks();
+  });
+
   it("al desmontar no intenta reconectarse", () => {
     vi.useFakeTimers();
     const { unmount } = renderHook(() => useKioskState());

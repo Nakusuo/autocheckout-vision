@@ -133,7 +133,9 @@ export function AyudaPanel() {
   };
 
   useEffect(() => {
+    // Con la pestaña oculta no se consulta (en la nube cada consulta cuenta); al volver, sí.
     const load = () =>
+      document.hidden ||
       caja<HelpRequest[]>("GET", "/api/help")
         .then((l) => {
           setError(null);
@@ -164,6 +166,7 @@ export function AyudaPanel() {
 
   useEffect(() => {
     const load = () =>
+      document.hidden ||
       caja<SecurityAlert[]>("GET", "/api/alerts")
         .then(applyAlerts)
         .catch(fail);

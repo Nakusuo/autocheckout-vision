@@ -126,12 +126,20 @@ def create_app(
       `Authorization: Bearer <clave>`; sin la clave correcta responde 401.
 
     En la nube:
-    - `allowed_origins`: orígenes extra aceptados (p. ej. https://usuario-autocaja.hf.space).
+    - `allowed_origins`: orígenes extra aceptados (p. ej. https://kiosco.ejemplo.pe).
     - `caja_key`: las rutas de la caja (ayudas, alertas, ventas, reactivar…) exigen la cabecera
       `X-Caja-Key`; sin ella responden 401. Sin `caja_key` quedan abiertas (quiosco local).
     - `ui_dir`: la API también sirve la interfaz compilada (/ y /ayuda), sin nginx.
     """
     origins = ALLOWED_ORIGINS | (allowed_origins or set())
+
+    def origin_ok(origin: str | None, host: str | None) -> bool:
+        """Sin Origin (curl, app Android) pasa; si no, uno de la lista o el propio sitio por https.
+
+        «El propio sitio por https» (Origin == https://<Host>) es la misma página que sirve esta
+        API, p. ej. en Cloud Run, cuya dirección no se conoce antes del primer despliegue. Por
+        http no se acepta: un dominio ajeno que apunte a 127.0.0.1 (DNS rebinding) coincidiría."""
+        return origin is None or origin in origins or (host is not None and origin == f"https://{host}")
 
     def require_caja(x_caja_key: str | None = Header(default=None)) -> None:
         """Dependencia de las rutas de la caja: compara la clave en tiempo constante."""
@@ -165,8 +173,7 @@ def create_app(
 
     @app.middleware("http")
     async def check_origin(request: Request, call_next):
-        origin = request.headers.get("origin")
-        if origin is not None and origin not in origins:
+        if not origin_ok(request.headers.get("origin"), request.headers.get("host")):
             return JSONResponse({"detail": "Origen no permitido"}, status_code=403)
         response = await call_next(request)
         if ui_dir is not None:
@@ -265,8 +272,7 @@ def create_app(
 
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
-        origin = websocket.headers.get("origin")
-        if origin is not None and origin not in origins:
+        if not origin_ok(websocket.headers.get("origin"), websocket.headers.get("host")):
             await websocket.close(code=1008)
             return
         await websocket.accept()
