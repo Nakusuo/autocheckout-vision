@@ -12,9 +12,12 @@ https, para abrirlo desde el celular:
 ## Plan B: tu PC + túnel de Cloudflare
 
 ```bash
-docker compose -f docker-compose.publico.yml up -d --build
-docker compose -f docker-compose.publico.yml logs tunel | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com'
+./ops/publicar.sh          # prende y muestra la dirección con un QR para el celular
+./ops/publicar.sh apagar   # al terminar (la dirección deja de existir)
 ```
+
+El QR se dibuja en la terminal con OpenCV (ya está en el contenedor): se escanea con la cámara
+del celular y abre el quiosco, sin escribir la dirección, que es larga y cambia cada vez.
 
 - Esa dirección `https://….trycloudflare.com` se abre en el celular quiosco; `…/ayuda` es la caja.
 - `.env` debe tener `KIOSK_CAJA_KEY` (clave de `/ayuda`; verla con `grep KIOSK_CAJA_KEY .env`) y
@@ -23,7 +26,6 @@ docker compose -f docker-compose.publico.yml logs tunel | grep -o 'https://[a-z0
   router, la conexión sale de la PC. Cloudflare no garantiza disponibilidad de los túneles rápidos.
 - **Medido por internet (2026-11-20):** ~0,5–0,9 s por cuadro de 320 px (en la laptop, sin red,
   ~0,13 s). Con 3 cuadros iguales, un producto se agrega en ~2–3 s.
-- Al terminar: `docker compose -f docker-compose.publico.yml down` (la dirección deja de existir).
 
 ---
 
