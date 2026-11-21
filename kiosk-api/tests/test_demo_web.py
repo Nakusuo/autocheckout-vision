@@ -448,6 +448,15 @@ def test_notifier_problem_explains_without_the_key(token, reason):
     assert "abcd" not in problem
 
 
+def test_notifier_key_can_travel_in_the_body(qr_file):
+    svc, http = client(qr_file)
+    to_payment(svc)
+    wrong = {"text": "Juan te yapeó S/ 2.80", "key": "otra"}
+    assert http.post("/api/pay/notification", json=wrong).status_code == 401
+    body = {"text": "Juan te yapeó S/ 2.80", "key": " clave-del-notificador-123 "}
+    assert http.post("/api/pay/notification", json=body).json()["matched"] is True
+
+
 def test_notifier_token_empty_header_is_none():
     assert notifier_token(None) is None
     assert notifier_token("   ") is None

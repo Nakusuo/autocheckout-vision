@@ -83,6 +83,9 @@ class NotificationIn(BaseModel):
     """Texto de la notificación de pago recibido (Yape/Plin) tal como la muestra el celular."""
 
     text: str = Field(min_length=1, max_length=500)
+    # Alternativa a la cabecera Authorization: algunas apps de automatización (MacroDroid) no la
+    # mandan bien. En el cuerpo no queda en el log de accesos, a diferencia de la URL.
+    key: str | None = Field(default=None, max_length=200)
 
 
 class FrameMatch(Protocol):
@@ -379,7 +382,7 @@ def create_app(
         async def pay_notification(
             body: NotificationIn, authorization: str | None = Header(default=None)
         ) -> dict:
-            token = notifier_token(authorization)
+            token = notifier_token(authorization) or notifier_token(body.key)
             if token is None or not hmac.compare_digest(token.encode(), notifier_key.encode()):
                 # Se dice por qué, sin escribir la clave: ayuda a configurar el celular.
                 log.warning("Notificación rechazada: %s", notifier_problem(token, notifier_key))
