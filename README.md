@@ -17,6 +17,7 @@ docker compose up --build   # http://localhost:5173  ·  /ayuda
 ```
 
 Arquitectura edge + nube, imágenes, CI/CD y despliegue de la pasarela en Render: [`docs/CLOUD_DEVOPS.md`](docs/CLOUD_DEVOPS.md).
+El quiosco completo en la nube gratis (Hugging Face Spaces), para abrirlo desde un celular: [`docs/NUBE_HF.md`](docs/NUBE_HF.md).
 
 **Demo web «el celular es la máquina»:** cámara del navegador con recuadro guía, pago con tu QR de Yape y la notificación de pago simulada: `docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build`. Guía: [`docs/DEMO_WEB.md`](docs/DEMO_WEB.md).
 

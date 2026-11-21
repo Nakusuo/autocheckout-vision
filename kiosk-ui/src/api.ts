@@ -81,12 +81,26 @@ export async function post(path: string, body?: unknown): Promise<Snapshot> {
   return request<Snapshot>("POST", path, body);
 }
 
-export async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+/** Error de la API con su código HTTP (401: falta la clave de caja). */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+export async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  headers: Record<string, string> = {},
+): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
       method,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...headers },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -100,7 +114,7 @@ export async function request<T>(method: string, path: string, body?: unknown): 
     } catch {
       /* respuesta sin JSON */
     }
-    throw new Error(detail);
+    throw new ApiError(detail, res.status);
   }
   return res.json();
 }

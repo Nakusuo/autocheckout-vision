@@ -188,6 +188,31 @@ def wallet_settings(env: Mapping[str, str]) -> tuple[Path, bool, str | None]:
     return path, simulate, key
 
 
+def cloud_settings(env: Mapping[str, str]) -> tuple[set[str], str | None, Path | None]:
+    """Quiosco publicado en internet (p. ej. Hugging Face Spaces): (orígenes, clave de caja, UI).
+
+    - KIOSK_ORIGINS: direcciones https desde las que se abre la interfaz, separadas por comas.
+    - KIOSK_CAJA_KEY (≥ 16 caracteres): clave de /ayuda. Obligatoria si hay KIOSK_ORIGINS: en
+      internet, sin ella cualquiera podría ver y borrar las alertas.
+    - KIOSK_UI_DIR: carpeta con la interfaz compilada (npm run build) que sirve la propia API.
+    """
+    origins = {o.strip().rstrip("/") for o in env.get("KIOSK_ORIGINS", "").split(",") if o.strip()}
+    for origin in origins:
+        url = urlparse(origin)
+        if url.scheme != "https" or not url.hostname or url.path:
+            sys.exit(f"KIOSK_ORIGINS: {origin!r} debe ser una dirección https sin ruta")
+    key = env.get("KIOSK_CAJA_KEY") or None
+    if key is not None and len(key) < 16:
+        sys.exit("KIOSK_CAJA_KEY debe tener al menos 16 caracteres")
+    if origins and key is None:
+        sys.exit("KIOSK_ORIGINS publica el quiosco en internet: define también KIOSK_CAJA_KEY")
+    ui = env.get("KIOSK_UI_DIR")
+    ui_dir = Path(ui) if ui else None
+    if ui_dir is not None and not (ui_dir / "index.html").is_file():
+        sys.exit(f"KIOSK_UI_DIR: no hay index.html en {ui_dir} (compila con npm run build)")
+    return origins, key, ui_dir
+
+
 def build_yape(env: Mapping[str, str], keys: Path) -> MercadoPagoYape:
     """Cliente de Yape. MP_BASE_URL apunta a Mercado Pago (por defecto) o a la pasarela simulada,
     que imita sus endpoints; con la simulada se confía en la CA de desarrollo (ver gateway_ca)."""
@@ -256,6 +281,7 @@ def main() -> None:
         sys.exit(f"No se pudo preparar la cámara o el reconocedor: {e}")
     yape = build_yape(os.environ, keys) if payment == "yape" else None
     wallet = wallet_settings(os.environ) if payment == "yape-qr" else None
+    origins, caja_key, ui_dir = cloud_settings(os.environ)
     if yape is not None or wallet is not None:
         if yape is not None:
             log.info("Cobro con Yape vía %s", os.environ.get("MP_BASE_URL", MP_API))
@@ -314,6 +340,9 @@ def main() -> None:
         wallet_qr_file=wallet_file,
         simulate_wallet=simulate_wallet,
         notifier_key=notifier_key,
+        allowed_origins=origins,
+        caja_key=caja_key,
+        ui_dir=ui_dir,
     )
     uvicorn.run(app, host=host, port=port)
 

@@ -7,9 +7,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Protocol
 
-from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.responses import FileResponse, JSONResponse
+from starlette.staticfiles import StaticFiles
 
 from kiosk.checkout import State, TransitionError
 from kiosk.scale import SimulatedScale
@@ -20,6 +21,17 @@ log = logging.getLogger(__name__)
 
 TICK_S = 0.2
 ALLOWED_ORIGINS = {"http://localhost:5173", "http://127.0.0.1:5173"}
+# Cabeceras de la interfaz cuando la sirve la propia API (nube, sin nginx): igual que nginx.conf.
+UI_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": (
+        "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    ),
+    "Permissions-Policy": "camera=(self), microphone=(), geolocation=()",
+}
 
 
 # Un SKU del catálogo: mayúsculas, dígitos, punto y guion (p. ej. KRPINA-3.03L).
@@ -99,6 +111,9 @@ def create_app(
     wallet_qr_file: Path | None = None,
     simulate_wallet: bool = False,
     notifier_key: str | None = None,
+    allowed_origins: set[str] | None = None,
+    caja_key: str | None = None,
+    ui_dir: Path | None = None,
 ) -> FastAPI:
     """threaded_sensing: la cámara se lee en otro hilo para que la pantalla y los botones no se
     congelen mientras se reconoce (~200 ms por cuadro); el estado solo cambia en este bucle.
@@ -109,7 +124,23 @@ def create_app(
     - `simulate_wallet`: POST /sim/wallet-notification simula la notificación de pago (demo).
     - `notifier_key`: POST /api/pay/notification para la futura app Android, con
       `Authorization: Bearer <clave>`; sin la clave correcta responde 401.
+
+    En la nube:
+    - `allowed_origins`: orígenes extra aceptados (p. ej. https://usuario-autocaja.hf.space).
+    - `caja_key`: las rutas de la caja (ayudas, alertas, ventas, reactivar…) exigen la cabecera
+      `X-Caja-Key`; sin ella responden 401. Sin `caja_key` quedan abiertas (quiosco local).
+    - `ui_dir`: la API también sirve la interfaz compilada (/ y /ayuda), sin nginx.
     """
+    origins = ALLOWED_ORIGINS | (allowed_origins or set())
+
+    def require_caja(x_caja_key: str | None = Header(default=None)) -> None:
+        """Dependencia de las rutas de la caja: compara la clave en tiempo constante."""
+        if caja_key is None:
+            return
+        if x_caja_key is None or not hmac.compare_digest(x_caja_key.encode(), caja_key.encode()):
+            raise HTTPException(status_code=401, detail="Clave de caja inválida")
+
+    caja = [Depends(require_caja)]
 
     async def tick_loop() -> None:
         while True:
@@ -135,9 +166,13 @@ def create_app(
     @app.middleware("http")
     async def check_origin(request: Request, call_next):
         origin = request.headers.get("origin")
-        if origin is not None and origin not in ALLOWED_ORIGINS:
+        if origin is not None and origin not in origins:
             return JSONResponse({"detail": "Origen no permitido"}, status_code=403)
-        return await call_next(request)
+        response = await call_next(request)
+        if ui_dir is not None:
+            for name, value in UI_HEADERS.items():
+                response.headers.setdefault(name, value)
+        return response
 
     def act(action: Callable[[], None]) -> dict:
         try:
@@ -187,15 +222,15 @@ def create_app(
         service.finish_yape(reference, amount, outcome)
         return service.snapshot()
 
-    @app.post("/api/caja/accept-payment")
+    @app.post("/api/caja/accept-payment", dependencies=caja)
     async def accept_payment() -> dict:
         return act(service.accept_payment)
 
-    @app.post("/api/recalibrate")
+    @app.post("/api/recalibrate", dependencies=caja)
     async def recalibrate() -> dict:
         return act(service.recalibrate)
 
-    @app.post("/api/recover")
+    @app.post("/api/recover", dependencies=caja)
     async def recover() -> dict:
         return act(service.recover)
 
@@ -204,25 +239,25 @@ def create_app(
         service.request_help()
         return service.snapshot()
 
-    @app.get("/api/sales")
+    @app.get("/api/sales", dependencies=caja)
     async def sales() -> dict:
         return service.pos.sales_today()
 
-    @app.get("/api/help")
+    @app.get("/api/help", dependencies=caja)
     async def list_help() -> list[dict]:
         return service.help_requests
 
-    @app.delete("/api/help/{help_id}")
+    @app.delete("/api/help/{help_id}", dependencies=caja)
     async def resolve_help(help_id: int) -> list[dict]:
         if not service.resolve_help(help_id):
             raise HTTPException(status_code=404, detail="Esa solicitud de ayuda no existe")
         return service.help_requests
 
-    @app.get("/api/alerts")
+    @app.get("/api/alerts", dependencies=caja)
     async def list_alerts() -> list[dict]:
         return service.security_alerts
 
-    @app.delete("/api/alerts/{alert_id}")
+    @app.delete("/api/alerts/{alert_id}", dependencies=caja)
     async def resolve_alert(alert_id: int) -> list[dict]:
         if not service.resolve_alert(alert_id):
             raise HTTPException(status_code=404, detail="Esa alerta no existe")
@@ -231,7 +266,7 @@ def create_app(
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
         origin = websocket.headers.get("origin")
-        if origin is not None and origin not in ALLOWED_ORIGINS:
+        if origin is not None and origin not in origins:
             await websocket.close(code=1008)
             return
         await websocket.accept()
@@ -362,5 +397,15 @@ def create_app(
         async def sim_trap(body: TrapIn) -> dict:
             scale.set_trap(body.offset_g)
             return service.snapshot()
+
+    if ui_dir is not None:
+        index = ui_dir / "index.html"
+
+        @app.get("/ayuda", include_in_schema=False)
+        async def ayuda_page() -> FileResponse:
+            return FileResponse(index)
+
+        # Al final: lo que no es de la API son archivos de la interfaz (/ → index.html).
+        app.mount("/", StaticFiles(directory=ui_dir, html=True), name="ui")
 
     return app

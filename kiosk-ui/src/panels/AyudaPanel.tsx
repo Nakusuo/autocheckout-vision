@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { request, useKioskState } from "../api";
+import { ApiError, request, useKioskState } from "../api";
 import { CautionDiamond, StopOctagon } from "../kiosk/signs";
 import { PanelHeader } from "./common";
 import { SCREEN_NAME } from "./screens";
@@ -14,6 +14,15 @@ type SecurityAlert = {
 };
 
 const SOUND_KEY = "ayuda.sound";
+const CAJA_KEY = "ayuda.key"; // clave de caja (solo en la nube; en local no se pide)
+
+function readCajaKey(): string {
+  try {
+    return localStorage.getItem(CAJA_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
 
 function readSound(): boolean {
   try {
@@ -62,6 +71,9 @@ export function AyudaPanel() {
   const known = useRef(new Set<number>());
   const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
   const knownAlerts = useRef(new Set<number>());
+  const cajaKey = useRef(readCajaKey());
+  const [needKey, setNeedKey] = useState(false);
+  const [keyDraft, setKeyDraft] = useState("");
 
   const toggleSound = () => {
     const next = !sound;
@@ -92,13 +104,40 @@ export function AyudaPanel() {
     setItems(list);
   }, []);
 
-  const fail = (e: unknown) => setError(e instanceof Error ? e.message : "Error desconocido");
+  const fail = useCallback((e: unknown) => {
+    if (e instanceof ApiError && e.status === 401) {
+      setNeedKey(true); // la nube pide la clave de caja
+      setError(null);
+      return;
+    }
+    setError(e instanceof Error ? e.message : "Error desconocido");
+  }, []);
+
+  /** Rutas de la caja: llevan la clave guardada (si hay). */
+  const caja = useCallback(
+    <T,>(method: string, path: string) =>
+      request<T>(method, path, undefined, cajaKey.current ? { "X-Caja-Key": cajaKey.current } : {}),
+    [],
+  );
+
+  const saveKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    cajaKey.current = keyDraft.trim();
+    try {
+      localStorage.setItem(CAJA_KEY, cajaKey.current);
+    } catch {
+      // sin almacenamiento: la clave dura hasta recargar
+    }
+    setKeyDraft("");
+    setNeedKey(false);
+  };
 
   useEffect(() => {
     const load = () =>
-      request<HelpRequest[]>("GET", "/api/help")
+      caja<HelpRequest[]>("GET", "/api/help")
         .then((l) => {
           setError(null);
+          setNeedKey(false);
           apply(l);
         })
         .catch(fail);
@@ -109,7 +148,7 @@ export function AyudaPanel() {
       clearInterval(poll);
       clearInterval(tick);
     };
-  }, [apply]);
+  }, [apply, caja, fail]);
 
   const applyAlerts = useCallback((list: SecurityAlert[]) => {
     let fresh = false;
@@ -125,20 +164,20 @@ export function AyudaPanel() {
 
   useEffect(() => {
     const load = () =>
-      request<SecurityAlert[]>("GET", "/api/alerts")
+      caja<SecurityAlert[]>("GET", "/api/alerts")
         .then(applyAlerts)
         .catch(fail);
     load();
     const poll = setInterval(load, 2000);
     return () => clearInterval(poll);
-  }, [applyAlerts]);
+  }, [applyAlerts, caja, fail]);
 
   const review = (id: number) =>
-    request<SecurityAlert[]>("DELETE", `/api/alerts/${id}`).then(applyAlerts).catch(fail);
+    caja<SecurityAlert[]>("DELETE", `/api/alerts/${id}`).then(applyAlerts).catch(fail);
 
   const resolve = (id: number) =>
-    request<HelpRequest[]>("DELETE", `/api/help/${id}`).then(apply).catch(fail);
-  const recover = () => request("POST", "/api/recover").then(() => setError(null)).catch(fail);
+    caja<HelpRequest[]>("DELETE", `/api/help/${id}`).then(apply).catch(fail);
+  const recover = () => caja("POST", "/api/recover").then(() => setError(null)).catch(fail);
   const down = snapshot?.screen === "FUERA_DE_SERVICIO";
 
   return (
@@ -146,7 +185,24 @@ export function AyudaPanel() {
       <PanelHeader role="Ayuda" connected={connected} />
       {error && <p className="panel-error" role="alert">{error}</p>}
       <div className="ayuda-layout">
-        {down && (
+        {needKey && (
+          <form className="card key-form" onSubmit={saveKey}>
+            <h1 className="card-title">Clave de caja</h1>
+            <p className="muted">Este quiosco está en internet: escribe la clave para ver las ayudas y alertas.</p>
+            <label className="field">
+              Clave
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={keyDraft}
+                onChange={(e) => setKeyDraft(e.target.value)}
+                required
+              />
+            </label>
+            <button type="submit" className="pbtn go">Entrar</button>
+          </form>
+        )}
+        {!needKey && down && (
           <section className="card card-down" role="alert">
             <div className="down">
               <StopOctagon className="down-icon" />
@@ -157,6 +213,7 @@ export function AyudaPanel() {
             </button>
           </section>
         )}
+        {!needKey && (
         <main className="card">
           <div className="card-head">
             <h1 className="card-title">Solicitudes de ayuda</h1>
@@ -211,6 +268,7 @@ export function AyudaPanel() {
             </ul>
           )}
         </main>
+        )}
 
       </div>
     </div>

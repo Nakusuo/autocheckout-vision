@@ -257,3 +257,33 @@ describe("AyudaPanel alertas de seguridad", () => {
     expect(await screen.findByText(/1 vez/)).toBeInTheDocument();
   });
 });
+
+describe("AyudaPanel en la nube (clave de caja)", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("sin clave pide la clave y luego la manda en cada consulta", async () => {
+    const headers: (string | null)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        const key = new Headers(init?.headers).get("X-Caja-Key");
+        headers.push(key);
+        if (key !== "clave-de-caja-larga") {
+          return Promise.resolve(new Response(JSON.stringify({ detail: "Clave de caja inválida" }), { status: 401 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify(url === "/api/help" ? [{ id: 5, screen: "W2", at: 0 }] : [])));
+      }),
+    );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<AyudaPanel />);
+    expect(await screen.findByText("Clave de caja")).toBeInTheDocument();
+    expect(screen.queryByText("Solicitudes de ayuda")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument(); // no es un error, es la clave
+    fireEvent.change(screen.getByLabelText("Clave"), { target: { value: " clave-de-caja-larga " } });
+    fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(await screen.findByText(/Solicitud #5/)).toBeInTheDocument();
+    expect(headers.at(-1)).toBe("clave-de-caja-larga");
+    expect(localStorage.getItem("ayuda.key")).toBe("clave-de-caja-larga");
+  });
+});
