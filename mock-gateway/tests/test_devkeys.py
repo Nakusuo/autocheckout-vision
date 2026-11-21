@@ -24,3 +24,30 @@ def test_tls_cert_issued_by_ca_for_localhost(tmp_path: Path):
     san = server.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
     assert "localhost" in san.get_values_for_type(x509.DNSName)
     assert (tmp_path / "server-key.pem").exists()
+
+
+def test_tls_cert_includes_extra_names(tmp_path: Path):
+    write_tls_certs(tmp_path, ["mock-gateway"])
+    server = x509.load_pem_x509_certificate((tmp_path / "server.pem").read_bytes())
+    san = server.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+    assert san.get_values_for_type(x509.DNSName) == ["localhost", "mock-gateway"]
+
+
+def test_main_writes_keys_and_skips_when_they_exist(tmp_path: Path, capsys):
+    from gateway.devkeys import main
+
+    out = tmp_path / "keys"
+    main(["--out", str(out), "--san", "mock-gateway"])
+    first = (out / "gateway_jwt_private.pem").read_bytes()
+    assert {p.name for p in out.iterdir()} == {
+        "gateway_jwt_private.pem",
+        "gateway_jwt_public.pem",
+        "ca.pem",
+        "server.pem",
+        "server-key.pem",
+    }
+    main(["--out", str(out)])
+    assert "Ya existen" in capsys.readouterr().out
+    assert (out / "gateway_jwt_private.pem").read_bytes() == first
+    main(["--out", str(out), "--force"])
+    assert (out / "gateway_jwt_private.pem").read_bytes() != first

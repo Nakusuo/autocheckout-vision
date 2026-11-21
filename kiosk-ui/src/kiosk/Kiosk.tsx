@@ -6,6 +6,8 @@ import { Escaneo } from "./screens/Escaneo";
 import { FueraDeServicio } from "./screens/FueraDeServicio";
 import { Inicio } from "./screens/Inicio";
 import { Pago } from "./screens/Pago";
+import { PagoQrPropio } from "./screens/PagoQrPropio";
+import { PagoYape } from "./screens/PagoYape";
 import { Ticket } from "./screens/Ticket";
 
 const STEPS = ["Coloca", "Confirma", "Paga", "Listo"] as const;
@@ -45,7 +47,13 @@ function Screen({ snapshot, offline }: { snapshot: Snapshot; offline: boolean })
     case "W3":
       return <Confirmar snapshot={snapshot} offline={offline} />;
     case "QR":
-      return <Pago snapshot={snapshot} offline={offline} />;
+      return snapshot.payment_method === "yape" ? (
+        <PagoYape snapshot={snapshot} offline={offline} />
+      ) : snapshot.payment_method === "yape-qr" ? (
+        <PagoQrPropio snapshot={snapshot} offline={offline} />
+      ) : (
+        <Pago snapshot={snapshot} offline={offline} />
+      );
     case "W4":
       return <Ticket snapshot={snapshot} />;
     case "FUERA_DE_SERVICIO":
@@ -74,7 +82,12 @@ export function Kiosk({ snapshot, connected = true }: { snapshot: Snapshot; conn
       {(snapshot.screen === "W1" || snapshot.screen === "W2") && (
         <p className="privacy">
           <CameraGlyph className="privacy-icon" />
-          <span>La cámara solo mira la bandeja y no guarda imágenes <span className="nowrap">(Ley 29733).</span></span>
+          <span>
+            {snapshot.browser_camera
+              ? "La cámara solo mira el recuadro y no guarda imágenes "
+              : "La cámara solo mira la bandeja y no guarda imágenes "}
+            <span className="nowrap">(Ley 29733).</span>
+          </span>
         </p>
       )}
       <HelpButton helpPending={snapshot.help_pending} />

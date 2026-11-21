@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { request, useKioskState } from "../api";
-import { formatPEN } from "../format";
 import { CautionDiamond, StopOctagon } from "../kiosk/signs";
-import { KioskStatus, PanelHeader } from "./common";
+import { PanelHeader } from "./common";
 import { SCREEN_NAME } from "./screens";
 
 type HelpRequest = { id: number; screen: keyof typeof SCREEN_NAME; at: number };
-type Receipt = { number: string; issued_at: string; items: number; total_cents: number };
-type Sales = { count: number; total_cents: number; receipts: Receipt[] };
 type SecurityAlert = {
   id: number;
   reason: string;
@@ -16,7 +13,7 @@ type SecurityAlert = {
   outcome: string;
 };
 
-const SOUND_KEY = "caja.sound";
+const SOUND_KEY = "ayuda.sound";
 
 function readSound(): boolean {
   try {
@@ -49,25 +46,22 @@ function beep() {
   }
 }
 
-const hhmm = (iso: string) => {
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
-
-export function CajaPanel() {
+/**
+ * Vista del encargado (/ayuda): pedidos de SOLICITAR AYUDA y alertas de seguridad, con aviso
+ * sonoro. Si el quiosco queda fuera de servicio, aparece arriba con el botón para reactivarlo.
+ */
+export function AyudaPanel() {
   const { snapshot, connected } = useKioskState();
   const [items, setItems] = useState<HelpRequest[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   // "at" es el reloj monotónico del servidor: la antigüedad se mide desde que la vemos por primera vez
   const [seen, setSeen] = useState<Record<number, number>>({});
-  const [sales, setSales] = useState<Sales | null>(null);
   const [sound, setSound] = useState(readSound);
   const soundRef = useRef(sound);
   const known = useRef(new Set<number>());
   const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
   const knownAlerts = useRef(new Set<number>());
-  const [accepting, setAccepting] = useState(false);
 
   const toggleSound = () => {
     const next = !sound;
@@ -117,16 +111,6 @@ export function CajaPanel() {
     };
   }, [apply]);
 
-  useEffect(() => {
-    const load = () =>
-      request<Sales>("GET", "/api/sales")
-        .then(setSales)
-        .catch(fail);
-    load();
-    const poll = setInterval(load, 5000);
-    return () => clearInterval(poll);
-  }, []);
-
   const applyAlerts = useCallback((list: SecurityAlert[]) => {
     let fresh = false;
     for (const a of list) {
@@ -155,35 +139,24 @@ export function CajaPanel() {
   const resolve = (id: number) =>
     request<HelpRequest[]>("DELETE", `/api/help/${id}`).then(apply).catch(fail);
   const recover = () => request("POST", "/api/recover").then(() => setError(null)).catch(fail);
-  const acceptPayment = () => {
-    setAccepting(true);
-    request("POST", "/api/caja/accept-payment")
-      .then(() => request<Sales>("GET", "/api/sales"))
-      .then((updated) => {
-        setSales(updated);
-        setError(null);
-      })
-      .catch(fail)
-      .finally(() => setAccepting(false));
-  };
-  const [calibrating, setCalibrating] = useState(false);
-  const recalibrate = () =>
-    request("POST", "/api/recalibrate")
-      .then(() => {
-        setError(null);
-        setCalibrating(true);
-        setTimeout(() => setCalibrating(false), 4000);
-      })
-      .catch(fail);
-
   const down = snapshot?.screen === "FUERA_DE_SERVICIO";
-  const lines = snapshot?.lines ?? [];
 
   return (
     <div className="panel">
-      <PanelHeader role="Caja" connected={connected} />
+      <PanelHeader role="Ayuda" connected={connected} />
       {error && <p className="panel-error" role="alert">{error}</p>}
-      <div className="caja-layout">
+      <div className="ayuda-layout">
+        {down && (
+          <section className="card card-down" role="alert">
+            <div className="down">
+              <StopOctagon className="down-icon" />
+              <p>Quiosco 1 fuera de servicio: la cámara dejó de responder. Revisa el equipo y reactívalo.</p>
+            </div>
+            <button type="button" className="pbtn go" onClick={recover}>
+              Reactivar quiosco
+            </button>
+          </section>
+        )}
         <main className="card">
           <div className="card-head">
             <h1 className="card-title">Solicitudes de ayuda</h1>
@@ -220,7 +193,7 @@ export function CajaPanel() {
             {alerts.length > 0 && <span className="count">{alerts.length}</span>}
           </div>
           {alerts.length === 0 ? (
-            <p className="muted">Sin alertas. Aparece una si pasa frente a la cámara algo que no se reconoce.</p>
+            <p className="muted">Sin alertas. Aparece una si algo no se reconoce o si hay un pago que revisar.</p>
           ) : (
             <ul className="requests">
               {alerts.map((a) => (
@@ -239,85 +212,6 @@ export function CajaPanel() {
           )}
         </main>
 
-        <aside className="caja-side">
-          <section className={`card ${down ? "card-down" : ""}`}>
-            <h2 className="card-title">Quiosco 1</h2>
-            {down && (
-              <div className="down">
-                <StopOctagon className="down-icon" />
-                <p>La cámara o la balanza dejó de responder. Revisa el equipo y reactívalo.</p>
-              </div>
-            )}
-            <KioskStatus snapshot={snapshot} />
-            <button type="button" className={`pbtn ${down ? "go" : "plain"}`} onClick={recover} disabled={!down}>
-              Reactivar quiosco
-            </button>
-            {snapshot?.camera && (
-              <>
-                <button type="button" className="pbtn plain" onClick={recalibrate} disabled={calibrating}>
-                  {calibrating ? "Calibrando…" : "Recalibrar cámara"}
-                </button>
-                <p className="muted">
-                  {calibrating
-                    ? "Deja la bandeja vacía unos segundos."
-                    : "Úsalo si la cámara se movió o había algo en la bandeja al encenderla."}
-                </p>
-              </>
-            )}
-          </section>
-
-          <section className="card">
-            <h2 className="card-title">Compra en curso</h2>
-            {lines.length === 0 ? (
-              <p className="muted">No hay productos en la bandeja.</p>
-            ) : (
-              <div className="sale">
-                {lines.map((l) => (
-                  <div key={l.sku} className="sale-line">
-                    <span>{l.quantity} × {l.name}</span>
-                    <span>{formatPEN(l.unit_price_cents * l.quantity)}</span>
-                  </div>
-                ))}
-                <div className="sale-line sale-total">
-                  <span>Total</span>
-                  <span>{formatPEN(snapshot?.total_cents ?? 0)}</span>
-                </div>
-              </div>
-            )}
-            {snapshot?.screen === "QR" && lines.length > 0 && (
-              <>
-                <p className="muted">Pago por QR pendiente de aprobación.</p>
-                <button type="button" className="pbtn go" onClick={acceptPayment} disabled={!connected || accepting}>
-                  {accepting ? "Confirmando pago…" : "Aceptar pago simulado"}
-                </button>
-              </>
-            )}
-            {snapshot?.screen === "W4" && <p>Pago confirmado. Compra finalizada.</p>}
-          </section>
-
-          <section className="card">
-            <h2 className="card-title">Ventas de hoy</h2>
-            {!sales || sales.count === 0 ? (
-              <p className="muted">Aún no hay ventas hoy.</p>
-            ) : (
-              <div className="sale">
-                <div className="sale-line sale-total">
-                  <span>{sales.count} {sales.count === 1 ? "venta" : "ventas"}</span>
-                  <span>{formatPEN(sales.total_cents)}</span>
-                </div>
-                {sales.receipts.map((r) => (
-                  <div key={r.number} className="sale-line receipt-line">
-                    <span>
-                      {hhmm(r.issued_at)}<span className="sep">–</span>{r.number}<span className="sep">–</span>
-                      {r.items} {r.items === 1 ? "producto" : "productos"}
-                    </span>
-                    <span>{formatPEN(r.total_cents)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </aside>
       </div>
     </div>
   );

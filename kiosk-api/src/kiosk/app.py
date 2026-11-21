@@ -1,15 +1,17 @@
 import asyncio
+import hmac
 import logging
 import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
-from typing import Annotated
+from pathlib import Path
+from typing import Annotated, Protocol
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, StringConstraints
-from starlette.responses import JSONResponse
+from starlette.responses import FileResponse, JSONResponse
 
-from kiosk.checkout import TransitionError
+from kiosk.checkout import State, TransitionError
 from kiosk.scale import SimulatedScale
 from kiosk.service import KioskService, Reading
 from kiosk.tray import SimulatedTray
@@ -37,6 +39,37 @@ class ScaleIn(BaseModel):
     enabled: bool
 
 
+class YapeIn(BaseModel):
+    """Celular (9 dígitos) y código de aprobación de Yape (6 dígitos). No se guardan ni se loguean."""
+
+    phone: Annotated[str, StringConstraints(pattern=r"^\d{9}$")]
+    otp: Annotated[str, StringConstraints(pattern=r"^\d{6}$")]
+
+
+class NotificationIn(BaseModel):
+    """Texto de la notificación de pago recibido (Yape/Plin) tal como la muestra el celular."""
+
+    text: str = Field(min_length=1, max_length=500)
+
+
+class FrameMatch(Protocol):
+    """Resultado de un recuadro (kiosk.recognizer.BoxMatch)."""
+
+    sku: str
+    score: float
+    margin: float
+    match: bool
+
+
+class FrameRecognizer(Protocol):
+    """Reconocedor del recuadro guía (kiosk.recognizer.CropRecognizer, extra `vision`)."""
+
+    def recognize_bytes(self, data: bytes) -> FrameMatch | None: ...
+
+
+MAX_FRAME_BYTES = 2_000_000
+
+
 class TrapIn(BaseModel):
     offset_g: float = Field(ge=-5000, le=5000)
 
@@ -62,9 +95,21 @@ def create_app(
     scale: SimulatedScale | None = None,
     run_loop: bool = True,
     threaded_sensing: bool = False,
+    recognizer: FrameRecognizer | None = None,
+    wallet_qr_file: Path | None = None,
+    simulate_wallet: bool = False,
+    notifier_key: str | None = None,
 ) -> FastAPI:
     """threaded_sensing: la cámara se lee en otro hilo para que la pantalla y los botones no se
-    congelen mientras se reconoce (~200 ms por cuadro); el estado solo cambia en este bucle."""
+    congelen mientras se reconoce (~200 ms por cuadro); el estado solo cambia en este bucle.
+
+    Demo web / app (cada parte se activa solo si se da):
+    - `recognizer`: POST /api/vision/frame reconoce el recuadro guía que manda el navegador.
+    - `wallet_qr_file`: GET /api/pay/wallet-qr sirve la imagen del QR de Yape/Plin del comercio.
+    - `simulate_wallet`: POST /sim/wallet-notification simula la notificación de pago (demo).
+    - `notifier_key`: POST /api/pay/notification para la futura app Android, con
+      `Authorization: Bearer <clave>`; sin la clave correcta responde 401.
+    """
 
     async def tick_loop() -> None:
         while True:
@@ -129,6 +174,19 @@ def create_app(
     async def pay() -> dict:
         return act(service.pay)
 
+    @app.post("/api/pay/yape")
+    async def pay_yape(body: YapeIn) -> dict:
+        try:
+            amount, reference = service.begin_yape()
+        except TransitionError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        # La llamada a Mercado Pago va en otro hilo: la pantalla y el bucle siguen respondiendo.
+        outcome = await asyncio.to_thread(
+            service.charge_yape, amount, reference, body.phone, body.otp
+        )
+        service.finish_yape(reference, amount, outcome)
+        return service.snapshot()
+
     @app.post("/api/caja/accept-payment")
     async def accept_payment() -> dict:
         return act(service.accept_payment)
@@ -183,6 +241,78 @@ def create_app(
                 await asyncio.sleep(TICK_S)
         except (WebSocketDisconnect, RuntimeError):
             pass
+
+    @app.post("/api/cart/add")
+    async def cart_add(body: SkuIn) -> dict:
+        return act(lambda: service.add_product(body.sku))
+
+    if recognizer is not None:
+        last_seen: dict[str, str | None] = {"label": None}
+
+        @app.post("/api/vision/frame")
+        async def vision_frame(request: Request) -> dict:
+            """Recibe el recuadro guía (JPEG/PNG) y devuelve el producto reconocido. No cambia la
+            compra: la pantalla lo agrega cuando lo ve igual varias veces seguidas."""
+            kind = request.headers.get("content-type", "").split(";")[0].strip()
+            if kind not in ("image/jpeg", "image/png"):
+                raise HTTPException(status_code=415, detail="Se espera una imagen JPEG o PNG")
+            declared = request.headers.get("content-length", "")
+            if declared.isdigit() and int(declared) > MAX_FRAME_BYTES:  # sin leerla entera
+                raise HTTPException(status_code=413, detail="Imagen demasiado grande")
+            data = await request.body()
+            if len(data) > MAX_FRAME_BYTES:
+                raise HTTPException(status_code=413, detail="Imagen demasiado grande")
+            if service.checkout.state is not State.SCANNING:
+                raise HTTPException(status_code=409, detail="La cámara solo reconoce al escanear")
+            found = await asyncio.to_thread(recognizer.recognize_bytes, data)
+            if found is None:
+                raise HTTPException(status_code=422, detail="Imagen inválida")
+            sku = found.sku
+            product = service.catalog.get(sku)
+            match = product is not None and found.match
+            label = sku if match else "nada"
+            if label != last_seen["label"]:  # solo los cambios: sirve para ajustar el umbral
+                log.info(
+                    "Recuadro: %s (mejor %s %.2f, margen %.2f)", label, sku, found.score, found.margin
+                )
+                last_seen["label"] = label
+            return {
+                "match": match,
+                "sku": sku if match else None,
+                "name": product.name if match and product else None,
+                "price_cents": product.price_cents if match and product else None,
+                "score": round(found.score, 3),
+                "margin": round(found.margin, 3),
+            }
+
+    if wallet_qr_file is not None:
+
+        @app.get("/api/pay/wallet-qr")
+        async def wallet_qr() -> FileResponse:
+            return FileResponse(wallet_qr_file, headers={"Cache-Control": "no-store"})
+
+    def notify(text: str, simulated: bool = False) -> dict:
+        try:
+            return service.wallet_notification(text, simulated=simulated)
+        except TransitionError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+
+    if simulate_wallet:
+
+        @app.post("/sim/wallet-notification")
+        async def sim_wallet_notification(body: NotificationIn) -> dict:
+            return notify(body.text, simulated=True)
+
+    if notifier_key:
+
+        @app.post("/api/pay/notification")
+        async def pay_notification(
+            body: NotificationIn, authorization: str | None = Header(default=None)
+        ) -> dict:
+            scheme, _, token = (authorization or "").partition(" ")
+            if scheme != "Bearer" or not hmac.compare_digest(token.encode(), notifier_key.encode()):
+                raise HTTPException(status_code=401, detail="Clave del notificador inválida")
+            return notify(body.text)
 
     if tray is not None and scale is not None:
 

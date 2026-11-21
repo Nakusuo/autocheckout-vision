@@ -1,0 +1,27 @@
+# Contexto de build = raíz del repo. Solo entra lo que copian los Dockerfile.
+**/.git
+**/.venv
+**/node_modules
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/*.egg-info
+**/dist
+**/.stryker-tmp
+**/reports
+**/test-results
+**/playwright-report
+**/.coverage
+graphify-out
+docs
+ml/data
+ml/runs
+keys
+*.pem
+.env
+.env.*
+**/*.db
+**/*.jsonl
+**/kiosk.log*

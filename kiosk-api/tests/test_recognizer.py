@@ -1,5 +1,5 @@
-from pathlib import Path
 from collections import deque
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -339,3 +339,179 @@ def test_draw_zone_marks_the_rectangle():
     assert (frame == tray()).all()  # no toca el original
     assert tuple(out[30, 80]) == (0, 220, 255)
     assert tuple(out[60, 80]) == (235, 235, 235)
+
+
+# --- Fondo libre (KIOSK_FONDO=libre) -------------------------------------------------
+
+
+def busy_background(color=None) -> np.ndarray:
+    """Fondo cualquiera (franjas de colores, nada que aprender) y, con `color`, un producto."""
+    img = np.zeros((120, 160, 3), np.uint8)
+    for i, c in enumerate([(40, 90, 160), (200, 180, 30), (90, 40, 120), (30, 120, 60)]):
+        img[:, i * 40 : (i + 1) * 40] = c
+    if color is not None:
+        cv2.rectangle(img, (55, 35), (105, 85), color, -1)
+    return img
+
+
+def segment_center(frame: np.ndarray) -> np.ndarray:
+    """«silueta» de prueba: el objeto saliente es el rectángulo del centro, si es de un solo color."""
+    patch = frame[35:86, 55:106].reshape(-1, 3)
+    mask = np.zeros(frame.shape[:2], np.float32)
+    if (patch == patch[0]).all() and not (frame[0, 0] == patch[0]).all():
+        mask[35:86, 55:106] = 1.0
+    return mask
+
+
+def free_detector(frames: list[np.ndarray], **kwargs) -> SimilarityDetector:
+    return SimilarityDetector(
+        fake_embed,
+        gallery_of(("ROJO", [RED]), ("AZUL", [BLUE])),
+        ImageFolderSource(frames),
+        threshold=1.2,
+        segmenter=segment_center,
+        **kwargs,
+    )
+
+
+def test_free_background_recognizes_from_the_first_frame_on_any_background():
+    d = free_detector([busy_background(RED), busy_background(BLUE), busy_background()])
+    assert d.free_background is True
+    assert [d.detect() for _ in range(3)] == [["ROJO"], ["AZUL"], []]
+
+
+def test_free_background_low_similarity_is_nothing_not_unknown():
+    d = free_detector([busy_background(GREEN)])
+    assert d.detect() == []  # una cara o el cuarto no generan alertas
+    assert d.last is not None and d.last[1] < 1.2
+
+
+def test_free_background_ignores_objects_that_are_too_small():
+    d = free_detector([busy_background(RED)], free_min_blob=0.5)
+    assert d.detect() == []
+    assert d.last is None
+
+
+def test_free_background_picks_the_largest_object():
+    def two(frame: np.ndarray) -> np.ndarray:
+        mask = segment_center(frame)
+        mask[2:8, 2:8] = 1.0  # algo chico y separado en una esquina
+        return mask
+
+    d = SimilarityDetector(
+        fake_embed,
+        gallery_of(("ROJO", [RED]), ("AZUL", [BLUE])),
+        ImageFolderSource([busy_background(BLUE)]),
+        threshold=1.2,
+        segmenter=two,
+        free_min_blob=0.001,
+    )
+    assert d.detect() == ["AZUL"]
+
+
+def test_free_background_without_isolable_object(monkeypatch):
+    import kiosk.recognizer as rec
+
+    monkeypatch.setattr(rec, "isolate", lambda *a, **kw: None)
+    d = free_detector([busy_background(RED)])
+    assert d.detect() == []
+    assert d.last is None
+
+
+def test_fixed_background_is_the_default():
+    assert detector([tray()]).free_background is False
+
+
+def test_changes_are_logged_once(caplog):
+    caplog.set_level("INFO", logger="kiosk.recognizer")
+    d = free_detector([busy_background(RED), busy_background(RED), busy_background()])
+    for _ in range(3):
+        d.detect()
+    lines = [r.getMessage() for r in caplog.records]
+    assert lines[0].startswith("Cámara: ROJO (mejor parecido: ROJO ")
+    assert lines[1] == "Cámara: nada (mejor parecido: —)"
+    assert len(lines) == 2  # el segundo ROJO no se repite
+
+
+def test_from_files_loads_the_segmenter_only_for_free_background(tmp_path, monkeypatch):
+    import kiosk.recognizer as rec
+
+    gallery_of(("ROJO", [RED])).save(tmp_path / "g.npz")
+    monkeypatch.setattr(rec.Embedder, "from_model", classmethod(lambda cls, p, s: fake_embed))
+    monkeypatch.setattr(rec.Segmenter, "from_model", classmethod(lambda cls, p: segment_center))
+    source = ImageFolderSource([busy_background(RED)])
+    fixed = rec.SimilarityDetector.from_files(tmp_path / "g.npz", source, tmp_path / "e.onnx")
+    free = rec.SimilarityDetector.from_files(
+        tmp_path / "g.npz", source, tmp_path / "e.onnx", segmenter=tmp_path / "s.onnx"
+    )
+    assert (fixed.free_background, free.free_background) == (False, True)
+
+
+# ---------- Galería del recuadro guía ----------
+
+
+def test_center_crop_and_mask_look_at_the_middle():
+    from kiosk.recognizer import center_crop, center_mask
+
+    img = np.zeros((100, 200, 3), np.uint8)
+    img[40:60, 90:110] = 255
+    crop = center_crop(img, 0.6)
+    assert crop.shape[:2] == (60, 60)
+    assert crop[30, 30].tolist() == [255, 255, 255]  # el centro de la foto queda al centro
+    mask = center_mask(50)
+    assert mask[25, 25] == 1 and mask[0, 0] == 0  # las esquinas (el fondo) no cuentan
+
+
+def test_ranking_with_top_averages_the_best_prints_of_each_product():
+    from kiosk.recognizer import Gallery
+
+    g = Gallery(
+        np.array([[1.0, 0.0], [0.0, 1.0], [0.8, 0.6], [0.8, 0.6]], np.float32),
+        np.array(["A", "A", "B", "B"]),
+        np.array([0, 1, 2, 3]),
+        top=2,
+    )
+    # A tiene una huella idéntica pero la otra no se parece; B se parece en las dos
+    ranking = dict(g.ranking(np.array([1.0, 0.0], np.float32)))
+    assert ranking["A"] == pytest.approx(0.5)
+    assert ranking["B"] == pytest.approx(0.8)
+    g.top = 1
+    assert g.ranking(np.array([1.0, 0.0], np.float32))[0][0] == "A"
+
+
+def test_gallery_save_and_load_keep_box_settings(tmp_path):
+    from kiosk.recognizer import Gallery
+
+    g = Gallery(
+        np.eye(2, dtype=np.float32),
+        np.array(["A", "B"]),
+        np.array([0, 1]),
+        140,
+        0.8,
+        2,
+        np.array(["seg", "c60"]),
+        1.2,
+        0.05,
+    )
+    g.save(tmp_path / "g.npz")
+    back = Gallery.load(tmp_path / "g.npz")
+    assert (back.size, back.color_weight, back.top, back.threshold, back.margin) == (140, 0.8, 2, 1.2, 0.05)
+    assert back.views.tolist() == ["seg", "c60"]
+
+
+def test_leave_one_out_can_query_with_the_box_view():
+    from kiosk.recognizer import Gallery, leave_one_out
+
+    g = Gallery(
+        np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]], np.float32),
+        np.array(["A", "A", "B", "B"]),
+        np.array([0, 0, 1, 1]),
+        views=np.array(["seg", "c60", "seg", "c60"]),
+    )
+    # Sin vista, la consulta es la primera huella de cada foto (el recorte); con «c60», el recuadro.
+    # En los dos casos cada foto se compara solo con la otra, que es de otro producto.
+    assert leave_one_out(g)[:2] == (0, 2)
+    hits, total, misses = leave_one_out(g, "c60")
+    assert (hits, total) == (0, 2)
+    assert [m[:2] for m in misses] == [("A", "B"), ("B", "A")]
+    assert leave_one_out(g, "c99")[1] == 0  # vista que no existe: nada que evaluar

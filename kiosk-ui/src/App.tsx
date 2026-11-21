@@ -1,7 +1,6 @@
 import { useKioskState } from "./api";
 import { Kiosk } from "./kiosk/Kiosk";
-import { CajaPanel } from "./panels/CajaPanel";
-import { SimPanel } from "./panels/SimPanel";
+import { AyudaPanel } from "./panels/AyudaPanel";
 
 function KioskLive() {
   const { snapshot, connected } = useKioskState();
@@ -13,7 +12,7 @@ function KioskLive() {
 
 export default function App() {
   const path = location.pathname;
-  if (path.startsWith("/sim")) return <SimPanel />;
-  if (path.startsWith("/caja")) return <CajaPanel />;
+  // Dos vistas: el quiosco (/) y la del encargado con la ayuda y las alertas (/ayuda).
+  if (path.startsWith("/ayuda")) return <AyudaPanel />;
   return <KioskLive />;
 }

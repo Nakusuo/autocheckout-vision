@@ -1,6 +1,10 @@
 # Estado del proyecto — AutoCaja (auto-checkout por visión)
 
-> Traspaso para la próxima sesión. Actualizado: **2026-10-13**.
+> Traspaso para la próxima sesión. Actualizado: **2026-11-20**.
+>
+> **Novedades (2026-11-20, PR #62):** demo web con la cámara del navegador y **recuadro guía**. Galería del recuadro (`galeria --recuadro`) medida con **107 fotos** dejando cada una fuera: **85 %** de acierto (91/107; antes 77,6 %). Con parecido ≥ 1,2 y margen ≥ 0,05 acepta 82/107 y acierta el **96 %**. Los productos se agregan solos tras 3 cuadros iguales. Pago con Yape (Mercado Pago, imitado en la pasarela) y con el QR propio del comercio (la notificación de pago se **simula** en `/sim` mientras no exista la app Android). Contenedores, CI con prueba de humo en Docker y CD a GHCR/Render (**Render aún sin ejecutar**). Ver [`DEMO_WEB.md`](DEMO_WEB.md), [`PAGO_YAPE.md`](PAGO_YAPE.md) y [`CLOUD_DEVOPS.md`](CLOUD_DEVOPS.md).
+>
+> **Decisión (2026-11-20): solo dos vistas.** El quiosco (`/`) y la del encargado (`/ayuda`: ayuda y alertas de seguridad). Se quitaron `/sim` y `/caja` (ventas, compra en curso, aprobar pago, recalibrar). El pago con QR real se confirmará solo con la app Android; hasta entonces no se completa.
 >
 > **Decisión (2026-10-12): reconocimiento por parecido, sin entrenar.** Con las 56 fotos del Drive (11 productos) no alcanza para YOLOv8; el modo cámara usa una galería de fotos + DINOv2 + color (91 % de aciertos, 98 % sin reversos). Ver [`ml/reconocimiento.md`](ml/reconocimiento.md). El **catálogo** pasó a esos 11 productos, con precios de bodega fijados para la demo (aprobados por el equipo; se cambian en `catalog/products.csv`).
 >
@@ -104,5 +108,5 @@ cd kiosk-api    && KIOSK_MODE=sim python -m kiosk    # :8000  (sin balanza; KIOS
 cd kiosk-ui     && npm run dev                       # :5173
 ```
 
-Quiosco `http://localhost:5173/` · Simulador `/sim` · Caja `/caja`. Pruebas e2e: `cd kiosk-ui && npm run e2e` (levanta todo solo; el quiosco debe estar en W1 si reutiliza servicios abiertos).
+Quiosco `http://localhost:5173/` · Ayuda `/ayuda`. Pruebas e2e: `cd kiosk-ui && npm run e2e` (levanta todo solo; el quiosco debe estar en W1 si reutiliza servicios abiertos).
 En Windows cada servicio usa su `.venv` (`./.venv/Scripts/python`). Ver también el README.

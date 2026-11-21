@@ -31,9 +31,12 @@ Marca cada casilla cuando esté fusionada en `develop` con pruebas verdes.
 - [ ] Tabla comparativa (accuracy, F1 macro, tiempos) y argumento de ensambles frente a modelos individuales
 
 ### Criterio 1 — Cloud y DevOps
-- [ ] Dockerfile de `kiosk-api`, `mock-gateway` y `kiosk-ui` y `docker-compose.yml`
-- [ ] Workflow de CD: publicar imágenes en GHCR y desplegar la pasarela y la UI en Render
-- [ ] `docs/CLOUD_DEVOPS.md`: Cloud (IaaS/PaaS/SaaS), DevOps, CI/CD, edge frente a cloud y diagrama de arquitectura
+- [x] Dockerfile de `kiosk-api`, `mock-gateway` y `kiosk-ui` y `docker-compose.yml` (probado en local con `ops/smoke_compose.py`)
+- [x] Job `docker` en el CI: construye, levanta el stack y recorre una compra completa
+- [x] Workflow de CD (`.github/workflows/cd.yml`): publica las imágenes en GHCR y despliega la pasarela en Render (`render.yaml`). La UI se queda en el quiosco (edge), ver el documento
+- [x] `docs/CLOUD_DEVOPS.md`: Cloud (IaaS/PaaS/SaaS), DevOps, CI/CD, edge frente a cloud y diagramas
+- [ ] **Equipo:** crear la cuenta de Render y el servicio desde `render.yaml`, y poner `RENDER_DEPLOY_HOOK_URL` y `PASARELA_URL` en GitHub (pasos en `CLOUD_DEVOPS.md` §6.3)
+- [ ] Primer despliegue real y captura de pantalla para el informe (después de fusionar en `main`)
 
 ### Criterio 5 — Sustentación y código
 - [ ] `docs/TRADEOFFS.md`: ventajas, desventajas y coste de cada algoritmo y modelo
@@ -43,7 +46,7 @@ Marca cada casilla cuando esté fusionada en `develop` con pruebas verdes.
 ## 2. Bloqueos conocidos
 
 - **Las fotos de los productos no están en git** (`ml/data/` está ignorado). La carpeta de Drive no se pudo bajar de forma automática: Drive limita las descargas. Hay que bajarla desde el navegador como ZIP y descomprimirla en `ml/data/raw/`, con una carpeta por SKU (`ml/data/raw/CANCUN-33/…`). Mientras tanto, los criterios 3 y 4 solo pueden probarse con datos simulados, y deben marcarse así.
-- **No hay Docker instalado** en el equipo donde se escribió el código de CD, así que esos archivos no se han probado.
+- **Render y el CD no se han ejecutado todavía**: el CD corre al fusionar en `main` y Render necesita una cuenta del equipo. Docker y compose sí se probaron en local (2026-11-19).
 - **Fecha de entrega y proveedor de nube**: los decide el equipo.
 
 ## 3. Cómo usar el grafo (graphify)

@@ -109,7 +109,8 @@ La pantalla es densa solo donde hace falta (la lista de productos) y el resto es
 - El rojo solo aparece donde se puede pulsar o donde algo se detiene.
 - El amarillo significa precaución o el monto a pagar; nunca decora.
 - Bordes de tinta gruesos, sin sombras dentro de la placa.
-- Todo se escala con el ancho del quiosco (`cqw`), así que se ve igual a 1080×1920 que centrado en una laptop.
+- Todo se mide en `--u` (en este documento, «cqw»): 1/100 del ancho de la placa vertical. En el quiosco (1080×1920) y en el celular, `--u` sale del ancho y la placa ocupa toda la pantalla. En una pantalla horizontal (laptop), `--u` sale del alto y el ancho que sobra se usa: la cámara a la izquierda y la lista a la derecha al escanear, el QR junto a los pasos al pagar, y la lista junto a las acciones al confirmar.
+- En celular los textos más chicos tienen un mínimo legible (11-12 px) y SOLICITAR AYUDA queda fija al pie si hay que desplazarse.
 
 ## Colors
 
@@ -119,7 +120,7 @@ Tres colores de señal sobre tinta casi negra, cada uno con un significado fijo.
 - **Amarillo señal (`sign-yellow`)**: los rombos de precaución, la franja bajo la cabecera, la banda del TOTAL y el aviso «Reconectando…». `sign-yellow-soft` es el fondo de las alertas, para que el texto negro largo se lea sin fatiga.
 - **Blanco placa (`sign-white`)**: la superficie de todo el quiosco.
 - **Tinta (`ink`, `ink-soft`)**: el texto, los bordes de placa, la insignia de cantidad y los pasos ya hechos. `ink-soft` es el texto secundario (8.9:1 sobre blanco).
-- **Asfalto (`asphalt`)**: solo alrededor del quiosco cuando se ve en una pantalla horizontal. Las vistas internas `/sim` y `/caja` no lo usan.
+- **Asfalto (`asphalt`)**: el fondo alrededor de la placa cuando la pantalla vertical es más ancha que 9:16 (tablet, monitor girado). La vista interna `/ayuda` no lo usa.
 
 Los estados nunca dependen solo del color: el peso correcto lleva el disco con el visto bueno; el que no coincide, el rombo y la diferencia en gramos; lo deshabilitado cambia también el borde.
 
@@ -163,7 +164,7 @@ Plano: la profundidad la dan los bordes de tinta, no las sombras. La única somb
 - **Cancelar compra** (W2, W3 y QR): la acción más callada, texto subrayado sin placa, debajo de la acción principal. Vuelve al inicio y descarta la lista.
 - **Aviso de cámara** (W1 y W2): una línea pequeña con el ícono de cámara y la Ley 29733.
 
-**Paneles del equipo (`/sim`, `/caja`)**: misma paleta, tipografía y placas, pero a escala de escritorio (`rem`) y en dos columnas: tarjetas blancas con borde de tinta sobre fondo `#f3f1ec`, botones `pbtn` (rojo = acción principal) y el estado del quiosco como disco rojo con el código de pantalla. Estilos en `kiosk-ui/src/panels/panels.css`.
+**Vista de ayuda (`/ayuda`)**: misma paleta, tipografía y placas, pero a escala de escritorio (`rem`) y en una columna: tarjetas blancas con borde de tinta sobre fondo `#f3f1ec`, botones `pbtn` (rojo = acción principal) y el estado del quiosco como disco rojo con el código de pantalla. Estilos en `kiosk-ui/src/panels/panels.css`.
 
 Movimiento: la placa entra en 260 ms (clip de arriba abajo y un desplazamiento de 2cqw, curva de salida exponencial); las líneas nuevas entran desde la izquierda; la línea roja recorre la bandeja mientras se escanea. Con `prefers-reduced-motion` todo queda quieto.
 

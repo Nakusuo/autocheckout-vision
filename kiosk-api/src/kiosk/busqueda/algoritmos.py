@@ -193,12 +193,11 @@ def hill_climbing_restarts(
 ) -> LocalResult:
     """Reinicio aleatorio: repite el ascenso desde puntos distintos para escapar de óptimos locales."""
     rng = random.Random(seed)  # nosec B311: reproducibilidad, no criptografía
-    best: LocalResult | None = None
-    total_eval = 0
-    for _ in range(max(1, restarts)):
+    best = hill_climbing(random_start(rng), neighbors, score, max_steps)
+    total_eval = best.evaluations
+    for _ in range(max(1, restarts) - 1):
         res = hill_climbing(random_start(rng), neighbors, score, max_steps)
         total_eval += res.evaluations
-        if best is None or res.score > best.score:
+        if res.score > best.score:
             best = res
-    assert best is not None
     return LocalResult(best.state, best.score, best.steps, total_eval)

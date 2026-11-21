@@ -102,17 +102,17 @@ test("compra de W1 a W4 con trampa de peso, CORREGIR y pago por QR", async ({ pa
   await expect(page.getByText(W1_TEXT)).toBeVisible({ timeout: 15_000 });
 });
 
-test("SOLICITAR AYUDA llega al panel de caja y se atiende", async ({ page, context }) => {
+test("SOLICITAR AYUDA llega a la vista de ayuda y se atiende", async ({ page, context }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "SOLICITAR AYUDA" }).click();
   await expect(page.getByText("Ayuda en camino")).toBeVisible();
 
-  const caja = await context.newPage();
-  await caja.goto("/caja");
-  await expect(caja.getByRole("listitem")).toHaveCount(1);
-  await expect(caja.getByRole("listitem")).toContainText("W1");
-  await caja.getByRole("button", { name: "Atendido" }).click();
-  await expect(caja.getByText("Sin solicitudes")).toBeVisible();
+  const ayuda = await context.newPage();
+  await ayuda.goto("/ayuda");
+  await expect(ayuda.getByRole("listitem")).toHaveCount(1);
+  await expect(ayuda.getByRole("listitem")).toContainText("W1");
+  await ayuda.getByRole("button", { name: "Atendido" }).click();
+  await expect(ayuda.getByText("Sin solicitudes")).toBeVisible();
   await expect(page.getByText("Ayuda en camino")).toBeHidden();
 });
 

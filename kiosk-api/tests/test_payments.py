@@ -77,6 +77,13 @@ def test_tls13_context_enforces_minimum_version():
     assert ctx.verify_mode == ssl.CERT_REQUIRED
 
 
+def test_tls13_context_without_ca_uses_system_store_and_still_requires_tls13():
+    ctx = tls13_context()
+    assert ctx.minimum_version == ssl.TLSVersion.TLSv1_3
+    assert ctx.verify_mode == ssl.CERT_REQUIRED
+    assert ctx.check_hostname is True
+
+
 def _gateway(handler) -> HttpGateway:
     return HttpGateway("https://gw.test", "k", transport=httpx.MockTransport(handler))
 

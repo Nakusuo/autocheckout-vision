@@ -7,7 +7,22 @@ Quiosco de auto-checkout que reconoce productos con visión computacional (por p
 
 Licencia: AGPL-3.0 (ver `LICENSE`).
 
-## Probar el sistema (simulado)
+## Con Docker (lo más rápido)
+
+Requiere Docker con Compose. Levanta la pasarela, la API y la interfaz ya conectadas:
+
+```bash
+cp .env.example .env        # cambia GATEWAY_API_KEY por una clave larga
+docker compose up --build   # http://localhost:5173  ·  /ayuda
+```
+
+Arquitectura edge + nube, imágenes, CI/CD y despliegue de la pasarela en Render: [`docs/CLOUD_DEVOPS.md`](docs/CLOUD_DEVOPS.md).
+
+**Demo web «el celular es la máquina»:** cámara del navegador con recuadro guía, pago con tu QR de Yape y la notificación de pago simulada: `docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build`. Guía: [`docs/DEMO_WEB.md`](docs/DEMO_WEB.md).
+
+**Pago con Yape (Mercado Pago):** `KIOSK_PAYMENT=yape docker compose up --build`. El cliente escribe su celular y el código de aprobación de Yape. Prueba con el celular `111111111` y el código `123456`. Para el sandbox real de Mercado Pago: `docker compose -f docker-compose.yml -f docker-compose.mercadopago.yml up`. Detalles, seguridad y números de prueba: [`docs/PAGO_YAPE.md`](docs/PAGO_YAPE.md).
+
+## Probar el sistema (simulado, sin Docker)
 
 Requisitos: Python 3.12 y Node 22 o superior. En cada terminal Python define la misma clave:
 `export GATEWAY_API_KEY=una-clave-larga-cualquiera` (ver `.env.example`).
@@ -35,20 +50,22 @@ npm run dev
 | URL | Para qué |
 |---|---|
 | http://localhost:5173/ | Quiosco (cliente), formato vertical |
-| http://localhost:5173/sim | Simulador para la presentación: pasar cada producto por la cámara (o ponerlo «sin escanear»), escenarios paso a paso, balanza, acciones del quiosco, enlace al «celular» que paga y vista en vivo del quiosco |
-| http://localhost:5173/caja | Panel de caja: compra en curso, aprobación del pago simulado pendiente por QR, solicitudes de ayuda, alertas, ventas y estado del quiosco |
+| http://localhost:5173/ayuda | Vista del encargado: solicitudes de ayuda y alertas de seguridad (y «Reactivar quiosco» si queda fuera de servicio) |
 
-**Panel de caja (`/caja`):**
+No hay más vistas: el simulador `/sim` y el panel de caja se quitaron (2026-11-20). En el modo simulado (`KIOSK_MODE=sim`, el de por defecto) los productos se ponen con las rutas `/sim/...` de la API, que usan las pruebas automáticas (e2e y prueba de humo); no tienen pantalla.
+
+**Vista de ayuda (`/ayuda`):**
 - **Alertas de seguridad** (`GET /api/alerts`, `DELETE /api/alerts/{id}` al marcarla revisada): una por compra cuando pasa algo no reconocido frente a la cámara («Producto no reconocido frente a la cámara»). Cuenta las veces (`times`) y dice cómo terminó la compra: en curso, pagada, cancelada o quiosco fuera de servicio. Si la caja la marca revisada y vuelve a pasar en la misma compra, se crea otra.
-- **Ventas de hoy** (`GET /api/sales`): cantidad y total del día y las últimas 20 boletas.
 - Pitido (880 Hz) con cada ayuda o alerta nueva; el botón «Sonido: sí/no» se recuerda en el navegador.
 - Se guardan hasta 50 ayudas y 50 alertas sin atender.
 
-Para pagar: después de CONFIRMAR y PAGAR en el quiosco, `/caja` muestra las líneas y el total de la compra. Cuando aparece el QR, la caja puede pulsar «Aceptar pago simulado». También se puede abrir el enlace del QR y pagar desde el celular simulado. En ambos casos el quiosco consulta la pasarela por HTTPS (TLS 1.3), verifica la firma RS256 y muestra el ticket. La aprobación de caja solo está disponible mientras haya un cobro pendiente.
+Para pagar con la pasarela simulada: después de CONFIRMAR y PAGAR, se abre el enlace del QR y se paga desde el «celular» simulado de la pasarela. El quiosco consulta la pasarela por HTTPS (TLS 1.3), verifica la firma RS256 y muestra el ticket. (La API conserva `POST /api/caja/accept-payment` para las pruebas, sin botón en pantalla.)
+
+Variables de arranque (todas opcionales; los valores por defecto son los de desarrollo): `KIOSK_HOST`/`KIOSK_PORT`, `KIOSK_DATA_DIR` (base, boletas, sesiones y log), `KIOSK_KEYS_DIR`, `GATEWAY_CA=system` (pasarela con certificado público) y, en la pasarela, `GATEWAY_HOST`/`GATEWAY_PORT` (o `PORT`), `GATEWAY_TLS=off` (detrás del HTTPS de un PaaS) y `GATEWAY_KEYS_DIR`.
 
 La API escucha en 127.0.0.1:8000 y solo acepta peticiones desde http://localhost:5173 (Vite usa ese puerto fijo; si está ocupado, libéralo).
 
-**Balanza:** por defecto no se usa (`KIOSK_SCALE=off`): el quiosco cobra lo que reconoce la cámara. Con `KIOSK_SCALE=sim` se activa la balanza simulada y la validación de peso (±5 g, ON-02), con la trampa de peso en `/sim`.
+**Balanza:** por defecto no se usa (`KIOSK_SCALE=off`): el quiosco cobra lo que reconoce la cámara. Con `KIOSK_SCALE=sim` se activa la balanza simulada y la validación de peso (±5 g, ON-02), con la trampa de peso por `POST /sim/trap` (pruebas).
 
 Cada venta pagada emite una boleta simulada del POS (serie `B001`) que se guarda en `kiosk-api/boletas.jsonl` (fuera de git).
 
@@ -132,7 +149,7 @@ export KIOSK_HANDS=off                               # opcional: por defecto se 
 
 **Riesgo aceptado:** sin balanza, un producto que no se reconoce puede salir sin pagar. La alerta de seguridad (que termina en «pagada») es la mitigación: la caja revisa esa compra.
 
-En modo cámara no existen las rutas `/sim`; el panel `/sim` solo muestra un aviso. Arranca con la bandeja vacía: los primeros cuadros son el fondo. Si la cámara no abre o `KIOSK_CAMERA`/`KIOSK_ZONE` no son válidos, el quiosco termina con un mensaje claro.
+En modo cámara no existen las rutas `/sim/...`. Arranca con la bandeja vacía: los primeros cuadros son el fondo. Si la cámara no abre o `KIOSK_CAMERA`/`KIOSK_ZONE` no son válidos, el quiosco termina con un mensaje claro.
 
 ## Herramientas del dataset (`ml/`)
 

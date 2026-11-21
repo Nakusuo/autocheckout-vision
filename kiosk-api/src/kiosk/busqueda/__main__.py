@@ -53,7 +53,8 @@ def main(argv: list[str] | None = None) -> int:
     for name, run in (("BFS", lambda: bfs(peso)), ("DFS", lambda: dfs(peso)),
                       ("A*", lambda: a_star(peso))):
         print(_row(name, run))
-    hc = hill_climbing(peso.random_state(random.Random(1)), peso.neighbors, peso.score)
+    rng = random.Random(1)  # nosec B311: semilla fija para una demo reproducible
+    hc = hill_climbing(peso.random_state(rng), peso.neighbors, peso.score)
     print(f"HC     estado={hc.state} error={-hc.score:.1f} g pasos={hc.steps} evaluaciones={hc.evaluations}")
     hr = hill_climbing_restarts(peso.random_state, peso.neighbors, peso.score, restarts=10)
     print(f"HC x10 estado={hr.state} error={-hr.score:.1f} g evaluaciones={hr.evaluations}")
