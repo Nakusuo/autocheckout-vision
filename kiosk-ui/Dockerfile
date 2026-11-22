@@ -7,7 +7,7 @@ RUN npm ci --no-audit --no-fund
 COPY kiosk-ui/ ./
 RUN npm run build
 
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 # nginx reemplaza ${KIOSK_API} al arrancar (plantillas de la imagen oficial).
 ENV KIOSK_API=kiosk-api:8000
 COPY kiosk-ui/nginx.conf.template /etc/nginx/templates/default.conf.template
