@@ -1,7 +1,7 @@
 # API del quiosco (edge). Build desde la raíz del repo:
 #   docker build -f kiosk-api/Dockerfile .
 # Para el modo cámara: --build-arg EXTRAS=dev,vision (o EXTRAS=vision).
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
