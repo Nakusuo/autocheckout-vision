@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { Snapshot } from "../../api";
 import { CamaraWeb } from "./CamaraWeb";
 import { Escaneo } from "./Escaneo";
@@ -38,7 +38,7 @@ describe("CamaraWeb", () => {
   it("sin cámara en el navegador lo dice", () => {
     render(<CamaraWeb disabled={false} onAdd={async () => true} />);
     expect(screen.getByRole("alert")).toHaveTextContent("no permite usar la cámara");
-    expect(screen.getByText("Pon un producto dentro del recuadro amarillo.")).toBeInTheDocument();
+    expect(screen.getByText("Pon un producto dentro del visor: la cámara lo reconoce sola.")).toBeInTheDocument();
   });
 
   it("si el permiso se niega, pide permitir el acceso", async () => {
@@ -102,13 +102,18 @@ describe("CamaraWeb: agregado automático", () => {
     const onAdd = vi.fn(async () => true);
     render(<CamaraWeb disabled={false} onAdd={onAdd} />);
     await frames(2);
-    expect(screen.getByText("Producto CASINO-43")).toBeInTheDocument();
+    expect(within(screen.getByRole("status")).getByText("Producto CASINO-43")).toBeInTheDocument();
     expect(screen.getByText("Mantenlo quieto…")).toBeInTheDocument();
+    // El visor muestra la etiqueta con nombre y precio, y las esquinas van cerrándose (2 de 3)
+    const box = document.querySelector<HTMLElement>(".webcam-box")!;
+    expect(box.querySelector(".ar-tag")).toHaveTextContent("Producto CASINO-43");
+    expect(box.style.getPropertyValue("--p")).toBe(String(2 / 3));
     expect(onAdd).not.toHaveBeenCalled();
     await frames(2);
     expect(onAdd).toHaveBeenCalledTimes(1);
     expect(onAdd).toHaveBeenCalledWith("CASINO-43");
     expect(screen.getByText("Agregado: Producto CASINO-43")).toBeInTheDocument();
+    expect(document.querySelector(".webcam-box .box-check")).not.toBeNull();
   });
 
   it("deshabilitada (sin conexión o agregando) no agrega nada", async () => {
@@ -120,7 +125,7 @@ describe("CamaraWeb: agregado automático", () => {
     await frames(5);
     expect(onAdd).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled(); // ni siquiera manda cuadros
-    expect(screen.getByText("Pon un producto dentro del recuadro amarillo.")).toBeInTheDocument();
+    expect(screen.getByText("Pon un producto dentro del visor: la cámara lo reconoce sola.")).toBeInTheDocument();
   });
 
   it("no agrega dos veces si la API tarda mientras el producto sigue en el recuadro", async () => {
@@ -151,7 +156,7 @@ describe("CamaraWeb: agregado automático", () => {
 describe("Escaneo con la cámara del navegador", () => {
   it("muestra la cámara en vez de la bandeja", () => {
     render(<Escaneo snapshot={base} offline={false} />);
-    expect(screen.getByText("Pon un producto dentro del recuadro amarillo.")).toBeInTheDocument();
+    expect(screen.getByText("Pon un producto dentro del visor: la cámara lo reconoce sola.")).toBeInTheDocument();
     expect(screen.queryByText(/Pasa tus productos uno por uno/)).not.toBeInTheDocument();
     // Lista vacía: en horizontal se ve junto a la cámara (en vertical el CSS la oculta).
     expect(screen.getByText(/Tu lista está vacía/)).toBeInTheDocument();
@@ -168,7 +173,7 @@ describe("Escaneo con la cámara del navegador", () => {
     const lines = [{ sku: "CASINO-43", name: "Galletas Casino 43 g", quantity: 1, unit_price_cents: 150 }];
     render(<Escaneo snapshot={{ ...base, lines, item_count: 1, total_cents: 150 }} offline={false} />);
     expect(screen.getByText("Galletas Casino 43 g")).toBeInTheDocument();
-    expect(screen.getByText("Pon un producto dentro del recuadro amarillo.")).toBeInTheDocument();
+    expect(screen.getByText("Pon un producto dentro del visor: la cámara lo reconoce sola.")).toBeInTheDocument();
     expect(screen.queryByText(/Pasa el siguiente producto/)).not.toBeInTheDocument();
   });
 });

@@ -104,3 +104,44 @@ export function PrinterGlyph({ className }: Props) {
     </svg>
   );
 }
+
+/**
+ * Demostración en bucle de cómo cobra Caserito: un paquete entra al visor, la línea lo recorre,
+ * las esquinas se cierran en verde y aparece su nombre y precio (Galletas Casino, del catálogo).
+ * Las animaciones están en tokens.css (.demo-*); con movimiento reducido se ve el final, quieto.
+ */
+export function DemoVisor({ className }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 240 210" aria-hidden="true" focusable="false">
+      <defs>
+        <clipPath id="demo-view">
+          <rect x="4" y="4" width="232" height="160" rx="16" />
+        </clipPath>
+      </defs>
+      <rect x="4" y="4" width="232" height="160" rx="16" fill="var(--counter)" />
+      {/* El paquete entra desde el borde de la «pantalla», no desde fuera de ella */}
+      <g clipPath="url(#demo-view)">
+      <g className="demo-product">
+        <rect x="92" y="40" width="56" height="84" rx="6" fill="var(--chili)" />
+        <path d="M92 52 h56 M92 112 h56" stroke="var(--chili-press)" strokeWidth="5" />
+        <rect x="102" y="66" width="36" height="30" rx="4" fill="var(--paper-light)" />
+        <circle cx="120" cy="81" r="8" fill="var(--saffron)" />
+      </g>
+      </g>
+      <rect className="demo-sweep" x="66" y="28" width="108" height="4" rx="2" fill="var(--saffron)" />
+      <g className="demo-corners" fill="none" strokeWidth="6" strokeLinecap="round">
+        <path d="M64 50 V36 a10 10 0 0 1 10 -10 H88" />
+        <path d="M152 26 H166 a10 10 0 0 1 10 10 V50" />
+        <path d="M64 114 V128 a10 10 0 0 0 10 10 H88" />
+        <path d="M176 114 V128 a10 10 0 0 1 -10 10 H152" />
+      </g>
+      <g className="demo-tag">
+        <rect x="14" y="174" width="212" height="30" rx="15" fill="var(--leaf)" />
+        <circle cx="32" cy="189" r="8" fill="var(--paper-light)" />
+        <path d="M28 189 l3 3 l6 -6" fill="none" stroke="var(--leaf)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <text x="46" y="194" fontFamily="Overpass, sans-serif" fontWeight="900" fontSize="13" fill="var(--paper-light)">Galletas Casino</text>
+        <text x="214" y="194" textAnchor="end" fontFamily="Overpass, sans-serif" fontWeight="900" fontSize="13" fill="var(--saffron)">S/ 1.50</text>
+      </g>
+    </svg>
+  );
+}

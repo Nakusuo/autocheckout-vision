@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { AUTO_ADD_START, guideBox, STABLE_FRAMES, stepAutoAdd, toSuggestion, type Suggestion } from "../camara";
+import { formatPEN } from "../../format";
 import { CheckDisc } from "../signs";
 
 const SEND_EVERY_MS = 400;
@@ -142,7 +143,26 @@ export function CamaraWeb({
         ) : (
           <video ref={video} className="webcam-video" autoPlay muted playsInline aria-label="Vista de la cámara" />
         )}
-        <div className="webcam-box" aria-hidden="true" />
+        {/* Visor: cuatro esquinas que se cierran sobre el producto mientras se confirma (--p) y una
+            etiqueta con lo que la cámara está viendo. Todo decorativo: el texto va en role=status. */}
+        <div
+          className="webcam-box"
+          aria-hidden="true"
+          style={{ "--p": status.kind === "seeing" ? status.streak / STABLE_FRAMES : status.kind === "added" ? 1 : 0 } as CSSProperties}
+        >
+          <span className="corner tl" />
+          <span className="corner tr" />
+          <span className="corner bl" />
+          <span className="corner br" />
+          {status.kind === "idle" && !cameraError && <span className="sweep" />}
+          {status.kind === "added" && <CheckDisc className="box-check" />}
+          {status.kind !== "idle" && (
+            <span className="ar-tag" key={status.product.sku}>
+              <span className="ar-tag-name">{status.product.name}</span>
+              <span className="ar-tag-price">{formatPEN(status.product.price_cents)}</span>
+            </span>
+          )}
+        </div>
       </div>
       <div className="webcam-status" role="status">
         {status.kind === "added" ? (
@@ -166,7 +186,7 @@ export function CamaraWeb({
             />
           </div>
         ) : (
-          <p className="hint webcam-hint">Pon un producto dentro del recuadro amarillo.</p>
+          <p className="hint webcam-hint">Pon un producto dentro del visor: la cámara lo reconoce sola.</p>
         )}
       </div>
     </div>
