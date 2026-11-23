@@ -183,3 +183,31 @@ describe("QR", () => {
     expect(img.getAttribute("src")).toMatch(/^data:image\/png;base64,/);
   });
 });
+
+describe("Inicio: pizarra de lo que reconoce la cámara", () => {
+  it("muestra los productos reales del catálogo con su precio", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify([
+          { sku: "A", name: "Glacitas 30 g", price_cents: 150 },
+          { sku: "B", name: "Chocman 39 g", price_cents: 150 },
+        ])),
+      ),
+    );
+    render(<Kiosk snapshot={{ ...base, state: "IDLE", screen: "W1" }} />);
+    expect(await screen.findByText("La cámara reconoce 2 productos")).toBeInTheDocument();
+    expect(screen.getByText("Glacitas 30 g")).toBeInTheDocument();
+    expect(screen.getAllByText("S/ 1.50")).toHaveLength(2); // con pocos productos no se duplica
+    vi.unstubAllGlobals();
+  });
+
+  it("si el catálogo no llega, el inicio sigue funcionando sin pizarra", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new TypeError("sin red"))));
+    render(<Kiosk snapshot={{ ...base, state: "IDLE", screen: "W1" }} />);
+    expect(screen.getByRole("button", { name: "INICIAR" })).toBeInTheDocument();
+    await act(async () => undefined);
+    expect(screen.queryByText(/La cámara reconoce/)).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+});

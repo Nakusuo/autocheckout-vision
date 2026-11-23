@@ -275,6 +275,14 @@ def create_app(
     async def start() -> dict:
         return act(service.start)
 
+    @app.get("/api/catalog")
+    async def catalog() -> list[dict]:
+        """Productos que el quiosco sabe reconocer, con su precio (la pizarra del inicio)."""
+        return [
+            {"sku": p.sku, "name": p.name, "price_cents": p.price_cents}
+            for p in service.catalog.all()
+        ]
+
     @app.post("/api/new-sale")
     async def new_sale() -> dict:
         return act(service.new_sale)

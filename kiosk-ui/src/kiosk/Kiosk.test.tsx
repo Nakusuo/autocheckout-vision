@@ -123,14 +123,15 @@ describe("Kiosk", () => {
 
   it("bloquea el botón mientras la petición está en curso", async () => {
     let resolve!: (r: Response) => void;
-    const fetchMock = vi.fn(() => new Promise<Response>((r) => (resolve = r)));
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => new Promise<Response>((r) => (resolve = r)));
     vi.stubGlobal("fetch", fetchMock);
     render(<Kiosk snapshot={base} />);
     const btn = screen.getByRole("button", { name: "INICIAR" });
     fireEvent.click(btn);
     expect(btn).toBeDisabled();
     fireEvent.click(btn);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Un solo POST aunque se toque dos veces (el inicio además pide el catálogo con GET)
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
     resolve(new Response(JSON.stringify(base)));
     await waitFor(() => expect(btn).toBeEnabled());
     vi.unstubAllGlobals();

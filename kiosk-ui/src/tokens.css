@@ -170,56 +170,46 @@ body:has(.kiosk) {
 }
 .muted { color: var(--ink-soft); margin: 0; }
 
-.hero-sign { width: calc(62 * var(--u)); margin-bottom: auto; margin-top: auto; }
 
-/* Inicio: demostración en bucle (5 s) de la cámara reconociendo un producto. */
-.hero-demo { width: calc(70 * var(--u)); max-height: 34dvh; margin-block: auto; }
-.demo-product { animation: demo-product 5s var(--ease-out) infinite; }
-.demo-sweep { animation: demo-sweep 5s linear infinite; }
-.demo-corners { stroke: var(--paper-light); animation: demo-corners 5s step-end infinite; }
-.demo-tag { animation: demo-tag 5s var(--ease-out) infinite; }
-@keyframes demo-product {
-  0% { transform: translateX(-150px); opacity: 0; }
-  18%, 88% { transform: none; opacity: 1; }
-  100% { transform: none; opacity: 0; }
-}
-@keyframes demo-sweep {
-  0%, 18% { transform: translateY(0); opacity: 0; }
-  20% { opacity: 1; }
-  48% { transform: translateY(104px); opacity: 1; }
-  50%, 100% { transform: translateY(104px); opacity: 0; }
-}
-@keyframes demo-corners { 0% { stroke: var(--paper-light); } 52% { stroke: var(--ok); } 92% { stroke: var(--paper-light); } }
-@keyframes demo-tag {
-  0%, 52% { opacity: 0; transform: translateY(8px); }
-  58%, 88% { opacity: 1; transform: none; }
-  96%, 100% { opacity: 0; }
-}
-.how {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: calc(1.6 * var(--u));
+/* Inicio: pizarra de precios con lo que la cámara sabe reconocer (datos reales del catálogo).
+   Pasa despacio de abajo arriba; con movimiento reducido queda quieta y se desplaza a mano. */
+.start-copy { display: flex; flex-direction: column; align-items: center; gap: calc(2 * var(--u)); margin-top: auto; }
+.price-board {
+  width: 100%;
+  padding: calc(3.4 * var(--u)) calc(4.5 * var(--u)) calc(2 * var(--u));
+  border-radius: var(--radius);
+  background: var(--counter);
+  color: var(--paper-light);
   text-align: left;
-  font-size: calc(4 * var(--u));
+}
+.board-title {
+  margin: 0 0 calc(1.6 * var(--u));
+  font-size: max(12px, calc(3 * var(--u)));
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--paper-deep);
+}
+.board-window {
+  height: calc(5 * 8.4 * var(--u));
+  overflow: hidden;
+  mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
+}
+.board-list { list-style: none; margin: 0; padding: 0; }
+.board-row {
+  display: flex;
+  align-items: baseline;
+  gap: calc(2 * var(--u));
+  height: calc(8.4 * var(--u));
+  padding-top: calc(2 * var(--u));
+  font-size: calc(4.4 * var(--u));
   font-weight: 800;
 }
-.how-step { display: flex; align-items: center; gap: calc(2.4 * var(--u)); }
-.how-n {
-  width: calc(7 * var(--u));
-  aspect-ratio: 1;
-  flex: none;
-  display: grid;
-  place-items: center;
-  padding-top: calc(0.5 * var(--u));
-  border-radius: 50%;
-  background: var(--ink);
-  color: var(--paper-light);
-  font-size: calc(3.6 * var(--u));
-  font-weight: 900;
-}
+.board-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board-dots { flex: 1; min-width: calc(4 * var(--u)); border-bottom: calc(0.45 * var(--u)) dotted rgb(255 253 248 / 0.35); }
+.board-price { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.board-track.moving { animation: board-roll linear infinite; }
+@keyframes board-roll { to { transform: translateY(-50%); } }
 .stop-sign { width: calc(44 * var(--u)); margin-bottom: calc(4 * var(--u)); }
 
 /* Tablero de productos: letrero de destinos con cantidad en placa negra. */
@@ -1035,9 +1025,8 @@ body:has(.kiosk) {
 @media (prefers-reduced-motion: reduce) {
   .plate, .line, .scan-line, .qr-box, .live-dot, .added-tag, .weight-pending, .scan-result, .sweep, .ar-tag, .box-check { animation: none; }
   .corner { transition: none; }
-  .demo-product, .demo-sweep, .demo-corners, .demo-tag { animation: none; }
-  .demo-sweep { opacity: 0; }
-  .demo-corners { stroke: var(--ok); }
+  .board-track.moving { animation: none; }
+  .board-window { overflow-y: auto; mask-image: none; }
   .btn, .route-disc, .key, .scan-progress { transition: none; }
 }
 

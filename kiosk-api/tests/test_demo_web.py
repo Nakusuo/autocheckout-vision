@@ -569,3 +569,10 @@ def test_wallet_qr_is_served_as_a_lighter_webp_that_still_reads_the_same(tmp_pat
 
 def test_compact_qr_without_a_readable_image_keeps_the_original(tmp_path):
     assert compact_qr(tmp_path / "no-existe.png") is None
+
+
+def test_catalog_endpoint_lists_what_the_kiosk_recognizes(qr_file):
+    svc, http = client(qr_file)
+    body = http.get("/api/catalog").json()
+    assert {"sku", "name", "price_cents"} == set(body[0])
+    assert [p["sku"] for p in body] == [p.sku for p in svc.catalog.all()]
