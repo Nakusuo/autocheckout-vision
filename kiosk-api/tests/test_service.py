@@ -61,10 +61,10 @@ def test_happy_path_w1_to_w4_and_auto_reset():
     svc.tick()
     assert svc.snapshot()["screen"] == "W4"
 
-    clock.t = 9.9
+    clock.t = 29.9
     svc.tick()
     assert svc.snapshot()["screen"] == "W4"
-    clock.t = 10.0
+    clock.t = 30.0
     svc.tick()
     assert svc.snapshot()["screen"] == "W1"
 
@@ -568,16 +568,16 @@ def test_no_poll_before_one_second():
     assert gateway.polls == 1
 
 
-def test_auto_reset_happens_exactly_at_ten_seconds():
+def test_auto_reset_happens_exactly_at_thirty_seconds():
     svc, clock, gateway = paying()
     gateway.paid = True
     svc.tick()
     assert svc.snapshot()["screen"] == "W4"
     paid_at = clock.t
-    clock.t = paid_at + 9.99
+    clock.t = paid_at + 29.99
     svc.tick()
     assert svc.snapshot()["screen"] == "W4"
-    clock.t = paid_at + 10.0
+    clock.t = paid_at + 30.0
     svc.tick()
     assert svc.snapshot()["screen"] == "W1"
 
@@ -686,7 +686,7 @@ def test_paid_camera_purchase_reopens_camera_when_returning_to_start():
     svc.tick()
     assert svc.snapshot()["screen"] == "W4"
     assert not camera.active
-    clock.t = 10.0
+    clock.t = 30.0
     svc.tick()
     assert svc.snapshot()["screen"] == "W1"
     assert camera.active

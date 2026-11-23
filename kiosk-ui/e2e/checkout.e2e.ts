@@ -92,7 +92,7 @@ test("compra de W1 a W4 con trampa de peso, CORREGIR y pago por QR", async ({ pa
   await phone.close();
 
   // W4: ticket tras la confirmación firmada (JWT RS256) y boleta simulada del POS
-  await expect(page.getByRole("heading", { name: "Gracias por su compra" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "¡Gracias por tu compra!" })).toBeVisible();
   await expect(page.getByText("S/ 4.50")).toBeVisible();
   expect(receiptCount()).toBe(receiptsBefore + 1);
   const last = JSON.parse(readFileSync(RECEIPTS, "utf-8").trim().split("\n").at(-1)!);
@@ -169,7 +169,7 @@ test.describe("sin balanza (modo de la demo)", () => {
     await expect(phone.getByText("Pago realizado")).toBeVisible();
     await phone.close();
 
-    await expect(page.getByRole("heading", { name: "Gracias por su compra" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "¡Gracias por tu compra!" })).toBeVisible();
     await expect(page.getByText("S/ 4.50").first()).toBeVisible();
   });
 });

@@ -248,6 +248,10 @@ def create_app(
     async def start() -> dict:
         return act(service.start)
 
+    @app.post("/api/new-sale")
+    async def new_sale() -> dict:
+        return act(service.new_sale)
+
     @app.post("/api/confirm")
     async def confirm() -> dict:
         return act(service.confirm)

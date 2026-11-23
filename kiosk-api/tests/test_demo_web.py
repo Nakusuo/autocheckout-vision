@@ -208,11 +208,28 @@ def test_receipt_disappears_when_the_kiosk_returns_to_start():
     svc = make_service()
     to_payment(svc)
     svc.wallet_notification("Ana te yapeó S/ 2.80")
-    svc._clock.t += 11
+    svc._clock.t += 31
     svc.tick()
     snap = svc.snapshot()
     assert snap["screen"] == "W1"
     assert snap["receipt"] is None
+
+
+def test_receipt_shows_method_total_and_store_and_new_sale_goes_back():
+    svc = make_service(store_name="Bodega Don Lucho")
+    to_payment(svc)
+    svc.wallet_notification("Ana te yapeó S/ 2.80")
+    snap = svc.snapshot()
+    assert snap["store"] == "Bodega Don Lucho"
+    assert snap["receipt"]["method"] == "Yape (notificación)"
+    assert snap["receipt"]["total_cents"] == 280
+    svc._clock.t += 29
+    svc.tick()
+    assert svc.snapshot()["screen"] == "W4"  # 30 s para leerla o imprimirla
+    svc.new_sale()
+    assert svc.snapshot()["screen"] == "W1"
+    with pytest.raises(TransitionError):
+        svc.new_sale()  # solo desde la boleta
 
 
 def test_notification_needs_wallet_mode():
@@ -518,3 +535,11 @@ def test_frame_endpoint_logs_only_changes(qr_file, caplog):
         http.post("/api/vision/frame", content=jpeg(solid(color)), headers=headers)
     lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Recuadro")]
     assert [line.split(" (")[0] for line in lines] == ["Recuadro: CASINO-43", "Recuadro: RITZ-20"]
+
+
+def test_new_sale_endpoint_returns_to_start(qr_file):
+    svc, http = client(qr_file)
+    assert http.post("/api/new-sale").status_code == 409  # sin boleta en pantalla
+    to_payment(svc)
+    svc.wallet_notification("Juan te yapeó S/ 2.80")
+    assert http.post("/api/new-sale").json()["screen"] == "W1"

@@ -182,7 +182,7 @@ describe("PagoQrPropio", () => {
     expect(screen.getByText("S/ 2.80")).toBeInTheDocument();
     expect(screen.getByText("Escanea con Yape o Plin")).toBeInTheDocument();
     expect(screen.getByText("110 s")).toBeInTheDocument();
-    expect(screen.getByText("Esperando la confirmación del pago")).toBeInTheDocument();
+    expect(screen.getByText("Esperando tu pago. La pantalla avanza sola.")).toBeInTheDocument();
   });
 
   it("pide escribir el monto exacto, sin cortarlo en dos líneas", () => {
@@ -226,6 +226,37 @@ describe("Ticket con boleta", () => {
 
   it("sin nombre del pagador no muestra esa fila", () => {
     render(<Ticket snapshot={{ ...paid, receipt: { ...paid.receipt, payer: null } }} />);
-    expect(screen.queryByText("Pagó")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cliente")).not.toBeInTheDocument();
+  });
+
+  it("es una boleta completa: tienda, productos, cantidades, total y cómo se pagó", () => {
+    const snap = {
+      ...paid,
+      store: "Bodega Don Lucho",
+      lines: [{ sku: "A", name: "Glacitas 30 g", quantity: 2, unit_price_cents: 150 }],
+      total_cents: 300,
+      receipt: { ...paid.receipt, method: "Yape (notificación)", total_cents: 300 },
+    };
+    render(<Ticket snapshot={snap} />);
+    expect(screen.getByText("Bodega Don Lucho")).toBeInTheDocument();
+    expect(screen.getByText("Glacitas 30 g")).toBeInTheDocument();
+    expect(screen.getByText("S/ 1.50 c/u")).toBeInTheDocument();
+    expect(screen.getAllByText("S/ 3.00").length).toBe(2); // importe de la línea y total
+    expect(screen.getByText("Yape (notificación)")).toBeInTheDocument();
+    expect(screen.getByText(/Boleta simulada, sin validez ante SUNAT/)).toBeInTheDocument();
+  });
+
+  it("IMPRIMIR BOLETA abre la impresión y NUEVA COMPRA vuelve al inicio", async () => {
+    const print = vi.fn();
+    vi.stubGlobal("print", print);
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(paid)));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<Ticket snapshot={paid} />);
+    fireEvent.click(screen.getByRole("button", { name: "IMPRIMIR BOLETA" }));
+    expect(print).toHaveBeenCalledOnce();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "NUEVA COMPRA" })));
+    expect(fetchMock).toHaveBeenCalledWith("/api/new-sale", expect.objectContaining({ method: "POST" }));
+    expect(screen.getByText("La pantalla vuelve al inicio en 28 s")).toBeInTheDocument();
+    vi.unstubAllGlobals();
   });
 });

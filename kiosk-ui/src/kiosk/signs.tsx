@@ -7,7 +7,7 @@ type Props = { className?: string };
 export function CautionDiamond({ className }: Props) {
   return (
     <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-      <rect x="15" y="15" width="70" height="70" rx="6" transform="rotate(45 50 50)" fill="var(--sign-yellow)" stroke="var(--ink)" strokeWidth="5" />
+      <rect x="15" y="15" width="70" height="70" rx="6" transform="rotate(45 50 50)" fill="var(--saffron)" stroke="var(--ink)" strokeWidth="5" />
       <rect x="46" y="27" width="8" height="30" rx="3" fill="var(--ink)" />
       <circle cx="50" cy="68" r="5" fill="var(--ink)" />
     </svg>
@@ -17,9 +17,9 @@ export function CautionDiamond({ className }: Props) {
 export function StopOctagon({ className }: Props) {
   return (
     <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-      <polygon points="30,2 70,2 98,30 98,70 70,98 30,98 2,70 2,30" fill="var(--sign-red)" />
-      <polygon points="32,7 68,7 93,32 93,68 68,93 32,93 7,68 7,32" fill="none" stroke="var(--sign-white)" strokeWidth="3" />
-      <text x="50" y="61" textAnchor="middle" fontFamily="Overpass, sans-serif" fontWeight="900" fontSize="30" fill="var(--sign-white)">PARE</text>
+      <polygon points="30,2 70,2 98,30 98,70 70,98 30,98 2,70 2,30" fill="var(--chili)" />
+      <polygon points="32,7 68,7 93,32 93,68 68,93 32,93 7,68 7,32" fill="none" stroke="var(--paper)" strokeWidth="3" />
+      <text x="50" y="61" textAnchor="middle" fontFamily="Overpass, sans-serif" fontWeight="900" fontSize="30" fill="var(--paper)">PARE</text>
     </svg>
   );
 }
@@ -27,8 +27,8 @@ export function StopOctagon({ className }: Props) {
 export function CheckDisc({ className }: Props) {
   return (
     <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-      <circle cx="50" cy="50" r="46" fill="var(--ink)" />
-      <path d="M28 52 L44 67 L73 35" fill="none" stroke="var(--sign-white)" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="50" cy="50" r="46" fill="var(--leaf)" />
+      <path d="M28 52 L44 67 L73 35" fill="none" stroke="var(--paper-light)" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -74,13 +74,13 @@ export function HelpGlyph({ className }: Props) {
 export function TraySign({ className, scanning = false }: Props & { scanning?: boolean }) {
   return (
     <svg className={className} viewBox="0 0 200 200" aria-hidden="true" focusable="false">
-      <rect x="30" y="30" width="140" height="140" rx="12" transform="rotate(45 100 100)" fill="var(--sign-yellow)" stroke="var(--ink)" strokeWidth="8" />
+      <rect x="30" y="30" width="140" height="140" rx="12" transform="rotate(45 100 100)" fill="var(--saffron)" stroke="var(--ink)" strokeWidth="8" />
       <rect x="40" y="78" width="120" height="58" rx="8" fill="none" stroke="var(--ink)" strokeWidth="7" />
       <rect x="54" y="88" width="16" height="38" rx="5" fill="var(--ink)" />
       <rect x="58" y="81" width="8" height="9" rx="2" fill="var(--ink)" />
       <rect x="80" y="96" width="30" height="30" rx="3" fill="var(--ink)" />
       <path d="M120 126 L124 96 Q135 90 146 96 L150 126 Z" fill="var(--ink)" />
-      {scanning && <rect className="scan-line" x="40" y="78" width="120" height="5" fill="var(--sign-red)" />}
+      {scanning && <rect className="scan-line" x="40" y="78" width="120" height="5" fill="var(--chili)" />}
     </svg>
   );
 }
@@ -89,6 +89,18 @@ export function PlusGlyph({ className }: Props) {
   return (
     <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">
       <path d="M50 16 V84 M16 50 H84" fill="none" stroke="currentColor" strokeWidth="14" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Impresora de boletas: cuerpo, papel que sale por arriba y bandeja. */
+export function PrinterGlyph({ className }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+      <path d="M28 38 V12 H72 V38" fill="none" stroke="currentColor" strokeWidth="8" strokeLinejoin="round" />
+      <rect x="10" y="38" width="80" height="34" rx="7" fill="none" stroke="currentColor" strokeWidth="8" />
+      <path d="M28 60 H72 V88 H28 Z" fill="none" stroke="currentColor" strokeWidth="8" strokeLinejoin="round" />
+      <path d="M38 72 H62 M38 80 H56" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
     </svg>
   );
 }

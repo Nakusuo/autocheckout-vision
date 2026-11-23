@@ -1,18 +1,21 @@
 ---
-name: AutoCaja
-description: Quiosco de autocobro que se lee como señalética vial, en rojo, amarillo y blanco.
+name: Caserito
+description: Autocobro para la bodega del barrio, cálido y claro, en chili, azafrán, hoja y crema.
 colors:
-  sign-red: "#c8102e"
-  sign-red-press: "#9e0c24"
-  sign-yellow: "#ffc72c"
-  sign-yellow-soft: "#fff3cc"
-  sign-white: "#ffffff"
-  ink: "#141414"
-  ink-soft: "#4a4a4a"
-  rule: "#d9d6cf"
-  disabled-bg: "#e6e3dc"
-  disabled-ink: "#5c5a55"
-  asphalt: "#2a2a2a"
+  chili: "#d23d2d"
+  chili-press: "#a62e21"
+  saffron: "#f5c065"
+  saffron-soft: "#fbe6b8"
+  leaf: "#31603d"
+  leaf-soft: "#dde9d8"
+  paper: "#f8eecb"
+  paper-light: "#fffcf2"
+  ink: "#3a2622"
+  ink-soft: "#6e433d"
+  rule: "#e2d0a2"
+  disabled-bg: "#ebe1c4"
+  disabled-ink: "#6b5850"
+  counter: "#2e1e1b"
 typography:
   display:
     fontFamily: "Overpass, Segoe UI, system-ui, sans-serif"
@@ -58,21 +61,21 @@ spacing:
   tight: "2.4cqw"
 components:
   button-go:
-    backgroundColor: "{colors.sign-red}"
-    textColor: "{colors.sign-white}"
+    backgroundColor: "{colors.chili}"
+    textColor: "{colors.paper-light}"
     typography: "{typography.action}"
     rounded: "{rounded.plate}"
     height: "15cqw"
   button-go-hover:
-    backgroundColor: "{colors.sign-red-press}"
+    backgroundColor: "{colors.chili-press}"
   button-plain:
-    backgroundColor: "{colors.sign-white}"
+    backgroundColor: "{colors.paper-light}"
     textColor: "{colors.ink}"
     typography: "{typography.action}"
     rounded: "{rounded.plate}"
     height: "15cqw"
   button-help:
-    backgroundColor: "{colors.sign-white}"
+    backgroundColor: "{colors.paper-light}"
     textColor: "{colors.ink}"
     rounded: "{rounded.plate}"
     height: "11cqw"
@@ -80,29 +83,29 @@ components:
     backgroundColor: "{colors.disabled-bg}"
     textColor: "{colors.disabled-ink}"
   total-band:
-    backgroundColor: "{colors.sign-yellow}"
+    backgroundColor: "{colors.saffron}"
     textColor: "{colors.ink}"
     padding: "4cqw"
   alert:
-    backgroundColor: "{colors.sign-yellow-soft}"
+    backgroundColor: "{colors.saffron-soft}"
     textColor: "{colors.ink}"
     rounded: "{rounded.plate}"
   qty-badge:
     backgroundColor: "{colors.ink}"
-    textColor: "{colors.sign-white}"
+    textColor: "{colors.paper-light}"
     rounded: "{rounded.badge}"
     size: "8cqw"
 ---
 
-# Design System: AutoCaja
+# Design System: Caserito
 
 ## Overview
 
-**Creative North Star: "La placa de carretera"**
+**Creative North Star: "El mostrador de la bodega de confianza"**
 
-Cada estado del quiosco es una placa de señalización completa que se entiende de un vistazo, de pie y a la distancia de un brazo. El sistema toma su gramática de la señalética vial peruana: placas blancas con borde, discos numerados para la ruta, rombos amarillos para la precaución, el octógono rojo para el bloqueo total y la señal de velocidad para cada cuenta regresiva. Los colores son los de la tienda (rojo, amarillo y blanco), pero cada uno tiene un trabajo fijo.
+Cada estado es una tarjeta clara que se entiende de un vistazo, de pie y a la distancia de un brazo, con el trato cercano de la bodega del barrio: se le habla de tú al cliente y al final recibe su boleta como en el mostrador. De la etapa anterior se conservan las formas útiles de la señalética (discos numerados de la ruta, rombo de precaución, PARE para el bloqueo total), ahora en la paleta cálida de bodega.
 
-La pantalla es densa solo donde hace falta (la lista de productos) y el resto es aire y una acción. No se usa el nombre ni el logo de OXXO: la marca visible es AutoCaja.
+La pantalla es densa solo donde hace falta (la lista de productos) y el resto es aire y una acción. No se usa el nombre ni el logo de OXXO: la marca visible es Caserito.
 
 **Key Characteristics:**
 - Una placa por estado, que entra con un salto seco de arriba abajo.
@@ -114,15 +117,16 @@ La pantalla es densa solo donde hace falta (la lista de productos) y el resto es
 
 ## Colors
 
-Tres colores de señal sobre tinta casi negra, cada uno con un significado fijo.
+Paleta de bodega elegida por el usuario (2026-11-22): rojo chili, crema vainilla, azafrán, verde hoja y marrón. Cada color tiene un trabajo fijo.
 
-- **Rojo señal (`sign-red`)**: la acción principal (INICIAR, CONFIRMAR, PAGAR), el paso actual de la ruta, la palabra «Caja» del nombre, el aro de la señal de velocidad y el octógono de PARE. Al pasar el cursor o pulsar se usa `sign-red-press`.
-- **Amarillo señal (`sign-yellow`)**: los rombos de precaución, la franja bajo la cabecera, la banda del TOTAL y el aviso «Reconectando…». `sign-yellow-soft` es el fondo de las alertas, para que el texto negro largo se lea sin fatiga.
-- **Blanco placa (`sign-white`)**: la superficie de todo el quiosco.
-- **Tinta (`ink`, `ink-soft`)**: el texto, los bordes de placa, la insignia de cantidad y los pasos ya hechos. `ink-soft` es el texto secundario (8.9:1 sobre blanco).
-- **Asfalto (`asphalt`)**: el fondo alrededor de la placa cuando la pantalla vertical es más ancha que 9:16 (tablet, monitor girado). La vista interna `/ayuda` no lo usa.
+- **Chili (`chili`)**: la acción principal (INICIAR, CONFIRMAR, PAGAR, IMPRIMIR BOLETA), el paso actual de la ruta, el nombre del sistema y de la tienda en la boleta, y lo que detiene (PARE). Al pulsar, `chili-press`.
+- **Azafrán (`saffron`)**: lo que hay que mirar: la banda del TOTAL, la franja bajo la cabecera, los rombos de precaución. `saffron-soft` es el fondo de las alertas y el «hover» de los botones claros.
+- **Hoja (`leaf`)**: salió bien: pasos hechos, producto agregado, peso correcto, «Cobro exitoso» y el visto bueno.
+- **Crema (`paper`)** es la superficie del quiosco y de `/ayuda`; **papel (`paper-light`)** son las tarjetas, la boleta, los botones claros y el fondo del QR.
+- **Tinta (`ink`, `ink-soft`)**: marrón oscuro para el texto y los bordes; `ink-soft` (7:1 sobre crema) para lo secundario.
+- **Mostrador (`counter`)**: el fondo alrededor de la placa en pantallas verticales anchas.
 
-Los estados nunca dependen solo del color: el peso correcto lleva el disco con el visto bueno; el que no coincide, el rombo y la diferencia en gramos; lo deshabilitado cambia también el borde.
+Contraste medido: texto crema sobre chili 5,5:1, tinta suave sobre crema 7,1:1, tinta suave sobre azafrán 5:1, crema sobre hoja 6,3:1. Los estados nunca dependen solo del color: el peso correcto lleva el disco con el visto bueno; el que no coincide, el rombo y la diferencia en gramos.
 
 ## Typography
 
@@ -140,39 +144,40 @@ Columna única en 9:16: cabecera (nombre y ruta), placa del estado (flexible) y 
 
 ## Elevation & Depth
 
-Plano: la profundidad la dan los bordes de tinta, no las sombras. La única sombra es la del quiosco entero sobre el asfalto. La franja amarilla con su filo negro separa la cabecera del contenido.
+Plano: la profundidad la dan los bordes de tinta, no las sombras. Sombras solo con función: la del quiosco sobre el mostrador, la de la boleta (papel sobre la placa) y el canto inferior del botón principal, que se hunde al tocarlo. La franja azafrán separa la cabecera del contenido.
 
 ## Shapes
 
-- Placas y botones con radio `2cqw`; la placa del QR, una vez y media ese radio.
+- Placas y botones con radio `3cqw` (más amable que el de señal vial); la placa del QR, una vez y media ese radio.
 - Borde de placa de `0.7cqw` en tinta; el QR lleva `1cqw`.
-- Los botones de acción llevan el borde interior blanco de las señales (dos `inset box-shadow`).
+- El botón principal tiene un canto de `chili-press` debajo y baja `0.8cqw` al pulsarlo.
 - Formas de señal dibujadas como geometría SVG en `src/kiosk/signs.tsx`: rombo, octógono, disco de visto bueno, flecha, signo de ayuda y la bandeja con productos. Todas son `aria-hidden`; el texto lleva el significado.
 
 ## Components
 
-- **Ruta**: cuatro discos (Coloca, Confirma, Paga, Listo). El paso actual va en rojo, los hechos en tinta y los pendientes con aro. El número sale de `data-n` por CSS para no repetir cifras en el texto de la pantalla.
-- **Botón go**: placa roja de `15cqw` de alto con borde interior blanco y flecha. Al pulsar se encoge al 98 %. El foco es un anillo amarillo con filo negro.
-- **Botón plain**: placa blanca con borde de tinta (CORREGIR).
+- **Ruta**: cuatro discos (Coloca, Confirma, Paga, Listo). El paso actual va en chili, los hechos en hoja y los pendientes con aro. El número sale de `data-n` por CSS para no repetir cifras en el texto de la pantalla.
+- **Botón go**: placa chili de `15cqw` de alto con canto inferior y flecha (o ícono). El foco es un anillo azafrán con filo de tinta.
+- **Botón plain**: placa de papel con borde de tinta (CORREGIR, NUEVA COMPRA).
 - **Botón de ayuda**: placa blanca más baja, siempre al pie. Encima, «Ayuda en camino» en una banda de tinta.
 - **Tablero**: lista con la cantidad en una insignia negra, el nombre y el precio a la derecha, y la banda amarilla del TOTAL.
 - **Alerta**: placa amarilla clara con borde de tinta y rombo de precaución.
-- **Señal de velocidad**: disco blanco con aro rojo y la cifra en negro para los 120 s del pago y los 10 s del ticket.
+- **Señal de velocidad**: disco de papel con aro chili y la cifra en tinta para los 120 s del pago.
+- **Boleta** (W4): papel de ticketera con el nombre de la tienda (`KIOSK_TIENDA`, o «Caserito»), número, fecha, productos con cantidad, precio unitario e importe, la banda azafrán del total, cómo se pagó y quién pagó, y al pie «Boleta simulada, sin validez ante SUNAT». Queda 30 s; al lado, IMPRIMIR BOLETA (impresión del navegador; la hoja de impresión deja solo la boleta, en negro, a 80 mm) y NUEVA COMPRA.
 - **Fuera de servicio**: octógono rojo de PARE sobre el título.
 
 - **Escaneo en vivo, uno por uno** (W2): la píldora «En vivo» (punto rojo que late) junto al título. El cliente pasa cada producto frente a la cámara y se suma a la lista: la fila nueva se pone amarilla clara, la insignia de cantidad roja y la etiqueta «+ Agregado» flota en el margen superior (no cambia la altura). Cada línea tiene un botón cuadrado «−» para quitar una unidad. Mientras el producto llega a la bandeja se ve «Pesando la bandeja…» (aro que gira) y CONFIRMAR espera; «Revise su bandeja» solo aparece si la diferencia dura más de 2 s.
 - **Cancelar compra** (W2, W3 y QR): la acción más callada, texto subrayado sin placa, debajo de la acción principal. Vuelve al inicio y descarta la lista.
 - **Aviso de cámara** (W1 y W2): una línea pequeña con el ícono de cámara y la Ley 29733.
 
-**Vista de ayuda (`/ayuda`)**: misma paleta, tipografía y placas, pero a escala de escritorio (`rem`) y en una columna: tarjetas blancas con borde de tinta sobre fondo `#f3f1ec`, botones `pbtn` (rojo = acción principal) y el estado del quiosco como disco rojo con el código de pantalla. Estilos en `kiosk-ui/src/panels/panels.css`.
+**Vista de ayuda (`/ayuda`)**: misma paleta, tipografía y placas, pero a escala de escritorio (`rem`) y en una columna: tarjetas de papel con borde de tinta sobre fondo crema, las ventas de hoy con su detalle y «Aprobar pago» mientras el cliente paga, botones `pbtn` (rojo = acción principal) y el estado del quiosco como disco rojo con el código de pantalla. Estilos en `kiosk-ui/src/panels/panels.css`.
 
 Movimiento: la placa entra en 260 ms (clip de arriba abajo y un desplazamiento de 2cqw, curva de salida exponencial); las líneas nuevas entran desde la izquierda; la línea roja recorre la bandeja mientras se escanea. Con `prefers-reduced-motion` todo queda quieto.
 
 ## Do's and Don'ts
 
-- **Do** reservar el rojo para acciones y bloqueos, y el amarillo para precaución y el monto a pagar.
+- **Do** reservar el chili para acciones y bloqueos, el azafrán para el total y la precaución, y el verde hoja para lo que salió bien.
 - **Do** acompañar cada estado con forma y texto, no solo con color.
 - **Do** mantener los textos del SRS exactos; las pruebas los usan.
 - **Don't** usar el nombre ni el logo de OXXO sin autorización.
-- **Don't** añadir sombras, degradados o tarjetas dentro de la placa; la profundidad es el borde de tinta.
+- **Don't** añadir degradados ni sombras de adorno; las únicas sombras son las de la lista de Elevation.
 - **Don't** poner etiquetas pequeñas encima de los títulos.

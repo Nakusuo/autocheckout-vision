@@ -40,7 +40,7 @@ export function PagoQrPropio({ snapshot, offline }: { snapshot: Snapshot; offlin
         </ol>
         <div className="countdown">
           <p className="speed-sign">{left} s</p>
-          <p className="muted waiting">Esperando la confirmación del pago</p>
+          <p className="muted waiting">Esperando tu pago. La pantalla avanza sola.</p>
         </div>
         {error && <Alert>{error}</Alert>}
         <CancelButton disabled={offline || pending} onCancel={() => run("/api/cancel")} />

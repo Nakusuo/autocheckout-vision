@@ -154,10 +154,12 @@ describe("Kiosk", () => {
   it("W4 muestra agradecimiento, total y cuenta atrás", () => {
     const snap = { ...base, screen: "W4" as const, lines: [agua], item_count: 1, total_cents: 250, seconds_in_state: 3 };
     render(<Kiosk snapshot={snap} />);
-    expect(screen.getByText("Gracias por su compra")).toBeInTheDocument();
+    expect(screen.getByText("¡Gracias por tu compra!")).toBeInTheDocument();
     expect(screen.getByText("Agua")).toBeInTheDocument();
     expect(screen.getAllByText("S/ 2.50").length).toBeGreaterThan(0);
-    expect(screen.getByText("Volviendo al inicio en 7 s")).toBeInTheDocument();
+    expect(screen.getByText("La pantalla vuelve al inicio en 27 s")).toBeInTheDocument();
+    // Sin KIOSK_TIENDA, la boleta lleva el nombre del sistema (además de la cabecera)
+    expect(screen.getAllByText("Caserito")).toHaveLength(2);
   });
 
   it("FUERA_DE_SERVICIO avisa y mantiene la ayuda", () => {

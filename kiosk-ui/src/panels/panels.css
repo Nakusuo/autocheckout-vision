@@ -1,6 +1,6 @@
 /* Vista de ayuda del encargado (/ayuda): misma identidad que el quiosco, en formato de laptop.
    Tamaños en rem (no cqw): se usan con mouse, a distancia de escritorio. */
-body:has(.panel) { background: #f3f1ec; }
+body:has(.panel) { background: var(--paper); }
 
 .panel {
   min-height: 100vh;
@@ -14,8 +14,8 @@ body:has(.panel) { background: #f3f1ec; }
   align-items: center;
   gap: 1rem;
   padding: 0.9rem 1.5rem 0.8rem;
-  background: var(--sign-white);
-  border-bottom: 6px solid var(--sign-yellow);
+  background: var(--paper);
+  border-bottom: 6px solid var(--saffron);
   box-shadow: inset 0 -2px 0 var(--ink);
 }
 .panel-header .wordmark { font-size: 1.6rem; }
@@ -23,7 +23,7 @@ body:has(.panel) { background: #f3f1ec; }
   padding: 0.3rem 0.7rem 0.15rem;
   border-radius: 999px;
   background: var(--ink);
-  color: var(--sign-white);
+  color: var(--paper);
   font-size: 0.8rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -31,21 +31,21 @@ body:has(.panel) { background: #f3f1ec; }
 }
 .link-state { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 0.9rem; }
 .link-dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--disabled-ink); }
-.link-state.on .link-dot { background: #1f8a4c; }
-.link-state.off { color: var(--sign-red); }
-.link-state.off .link-dot { background: var(--sign-red); }
+.link-state.on .link-dot { background: var(--leaf); }
+.link-state.off { color: var(--chili); }
+.link-state.off .link-dot { background: var(--chili); }
 
 .panel-error {
   margin: 1rem 1.5rem 0;
   padding: 0.75rem 1rem;
   border: 2px solid var(--ink);
   border-radius: 10px;
-  background: var(--sign-yellow-soft);
+  background: var(--saffron-soft);
   font-weight: 700;
 }
 
 .card {
-  background: var(--sign-white);
+  background: var(--paper-light);
   border: 2px solid var(--ink);
   border-radius: 14px;
   padding: 1.1rem 1.25rem 1.25rem;
@@ -75,13 +75,13 @@ body:has(.panel) { background: #f3f1ec; }
   transition: background-color 150ms var(--ease-out), transform 100ms var(--ease-out);
 }
 .pbtn:active:not(:disabled) { transform: scale(0.98); }
-.pbtn.go { background: var(--sign-red); color: var(--sign-white); box-shadow: inset 0 0 0 3px var(--sign-red), inset 0 0 0 5px var(--sign-white); }
-.pbtn.go:hover { background: var(--sign-red-press); box-shadow: inset 0 0 0 3px var(--sign-red-press), inset 0 0 0 5px var(--sign-white); }
-.pbtn.plain { background: var(--sign-white); color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink); }
-.pbtn.plain:hover:not(:disabled) { background: #f3f1ec; }
+.pbtn.go { background: var(--chili); color: var(--paper); box-shadow: inset 0 0 0 3px var(--chili), inset 0 0 0 5px var(--paper); }
+.pbtn.go:hover { background: var(--chili-press); box-shadow: inset 0 0 0 3px var(--chili-press), inset 0 0 0 5px var(--paper); }
+.pbtn.plain { background: var(--paper-light); color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink); }
+.pbtn.plain:hover:not(:disabled) { background: var(--saffron-soft); }
 .pbtn:disabled { background: var(--disabled-bg); color: var(--disabled-ink); box-shadow: none; cursor: not-allowed; }
 .panel button:focus-visible, .panel a:focus-visible, .panel input:focus-visible {
-  outline: 3px solid var(--sign-yellow);
+  outline: 3px solid var(--saffron);
   outline-offset: 2px;
   box-shadow: 0 0 0 2px var(--ink);
 }
@@ -99,8 +99,8 @@ body:has(.panel) { background: #f3f1ec; }
   min-width: 2rem;
   padding: 0.25rem 0.6rem 0.1rem;
   border-radius: 999px;
-  background: var(--sign-red);
-  color: var(--sign-white);
+  background: var(--chili);
+  color: var(--paper);
   font-weight: 900;
   text-align: center;
 }
@@ -116,7 +116,7 @@ body:has(.panel) { background: #f3f1ec; }
   padding: 0.8rem 0.9rem;
   border: 2px solid var(--ink);
   border-radius: 12px;
-  background: var(--sign-yellow-soft);
+  background: var(--saffron-soft);
   animation: request-in 240ms var(--ease-out);
 }
 @keyframes request-in { from { opacity: 0; transform: translateY(-6px); } }
@@ -124,11 +124,11 @@ body:has(.panel) { background: #f3f1ec; }
 .request-info { display: flex; flex-direction: column; }
 .request-title { font-weight: 900; font-size: 1.1rem; }
 
-.request.sale { grid-template-columns: minmax(0, 1fr); background: var(--sign-white); }
-.card-paying { border-color: var(--sign-red); box-shadow: inset 0 0 0 2px var(--sign-red); }
+.request.sale { grid-template-columns: minmax(0, 1fr); background: var(--paper-light); }
+.card-paying { border-color: var(--chili); box-shadow: inset 0 0 0 2px var(--chili); }
 .card-paying p { margin: 0.4rem 0 0.8rem; }
 
-.card-down { border-color: var(--sign-red); box-shadow: inset 0 0 0 2px var(--sign-red); }
+.card-down { border-color: var(--chili); box-shadow: inset 0 0 0 2px var(--chili); }
 .down { display: flex; align-items: center; gap: 0.9rem; font-weight: 700; }
 .down p { margin: 0; }
 .down-icon { width: 3.5rem; flex: none; }

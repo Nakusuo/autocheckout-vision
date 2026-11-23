@@ -21,14 +21,14 @@ from kiosk.payments import (
     parse_wallet_notification,
     yape_message,
 )
-from kiosk.pos import SimulatedPos
+from kiosk.pos import SimulatedPos, payment_method
 from kiosk.scale import ScaleReader
 from kiosk.stability import StabilityFilter
 from kiosk.tray import Detector
 
 log = logging.getLogger(__name__)
 
-RESET_AFTER_S = 10.0
+RESET_AFTER_S = 30.0  # la boleta queda a la vista (y se puede imprimir); «Nueva compra» la cierra antes
 PAYMENT_TIMEOUT_S = 120.0
 POLL_EVERY_S = 1.0
 MAX_YAPE_ATTEMPTS = 3  # rechazos seguidos antes de pedir ayuda en caja
@@ -72,13 +72,16 @@ class KioskService:
         yape: YapeProvider | None = None,
         wallet_qr: str | None = None,
         browser_camera: bool = False,
+        store_name: str | None = None,
     ):
         """Medios de pago (uno a la vez; `gateway` y `verifier` solo se usan con el QR simulado):
         - `yape`: Yape vía Mercado Pago (celular + código de aprobación).
         - `wallet_qr`: URL de la imagen del QR propio de Yape/Plin del comercio; el pago se da por
           hecho con la notificación que llega al celular (`wallet_notification`).
         `browser_camera`: la cámara está en el navegador (o la app) y sugiere productos que el
-        cliente agrega con `add_product`."""
+        cliente agrega con `add_product`.
+        `store_name`: nombre de la bodega que encabeza la boleta (si no hay, la pantalla usa el
+        nombre del sistema)."""
         self.catalog = catalog
         self._detector = detector
         self._open_camera = getattr(detector, "open", None)
@@ -118,6 +121,7 @@ class KioskService:
         self._browser_camera = browser_camera
         self._receipt: dict | None = None  # boleta de la venta recién pagada (pantalla W4)
         self._payer: str | None = None
+        self._store_name = store_name
 
     def _do(self, action: Callable[[], None]) -> None:
         before = self.checkout.state
@@ -146,6 +150,10 @@ class KioskService:
         self._scanned = Counter()
         self._view = Counter()
         self._cart_changed()
+
+    def new_sale(self) -> None:
+        """El cliente toca «Nueva compra» en la boleta: vuelve al inicio sin esperar los 30 s."""
+        self._do(self.checkout.reset)
 
     def confirm(self) -> None:
         self._do(self.checkout.confirm)
@@ -619,10 +627,13 @@ class KioskService:
                     "number": self._receipt["number"],
                     "issued_at": self._receipt["issued_at"],
                     "payer": self._payer,
+                    "method": payment_method(self._receipt["charge_id"]),
+                    "total_cents": self._receipt["total_cents"],
                 }
                 if self._receipt is not None
                 else None
             ),
             "payment_error": self._yape_error,
             "payment_processing": self._yape_busy,
+            "store": self._store_name,
         }

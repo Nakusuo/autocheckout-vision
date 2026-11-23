@@ -1,3 +1,4 @@
+import { BRAND } from "../brand";
 import type { Snapshot } from "../api";
 import { HelpButton } from "./HelpButton";
 import { CameraGlyph, CautionDiamond } from "./signs";
@@ -55,7 +56,7 @@ function Screen({ snapshot, offline }: { snapshot: Snapshot; offline: boolean })
         <Pago snapshot={snapshot} offline={offline} />
       );
     case "W4":
-      return <Ticket snapshot={snapshot} />;
+      return <Ticket snapshot={snapshot} offline={offline} />;
     case "FUERA_DE_SERVICIO":
       return <FueraDeServicio />;
   }
@@ -66,7 +67,7 @@ export function Kiosk({ snapshot, connected = true }: { snapshot: Snapshot; conn
   return (
     <main className="kiosk">
       <header className="kiosk-header">
-        <span className="wordmark">Auto<span>Caja</span></span>
+        <span className="wordmark">{BRAND}</span>
         {step > 0 && <Route current={step} />}
       </header>
       {!connected && (
