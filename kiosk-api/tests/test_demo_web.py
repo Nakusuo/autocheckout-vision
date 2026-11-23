@@ -6,7 +6,13 @@ import pytest
 from fastapi.testclient import TestClient
 from payment_helpers import FakeGateway
 
-from kiosk.app import create_app, notifier_problem, notifier_token, parse_notifier_body
+from kiosk.app import (
+    compact_qr,
+    create_app,
+    notifier_problem,
+    notifier_token,
+    parse_notifier_body,
+)
 from kiosk.catalog import Catalog, Product
 from kiosk.checkout import TransitionError
 from kiosk.payments import WalletNotice, parse_wallet_notification
@@ -419,8 +425,8 @@ def test_wallet_qr_image_is_served(qr_file):
     _, http = client(qr_file)
     r = http.get("/api/pay/wallet-qr")
     assert r.status_code == 200
-    assert r.headers["content-type"] == "image/png"
-    assert r.headers["cache-control"] == "no-store"
+    assert r.headers["content-type"] == "image/png"  # sin QR legible: el archivo tal cual
+    assert r.headers["cache-control"] == "public, max-age=600"
 
 
 def test_simulated_notification_pays(qr_file):
@@ -543,3 +549,23 @@ def test_new_sale_endpoint_returns_to_start(qr_file):
     to_payment(svc)
     svc.wallet_notification("Juan te yapeó S/ 2.80")
     assert http.post("/api/new-sale").json()["screen"] == "W1"
+
+
+def test_wallet_qr_is_served_as_a_lighter_webp_that_still_reads_the_same(tmp_path):
+    qr = cv2.QRCodeEncoder.create().encode("https://qr.yape.pe/ejemplo-comercio")
+    big = cv2.resize(qr, None, fx=12, fy=12, interpolation=cv2.INTER_NEAREST)
+    path = tmp_path / "yape-qr.png"
+    cv2.imwrite(str(path), cv2.cvtColor(big, cv2.COLOR_GRAY2BGR))
+    data, etag = compact_qr(path)
+    decoded = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    assert cv2.QRCodeDetector().detectAndDecode(decoded)[0] == "https://qr.yape.pe/ejemplo-comercio"
+    assert etag.startswith('"')
+    _, http = client(path)
+    r = http.get("/api/pay/wallet-qr")
+    assert r.headers["content-type"] == "image/webp"
+    assert r.headers["etag"] == etag
+    assert r.content == data
+
+
+def test_compact_qr_without_a_readable_image_keeps_the_original(tmp_path):
+    assert compact_qr(tmp_path / "no-existe.png") is None

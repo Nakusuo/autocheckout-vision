@@ -186,3 +186,12 @@ describe("Kiosk", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 });
+
+describe("Kiosk precarga el QR de Yape", () => {
+  it("pide la imagen del QR antes de la pantalla de pago", () => {
+    render(<Kiosk snapshot={{ ...base, wallet_qr: "/api/pay/wallet-qr", payment_method: "yape-qr" }} />);
+    const link = document.head.querySelector('link[rel="preload"][href="/api/pay/wallet-qr"]');
+    expect(link).not.toBeNull();
+    expect(link).toHaveAttribute("as", "image");
+  });
+});

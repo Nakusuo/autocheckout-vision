@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import hmac
 import json
 import logging
@@ -12,7 +13,7 @@ from urllib.parse import parse_qs
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, StringConstraints
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.staticfiles import StaticFiles
 
 from kiosk.checkout import State, TransitionError
@@ -59,6 +60,32 @@ class YapeIn(BaseModel):
 
     phone: Annotated[str, StringConstraints(pattern=r"^\d{9}$")]
     otp: Annotated[str, StringConstraints(pattern=r"^\d{6}$")]
+
+
+def compact_qr(path: Path) -> tuple[bytes, str] | None:
+    """Versión WebP (calidad 90) del QR del comercio, ~5 veces más liviana que la captura PNG.
+
+    Solo se usa si OpenCV está instalado y el QR comprimido se lee igual que el original; si no,
+    se sirve el archivo tal cual. Devuelve (bytes, ETag)."""
+    try:
+        import cv2  # extra «vision»: sin él se sirve el original
+    except ImportError:
+        return None
+    image = cv2.imread(str(path))
+    if image is None:
+        return None
+    ok, buf = cv2.imencode(".webp", image, [cv2.IMWRITE_WEBP_QUALITY, 90])
+    if not ok:
+        return None
+    detector = cv2.QRCodeDetector()
+    original = detector.detectAndDecode(image)[0]
+    back = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+    compressed = detector.detectAndDecode(back)[0] if back is not None else ""
+    if not original or compressed != original:
+        log.warning("El QR comprimido no se lee igual que el original: se sirve el archivo tal cual")
+        return None
+    data = buf.tobytes()
+    return data, f'"{hashlib.sha256(data).hexdigest()[:16]}"'
 
 
 def notifier_token(authorization: str | None) -> str | None:
@@ -387,10 +414,17 @@ def create_app(
             }
 
     if wallet_qr_file is not None:
+        compact = compact_qr(wallet_qr_file)
+        # El navegador la guarda 10 min: la pantalla de pago no espera la descarga en cada compra
+        # (la interfaz además la precarga). Si el comercio cambia su QR, se ve tras ese tiempo.
+        qr_cache = {"Cache-Control": "public, max-age=600"}
 
-        @app.get("/api/pay/wallet-qr")
-        async def wallet_qr() -> FileResponse:
-            return FileResponse(wallet_qr_file, headers={"Cache-Control": "no-store"})
+        @app.get("/api/pay/wallet-qr", response_model=None)
+        async def wallet_qr() -> Response | FileResponse:
+            if compact is not None:
+                data, etag = compact
+                return Response(data, media_type="image/webp", headers={**qr_cache, "ETag": etag})
+            return FileResponse(wallet_qr_file, headers=qr_cache)
 
     def notify(text: str, simulated: bool = False) -> dict:
         try:

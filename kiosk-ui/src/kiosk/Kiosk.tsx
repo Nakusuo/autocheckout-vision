@@ -1,4 +1,5 @@
 import { BRAND } from "../brand";
+import { preload } from "react-dom";
 import type { Snapshot } from "../api";
 import { HelpButton } from "./HelpButton";
 import { CameraGlyph, CautionDiamond } from "./signs";
@@ -64,6 +65,9 @@ function Screen({ snapshot, offline }: { snapshot: Snapshot; offline: boolean })
 
 export function Kiosk({ snapshot, connected = true }: { snapshot: Snapshot; connected?: boolean }) {
   const step = STEP_OF[snapshot.screen];
+  // El QR de Yape se descarga desde el inicio (y el navegador lo guarda 10 min): al llegar a la
+  // pantalla de pago ya está listo, aunque la conexión del celular sea lenta.
+  if (snapshot.wallet_qr) preload(snapshot.wallet_qr, { as: "image", fetchPriority: "low" });
   return (
     <main className="kiosk">
       <header className="kiosk-header">
