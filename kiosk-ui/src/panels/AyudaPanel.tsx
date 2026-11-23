@@ -90,6 +90,8 @@ export function AyudaPanel() {
   const [needKey, setNeedKey] = useState(false);
   const [keyDraft, setKeyDraft] = useState("");
   const [sales, setSales] = useState<Sales | null>(null);
+  // «Aprobar pago» emite la boleta y no se deshace: pide un segundo toque para confirmar.
+  const [confirming, setConfirming] = useState(false);
 
   const toggleSound = () => {
     const next = !sound;
@@ -206,13 +208,15 @@ export function AyudaPanel() {
     return () => clearInterval(poll);
   }, [loadSales]);
 
-  const approve = () =>
-    caja("POST", "/api/caja/accept-payment")
+  const approve = () => {
+    setConfirming(false);
+    return caja("POST", "/api/caja/accept-payment")
       .then(() => {
         setError(null);
         return loadSales();
       })
       .catch(fail);
+  };
 
   const review = (id: number) =>
     caja<SecurityAlert[]>("DELETE", `/api/alerts/${id}`).then(applyAlerts).catch(fail);
@@ -222,6 +226,8 @@ export function AyudaPanel() {
   const recover = () => caja("POST", "/api/recover").then(() => setError(null)).catch(fail);
   const down = snapshot?.screen === "FUERA_DE_SERVICIO";
   const paying = snapshot?.screen === "QR";
+  // Si el cliente pagó, canceló o venció el tiempo, la confirmación pendiente ya no vale.
+  if (!paying && confirming) setConfirming(false);
 
   return (
     <div className="panel">
@@ -261,12 +267,30 @@ export function AyudaPanel() {
             <div className="card-head">
               <h2 className="card-title">Cliente pagando {formatPEN(snapshot.total_cents)}</h2>
             </div>
-            <p className="muted">
-              Si ya ves el Yape por este monto en tu celular y la pantalla no avanza, apruébalo aquí.
-            </p>
-            <button type="button" className="pbtn go" onClick={approve}>
-              Aprobar pago
-            </button>
+            {confirming ? (
+              <>
+                <p className="confirm-text">
+                  ¿Ya ves en tu celular el Yape por {formatPEN(snapshot.total_cents)}? Se emitirá la boleta y no se puede deshacer.
+                </p>
+                <div className="confirm-actions">
+                  <button type="button" className="pbtn go" onClick={approve}>
+                    Sí, aprobar {formatPEN(snapshot.total_cents)}
+                  </button>
+                  <button type="button" className="pbtn plain" onClick={() => setConfirming(false)}>
+                    No, volver
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="muted">
+                  Si ya ves el Yape por este monto en tu celular y la pantalla no avanza, apruébalo aquí.
+                </p>
+                <button type="button" className="pbtn go" onClick={() => setConfirming(true)}>
+                  Aprobar pago
+                </button>
+              </>
+            )}
           </section>
         )}
         {!needKey && (

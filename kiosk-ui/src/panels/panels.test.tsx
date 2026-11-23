@@ -204,7 +204,25 @@ describe("AyudaPanel", () => {
     ws.send({ ...snap, state: "PAYING", screen: "QR", total_cents: 150 });
     expect(screen.getByText("Cliente pagando S/ 1.50")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Aprobar pago" }));
+    expect(calls).not.toContain("POST /api/caja/accept-payment"); // primero pide confirmar
+    fireEvent.click(screen.getByRole("button", { name: "No, volver" }));
+    fireEvent.click(screen.getByRole("button", { name: "Aprobar pago" }));
+    expect(screen.getByText(/Se emitirá la boleta y no se puede deshacer/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sí, aprobar S/ 1.50" }));
     await waitFor(() => expect(calls).toContain("POST /api/caja/accept-payment"));
+  });
+
+  it("la confirmación pendiente se descarta si el cliente sale del pago", () => {
+    stubFetch(() => []);
+    render(<AyudaPanel />);
+    const ws = FakeSocket.all[0];
+    ws.open();
+    ws.send({ ...snap, state: "PAYING", screen: "QR", total_cents: 150 });
+    fireEvent.click(screen.getByRole("button", { name: "Aprobar pago" }));
+    ws.send({ ...snap, state: "IDLE", screen: "W1" });
+    ws.send({ ...snap, state: "PAYING", screen: "QR", total_cents: 150 });
+    expect(screen.getByRole("button", { name: "Aprobar pago" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Sí, aprobar/ })).not.toBeInTheDocument();
   });
 
   it("muestra las ventas de hoy con el detalle, quién pagó y cómo", async () => {

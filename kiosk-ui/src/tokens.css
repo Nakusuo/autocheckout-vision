@@ -116,7 +116,7 @@ body:has(.kiosk) {
 }
 .route-disc::before { content: attr(data-n); padding-top: calc(0.4 * var(--u)); }
 .route-label {
-  font-size: max(11px, calc(2.4 * var(--u)));
+  font-size: max(12px, calc(2.4 * var(--u)));
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -280,8 +280,8 @@ body:has(.kiosk) {
 
 .line.removable { grid-template-columns: auto 1fr auto auto; }
 .line-remove {
-  width: calc(8 * var(--u));
-  height: calc(8 * var(--u));
+  width: max(44px, calc(8 * var(--u)));
+  height: max(44px, calc(8 * var(--u)));
   padding: 0;
   display: grid;
   place-items: center;
@@ -297,10 +297,10 @@ body:has(.kiosk) {
 }
 .line-remove:hover:not(:disabled) { background: var(--saffron-soft); }
 .line-remove:disabled { border-color: var(--disabled-bg); color: var(--disabled-ink); cursor: not-allowed; }
-.line-remove:focus-visible { outline: calc(0.8 * var(--u)) solid var(--saffron); outline-offset: calc(0.3 * var(--u)); }
+.line-remove:focus-visible { outline: calc(0.8 * var(--u)) solid var(--ink); outline-offset: calc(0.3 * var(--u)); }
 /* Cancelar: la acción más callada de la pantalla, texto subrayado sin placa. */
 .btn-cancel {
-  min-height: calc(9 * var(--u));
+  min-height: max(44px, calc(9 * var(--u)));
   padding-top: calc(0.8 * var(--u));
   background: transparent;
   color: var(--ink-soft);
@@ -324,7 +324,7 @@ body:has(.kiosk) {
   border-radius: calc(0.8 * var(--u));
   background: var(--leaf);
   color: var(--paper-light);
-  font-size: max(10.5px, calc(2.6 * var(--u)));
+  font-size: max(12px, calc(2.6 * var(--u)));
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -402,7 +402,7 @@ body:has(.kiosk) {
   transition: transform 120ms var(--ease-out), background-color 160ms var(--ease-out);
 }
 .btn:active:not(:disabled) { transform: scale(0.98); }
-.btn:focus-visible { outline: calc(1.2 * var(--u)) solid var(--saffron); outline-offset: calc(0.6 * var(--u)); box-shadow: 0 0 0 calc(0.6 * var(--u)) var(--ink); }
+.btn:focus-visible { outline: calc(1.2 * var(--u)) solid var(--ink); outline-offset: calc(0.6 * var(--u)); box-shadow: 0 0 0 calc(0.6 * var(--u)) var(--saffron); }
 .btn-icon { width: calc(6.4 * var(--u)); flex: none; margin-top: calc(-1.2 * var(--u)); }
 
 .btn-go {
@@ -455,7 +455,7 @@ body:has(.kiosk) {
   background: var(--paper);
 }
 .btn-help {
-  min-height: calc(11 * var(--u));
+  min-height: max(44px, calc(11 * var(--u)));
   font-size: calc(4.2 * var(--u));
   background: var(--paper-light);
   color: var(--ink);
@@ -562,10 +562,10 @@ body:has(.kiosk) {
   touch-action: manipulation;
 }
 .yape-field.active { background: var(--saffron); box-shadow: inset 0 0 0 calc(1.2 * var(--u)) var(--ink); }
-.yape-field:focus-visible { outline: calc(1.2 * var(--u)) solid var(--saffron); outline-offset: calc(0.6 * var(--u)); }
+.yape-field:focus-visible { outline: calc(1.2 * var(--u)) solid var(--ink); outline-offset: calc(0.6 * var(--u)); }
 .yape-field:disabled { cursor: not-allowed; opacity: 0.7; }
 .yape-field-label {
-  font-size: max(11px, calc(2.8 * var(--u)));
+  font-size: max(12px, calc(2.8 * var(--u)));
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -576,7 +576,7 @@ body:has(.kiosk) {
 .yape-field-value { font-size: calc(5.6 * var(--u)); font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(1.6 * var(--u)); }
 .key {
-  min-height: calc(10.6 * var(--u));
+  min-height: max(48px, calc(10.6 * var(--u)));
   border: 0;
   border-radius: var(--radius);
   background: var(--paper-light);
@@ -594,7 +594,7 @@ body:has(.kiosk) {
 .key-text { font-size: calc(4.2 * var(--u)); letter-spacing: 0.04em; }
 .key-icon { width: calc(8 * var(--u)); vertical-align: middle; }
 .key:active:not(:disabled) { transform: scale(0.96); background: var(--saffron-soft); }
-.key:focus-visible { outline: calc(1.2 * var(--u)) solid var(--saffron); outline-offset: calc(0.4 * var(--u)); }
+.key:focus-visible { outline: calc(1.2 * var(--u)) solid var(--ink); outline-offset: calc(0.4 * var(--u)); }
 .key:disabled { background: var(--disabled-bg); color: var(--disabled-ink); cursor: not-allowed; }
 .screen-yape .hint { text-align: center; }
 .screen-yape .pay-hint { text-align: center; font-size: calc(4.4 * var(--u)); }
@@ -672,10 +672,10 @@ body:has(.kiosk) {
 @media (orientation: portrait) {
   .screen-scan-web { gap: calc(2.2 * var(--u)); padding-top: calc(3.4 * var(--u)); }
   .screen-scan-web .title { font-size: calc(7 * var(--u)); }
-  .screen-scan-web .lines { max-height: calc(25 * var(--u)); }
+  .screen-scan-web .lines { max-height: max(calc(25 * var(--u)), 104px); }
   .screen-scan-web .line { padding: calc(2.2 * var(--u)) calc(3 * var(--u)) calc(1.6 * var(--u)); font-size: calc(3.9 * var(--u)); }
   .screen-scan-web .line-qty { min-width: calc(7 * var(--u)); width: auto; height: calc(7 * var(--u)); }
-  .screen-scan-web .line-remove { width: calc(7 * var(--u)); min-width: calc(7 * var(--u)); height: calc(7 * var(--u)); }
+  .screen-scan-web .line-remove { width: max(44px, calc(7 * var(--u))); min-width: max(44px, calc(7 * var(--u))); height: max(44px, calc(7 * var(--u))); }
   .screen-scan-web .total { padding: calc(2 * var(--u)) calc(3 * var(--u)) calc(1.6 * var(--u)); }
   .screen-scan-web .total-amount { font-size: calc(6.4 * var(--u)); }
   /* CANCELAR a la izquierda (callado) y CONFIRMAR a la derecha (la acción). */
@@ -759,7 +759,7 @@ body:has(.kiosk) {
 .receipt-items { width: 100%; border-collapse: collapse; }
 .receipt-items th {
   padding-bottom: calc(1 * var(--u));
-  font-size: max(11px, calc(2.8 * var(--u)));
+  font-size: max(12px, calc(2.8 * var(--u)));
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -788,7 +788,7 @@ body:has(.kiosk) {
 .receipt-foot {
   padding-top: calc(2 * var(--u));
   border-top: calc(0.4 * var(--u)) dashed var(--ink-soft);
-  font-size: max(11px, calc(2.8 * var(--u)));
+  font-size: max(12px, calc(2.8 * var(--u)));
   color: var(--ink-soft);
   text-align: center;
   text-wrap: balance;
