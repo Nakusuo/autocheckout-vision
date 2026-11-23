@@ -30,7 +30,8 @@ function receiptCount(): number {
 }
 
 test.beforeEach(async ({ request }) => {
-  // Si una venta anterior quedó en W4, el quiosco vuelve solo a W1 a los 10 s.
+  // Si una venta anterior quedó en la boleta (W4), se cierra con NUEVA COMPRA.
+  if ((await kioskState(request)).screen === "W4") await request.post("/api/new-sale");
   await expect
     .poll(async () => (await kioskState(request)).screen, {
       message: "El quiosco debe estar en W1; reinicia kiosk-api si quedó a medias",
@@ -98,8 +99,9 @@ test("compra de W1 a W4 con trampa de peso, CORREGIR y pago por QR", async ({ pa
   const last = JSON.parse(readFileSync(RECEIPTS, "utf-8").trim().split("\n").at(-1)!);
   expect(last.total_cents).toBe(450);
 
-  // A los 10 s vuelve solo a W1 (3.4.4.4)
-  await expect(page.getByText(W1_TEXT)).toBeVisible({ timeout: 15_000 });
+  // La boleta queda 30 s (o hasta NUEVA COMPRA) y vuelve a W1
+  await page.getByRole("button", { name: "NUEVA COMPRA" }).click();
+  await expect(page.getByText(W1_TEXT)).toBeVisible();
 });
 
 test("SOLICITAR AYUDA llega a la vista de ayuda y se atiende", async ({ page, context }) => {
@@ -109,8 +111,9 @@ test("SOLICITAR AYUDA llega a la vista de ayuda y se atiende", async ({ page, co
 
   const ayuda = await context.newPage();
   await ayuda.goto("/ayuda");
-  await expect(ayuda.getByRole("listitem")).toHaveCount(1);
-  await expect(ayuda.getByRole("listitem")).toContainText("W1");
+  const pedidos = ayuda.getByRole("list", { name: "Solicitudes de ayuda" }).getByRole("listitem");
+  await expect(pedidos).toHaveCount(1);
+  await expect(pedidos).toContainText("W1");
   await ayuda.getByRole("button", { name: "Atendido" }).click();
   await expect(ayuda.getByText("Sin solicitudes")).toBeVisible();
   await expect(page.getByText("Ayuda en camino")).toBeHidden();
@@ -171,5 +174,6 @@ test.describe("sin balanza (modo de la demo)", () => {
 
     await expect(page.getByRole("heading", { name: "¡Gracias por tu compra!" })).toBeVisible();
     await expect(page.getByText("S/ 4.50").first()).toBeVisible();
+    await page.getByRole("button", { name: "NUEVA COMPRA" }).click();
   });
 });

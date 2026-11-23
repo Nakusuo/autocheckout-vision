@@ -310,7 +310,7 @@ export function AyudaPanel() {
               <p className="muted">Cuando un cliente pulse SOLICITAR AYUDA aparecerá aquí.</p>
             </div>
           )}
-          <ul className="requests">
+          <ul className="requests" aria-label="Solicitudes de ayuda">
             {items.map((r) => (
               <li key={r.id} className="request">
                 <CautionDiamond className="request-icon" />
@@ -332,7 +332,7 @@ export function AyudaPanel() {
           {alerts.length === 0 ? (
             <p className="muted">Sin alertas. Aparece una si algo no se reconoce o si hay un pago que revisar.</p>
           ) : (
-            <ul className="requests">
+            <ul className="requests" aria-label="Alertas de seguridad">
               {alerts.map((a) => (
                 <li key={a.id} className="request request-alert">
                   <StopOctagon className="request-icon" />
@@ -359,7 +359,7 @@ export function AyudaPanel() {
           {!sales || sales.receipts.length === 0 ? (
             <p className="muted">Sin ventas todavía. Cada venta cobrada aparece aquí con su detalle.</p>
           ) : (
-            <ul className="requests">
+            <ul className="requests" aria-label="Ventas de hoy">
               {sales.receipts.map((v) => (
                 <li key={v.number} className="request sale">
                   <div className="request-info">
