@@ -29,7 +29,7 @@ El QR del comercio va en `privado/yape-qr.png` (fuera de git; `chmod a+r` para q
 2. Pones un producto dentro del recuadro y lo mantienes quieto. La pantalla muestra su nombre con una barra que se llena y, cuando lo reconoce igual **3 veces seguidas** (~1,2 s), lo **agrega solo** y avisa «Agregado: …». Para el siguiente, saca el producto y pon otro. Para una segunda unidad del mismo, sácalo del recuadro y vuelve a meterlo. Si se equivoca, «−» quita uno.
 3. **CONFIRMAR** → **PAGAR**. Aparece tu QR de Yape con el total.
 4. La otra persona escanea el QR con su Yape o Plin y paga ese monto.
-5. Llega la notificación de pago al celular del comercio. **Hoy nada la reenvía al quiosco:** eso lo hará la app Android (pendiente), así que con un yapeo real la pantalla sigue esperando hasta que vence el tiempo. Cuando llegue la notificación con el monto exacto, la pantalla muestra **«Cobro exitoso»**, la boleta (número B001, fecha, quién pagó) y la lista. A los 10 s vuelve al inicio.
+5. Llega la notificación de pago al celular del comercio. **La reenvía al quiosco MacroDroid** (§4.1) mientras no exista la app Android; sin eso, la pantalla espera hasta que vence el tiempo o hasta que la caja pulsa «Aprobar pago» en `/ayuda`. Cuando llegue la notificación con el monto exacto, la pantalla muestra **«Cobro exitoso»**, la boleta (número B001, fecha, quién pagó) y la lista. A los 10 s vuelve al inicio.
 
 ## 3. Reconocimiento con recuadro guía
 
@@ -54,7 +54,29 @@ El QR del comercio va en `privado/yape-qr.png` (fuera de git; `chmod a+r` para q
 - El pago se da por hecho cuando llega una **notificación** con el **monto exacto** del total mientras la pantalla espera. Endpoints:
   - `POST /sim/wallet-notification {"text": "..."}`: **simulación** para pruebas automáticas, sin pantalla. Solo existe con `KIOSK_SIMULAR_PAGO=on` (apagado por defecto, también en la demo).
   - `POST /api/pay/notification` con `Authorization: Bearer <KIOSK_NOTIFIER_KEY>`: para la futura app Android. Sin la clave responde 401.
-- El intérprete (`parse_wallet_notification` en `kiosk-api/src/kiosk/payments.py`) toma el monto «S/ …» y, si lo encuentra, el nombre. **Los formatos son supuestos:** no se han visto notificaciones reales de Yape ni de Plin en este proyecto. Hay que confirmarlos con avisos reales antes de la app.
+- El intérprete (`parse_wallet_notification` en `kiosk-api/src/kiosk/payments.py`) toma el monto «S/ …» y, si los encuentra, el nombre y el código de seguridad. **Formato de Yape verificado con una notificación real** (2026-11-20): título «Confirmación de Pago» y texto «Alessandra Rod\* te envió un pago por S/ 1.5. El cód. de seguridad es: 305» (el monto puede venir sin el cero final). Otra variante real: «Yape! NOMBRE APELLIDOS te envió un pago por S/ 1.50», sin código. Plin y otras variantes de Yape siguen sin verificar.
+- Si llega un Yape que **no calza** (no hay compra esperando o el monto es distinto), la caja ve una alerta en `/ayuda` con el nombre, el monto y el código, para devolverlo o cobrarlo a mano. No se descarta sola.
+- **Caja (`/ayuda`)**: muestra las **ventas de hoy** con el detalle (productos, total, hora, quién pagó y cómo: «Yape (notificación)», «Aprobado en caja» o «Simulado»). Mientras el cliente está en la pantalla de pago aparece **«Aprobar pago»**: es el respaldo si el encargado ve el Yape en su celular y la notificación no llegó (la boleta queda con `charge_id` «caja-billetera-…»).
+
+### 4.1 Reenviar la notificación con MacroDroid (sin programar)
+
+Mientras no exista la app Android, la app gratuita **MacroDroid** (Play Store) hace lo mismo en el celular que recibe los Yape:
+
+1. MacroDroid → **Agregar macro**.
+2. **Disparador**: *Notificación* → *Notificación recibida* → aplicación **Yape** → contenido que contenga `te envió un pago`.
+3. **Acción**: *Web* → **Solicitud HTTP**:
+   - Método `POST`, URL `https://<tu-túnel>.trycloudflare.com/api/pay/notification` (con el plan B la dirección cambia en cada arranque: hay que actualizarla).
+   - Cabecera `Authorization` = `Bearer <KIOSK_NOTIFIER_KEY>` (está en `.env`).
+   - Cuerpo, tipo `application/json`: `{"text": "[notification]"}`. Se usa solo el texto de la notificación (sin el título) para que el nombre se lea bien.
+4. Dar a MacroDroid el permiso de **acceso a notificaciones** y quitarle el **ahorro de batería**.
+5. Probar: una compra, pagar el monto exacto y ver que la pantalla pasa a «Cobro exitoso» y la venta aparece en `/ayuda`.
+
+**Qué se probó**: el 2026-11-20 se envió el texto real a `/api/pay/notification` y se interpretó bien (S/ 1.50, «Alessandra Rod\*», código 305). El **2026-11-22 se probó de punta a punta**: compra de S/ 1.50 en el quiosco por el túnel, pago real con Yape, MacroDroid reenvió la notificación y el quiosco emitió la boleta solo, sin aprobar en caja.
+
+Lo que se aprendió al configurarlo:
+- MacroDroid **no mandaba la cabecera `Authorization`**: la clave va en el cuerpo, `{"text": "[notification]", "key": "<KIOSK_NOTIFIER_KEY>"}` (la cabecera sigue aceptándose).
+- El texto de la notificación puede romper el JSON (saltos de línea, comillas): la API lo lee de forma tolerante (`parse_notifier_body`) y, si no encuentra el texto, lo registra con la clave tapada.
+- El **túnel rápido de Cloudflare se cae cada pocas horas** («Tunnel not found») y al reiniciarlo cambia la dirección: hay que actualizar la URL en MacroDroid. Para algo estable hace falta un túnel con nombre fijo o enviar el aviso por la red local.
 - **Riesgos conocidos:**
   - Un pago ajeno por el mismo monto, durante la espera, se tomaría como este. Mitigación posible: cobrar montos únicos (p. ej. S/ 4.51).
   - Leer notificaciones depende del texto que Yape decida mostrar. Si lo cambia, hay que actualizar el intérprete.
@@ -67,7 +89,7 @@ El QR del comercio va en `privado/yape-qr.png` (fuera de git; `chmod a+r` para q
 | Pantalla del quiosco | React en el navegador | React Native (se reutiliza la lógica y el diseño) |
 | Cámara | `getUserMedia` + recuadro → `/api/vision/frame` | Cámara del celular + mismo recuadro → misma API, o el modelo en el celular |
 | Reconocimiento | kiosk-api (Python, ONNX) en la laptop | kiosk-api en un servidor en la nube, o ONNX Runtime Mobile en el celular |
-| Detección del pago | Ninguna todavía (solo la simulación por API en pruebas) | `NotificationListenerService` (Android) lee el aviso de Yape y llama a `/api/pay/notification` |
+| Detección del pago | MacroDroid reenvía la notificación (§4.1); respaldo: «Aprobar pago» en `/ayuda` | `NotificationListenerService` (Android) lee el aviso de Yape y llama a `/api/pay/notification` |
 | Backend | kiosk-api local (SQLite) | kiosk-api desplegado (o Firebase para ventas y catálogo) |
 
 Antes de la app conviene: probar con la webcam y productos reales, juntar ejemplos reales de notificaciones de Yape y Plin, y decidir dónde corre el reconocimiento (servidor o celular).

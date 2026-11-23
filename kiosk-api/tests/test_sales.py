@@ -1,6 +1,7 @@
 import datetime as dt
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from payment_helpers import PUBLIC_PEM, FakeGateway
 
@@ -9,7 +10,7 @@ from kiosk.catalog import Catalog, Product
 from kiosk.fusion import CartLine
 from kiosk.metrics import SessionRecorder, report, summarize
 from kiosk.payments import JwtVerifier
-from kiosk.pos import SimulatedPos
+from kiosk.pos import SimulatedPos, payment_method
 from kiosk.scale import SimulatedScale
 from kiosk.service import KioskService
 from kiosk.tray import SimulatedTray
@@ -38,12 +39,18 @@ def test_sales_today_counts_only_today_newest_first(tmp_path: Path):
             "issued_at": TODAY.isoformat(timespec="seconds"),
             "items": 2,
             "total_cents": 500,
+            "lines": [{"name": LINES[0].name, "quantity": LINES[0].quantity}],
+            "payer": None,
+            "method": "Pasarela",
         },
         {
             "number": "B001-00000002",
             "issued_at": TODAY.isoformat(timespec="seconds"),
             "items": 3,
             "total_cents": 780,
+            "lines": [{"name": line.name, "quantity": line.quantity} for line in LINES],
+            "payer": None,
+            "method": "Pasarela",
         },
     ]
 
@@ -55,6 +62,25 @@ def test_sales_today_in_memory_and_limit():
     sales = pos.sales_today(TODAY.date(), limit=2)
     assert sales["count"] == 3
     assert [r["number"] for r in sales["receipts"]] == ["B001-00000003", "B001-00000002"]
+
+
+@pytest.mark.parametrize(
+    ("charge_id", "method"),
+    [
+        ("sim-billetera-v1", "Simulado"),
+        ("caja-billetera-v1", "Aprobado en caja"),
+        ("billetera-v1", "Yape (notificación)"),
+        ("ch_1", "Pasarela"),
+    ],
+)
+def test_payment_method_comes_from_the_charge_id(charge_id, method):
+    assert payment_method(charge_id) == method
+
+
+def test_receipt_keeps_the_payer():
+    pos = SimulatedPos(now=stamp(TODAY))
+    pos.issue_receipt("v-1", "billetera-v-1", LINES, 780, payer="Ana")
+    assert pos.sales_today(TODAY.date())["receipts"][0]["payer"] == "Ana"
 
 
 def test_sales_today_defaults_to_the_local_date():

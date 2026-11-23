@@ -123,14 +123,15 @@ describe("Kiosk", () => {
 
   it("bloquea el botón mientras la petición está en curso", async () => {
     let resolve!: (r: Response) => void;
-    const fetchMock = vi.fn(() => new Promise<Response>((r) => (resolve = r)));
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => new Promise<Response>((r) => (resolve = r)));
     vi.stubGlobal("fetch", fetchMock);
     render(<Kiosk snapshot={base} />);
     const btn = screen.getByRole("button", { name: "INICIAR" });
     fireEvent.click(btn);
     expect(btn).toBeDisabled();
     fireEvent.click(btn);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Un solo POST aunque se toque dos veces (el inicio además pide el catálogo con GET)
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
     resolve(new Response(JSON.stringify(base)));
     await waitFor(() => expect(btn).toBeEnabled());
     vi.unstubAllGlobals();
@@ -154,10 +155,12 @@ describe("Kiosk", () => {
   it("W4 muestra agradecimiento, total y cuenta atrás", () => {
     const snap = { ...base, screen: "W4" as const, lines: [agua], item_count: 1, total_cents: 250, seconds_in_state: 3 };
     render(<Kiosk snapshot={snap} />);
-    expect(screen.getByText("Gracias por su compra")).toBeInTheDocument();
+    expect(screen.getByText("¡Gracias por tu compra!")).toBeInTheDocument();
     expect(screen.getByText("Agua")).toBeInTheDocument();
     expect(screen.getAllByText("S/ 2.50").length).toBeGreaterThan(0);
-    expect(screen.getByText("Volviendo al inicio en 7 s")).toBeInTheDocument();
+    expect(screen.getByText("La pantalla vuelve al inicio en 27 s")).toBeInTheDocument();
+    // Sin KIOSK_TIENDA, la boleta lleva el nombre del sistema (además de la cabecera)
+    expect(screen.getAllByText("Caserito")).toHaveLength(2);
   });
 
   it("FUERA_DE_SERVICIO avisa y mantiene la ayuda", () => {
@@ -182,5 +185,14 @@ describe("Kiosk", () => {
     render(<Kiosk snapshot={{ ...base, screen: "QR", qr_payload: null }} />);
     expect(screen.getByText("Generando código QR…")).toBeInTheDocument();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+});
+
+describe("Kiosk precarga el QR de Yape", () => {
+  it("pide la imagen del QR antes de la pantalla de pago", () => {
+    render(<Kiosk snapshot={{ ...base, wallet_qr: "/api/pay/wallet-qr", payment_method: "yape-qr" }} />);
+    const link = document.head.querySelector('link[rel="preload"][href="/api/pay/wallet-qr"]');
+    expect(link).not.toBeNull();
+    expect(link).toHaveAttribute("as", "image");
   });
 });

@@ -26,7 +26,16 @@ export type Snapshot = {
   /** La cámara está en el navegador: sugiere productos que el cliente agrega con un toque. */
   browser_camera?: boolean;
   /** Boleta de la venta recién pagada (en W4). */
-  receipt?: { number: string; issued_at: string; payer: string | null } | null;
+  receipt?: {
+    number: string;
+    issued_at: string;
+    payer: string | null;
+    /** Cómo se pagó: «Yape (notificación)», «Aprobado en caja»… */
+    method?: string;
+    total_cents?: number;
+  } | null;
+  /** Nombre de la bodega para la boleta (KIOSK_TIENDA); sin él se usa el del sistema. */
+  store?: string | null;
   /** Motivo del último rechazo de Yape, en palabras del cliente. */
   payment_error?: string | null;
   /** true mientras el quiosco espera la respuesta de Mercado Pago. */
@@ -48,7 +57,9 @@ const isReceipt = (v: unknown) =>
   isObj(v) &&
   typeof v.number === "string" &&
   typeof v.issued_at === "string" &&
-  (v.payer === null || typeof v.payer === "string");
+  (v.payer === null || typeof v.payer === "string") &&
+  (v.method === undefined || typeof v.method === "string") &&
+  (v.total_cents === undefined || isNum(v.total_cents));
 
 /** Comprueba la forma del estado que llega por WebSocket: si no cuadra, la pantalla no lo usa. */
 export function isSnapshot(v: unknown): v is Snapshot {
@@ -73,7 +84,8 @@ export function isSnapshot(v: unknown): v is Snapshot {
     (v.browser_camera === undefined || typeof v.browser_camera === "boolean") &&
     (v.receipt === undefined || v.receipt === null || isReceipt(v.receipt)) &&
     (v.payment_error === undefined || v.payment_error === null || typeof v.payment_error === "string") &&
-    (v.payment_processing === undefined || typeof v.payment_processing === "boolean")
+    (v.payment_processing === undefined || typeof v.payment_processing === "boolean") &&
+    (v.store === undefined || v.store === null || typeof v.store === "string")
   );
 }
 

@@ -5,7 +5,7 @@ export function FueraDeServicio() {
     <section className="screen screen-center">
       <StopOctagon className="stop-sign" />
       <h1 className="title title-hero">Fuera de servicio</h1>
-      <p className="lead">Un colaborador vendrá a ayudarle</p>
+      <p className="lead">Acércate al mostrador, ya te atendemos.</p>
     </section>
   );
 }

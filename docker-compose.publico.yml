@@ -22,6 +22,8 @@ services:
       KIOSK_CAJA_KEY: ${KIOSK_CAJA_KEY:?Define KIOSK_CAJA_KEY en .env}
       KIOSK_NOTIFIER_KEY: ${KIOSK_NOTIFIER_KEY:?Define KIOSK_NOTIFIER_KEY en .env}
       KIOSK_YAPE_QR: /privado/yape-qr.png
+      # Nombre de la bodega en la boleta (opcional, en .env). Sin él dice «Caserito».
+      KIOSK_TIENDA: ${KIOSK_TIENDA:-}
       # KIOSK_THRESHOLD / KIOSK_MARGIN: como en docker-compose.demo.yml
     volumes:
       - ./ml/data/models:/app/ml/data/models:ro

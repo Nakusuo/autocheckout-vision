@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { Snapshot } from "../../api";
 import { CamaraWeb } from "./CamaraWeb";
 import { Escaneo } from "./Escaneo";
@@ -38,7 +38,7 @@ describe("CamaraWeb", () => {
   it("sin cámara en el navegador lo dice", () => {
     render(<CamaraWeb disabled={false} onAdd={async () => true} />);
     expect(screen.getByRole("alert")).toHaveTextContent("no permite usar la cámara");
-    expect(screen.getByText("Pon un producto dentro del recuadro amarillo.")).toBeInTheDocument();
+    expect(screen.getByText("Pon un producto dentro del visor: la cámara lo reconoce sola.")).toBeInTheDocument();
   });
 
   it("si el permiso se niega, pide permitir el acceso", async () => {
@@ -102,13 +102,18 @@ describe("CamaraWeb: agregado automático", () => {
     const onAdd = vi.fn(async () => true);
     render(<CamaraWeb disabled={false} onAdd={onAdd} />);
     await frames(2);
-    expect(screen.getByText("Producto CASINO-43")).toBeInTheDocument();
+    expect(within(screen.getByRole("status")).getByText("Producto CASINO-43")).toBeInTheDocument();
     expect(screen.getByText("Mantenlo quieto…")).toBeInTheDocument();
+    // El visor muestra la etiqueta con nombre y precio, y las esquinas van cerrándose (2 de 3)
+    const box = document.querySelector<HTMLElement>(".webcam-box")!;
+    expect(box.querySelector(".ar-tag")).toHaveTextContent("Producto CASINO-43");
+    expect(box.style.getPropertyValue("--p")).toBe(String(2 / 3));
     expect(onAdd).not.toHaveBeenCalled();
     await frames(2);
     expect(onAdd).toHaveBeenCalledTimes(1);
     expect(onAdd).toHaveBeenCalledWith("CASINO-43");
     expect(screen.getByText("Agregado: Producto CASINO-43")).toBeInTheDocument();
+    expect(document.querySelector(".webcam-box .box-check")).not.toBeNull();
   });
 
   it("deshabilitada (sin conexión o agregando) no agrega nada", async () => {
@@ -120,7 +125,7 @@ describe("CamaraWeb: agregado automático", () => {
     await frames(5);
     expect(onAdd).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled(); // ni siquiera manda cuadros
-    expect(screen.getByText("Pon un producto dentro del recuadro amarillo.")).toBeInTheDocument();
+    expect(screen.getByText("Pon un producto dentro del visor: la cámara lo reconoce sola.")).toBeInTheDocument();
   });
 
   it("no agrega dos veces si la API tarda mientras el producto sigue en el recuadro", async () => {
@@ -151,7 +156,7 @@ describe("CamaraWeb: agregado automático", () => {
 describe("Escaneo con la cámara del navegador", () => {
   it("muestra la cámara en vez de la bandeja", () => {
     render(<Escaneo snapshot={base} offline={false} />);
-    expect(screen.getByText("Pon un producto dentro del recuadro amarillo.")).toBeInTheDocument();
+    expect(screen.getByText("Pon un producto dentro del visor: la cámara lo reconoce sola.")).toBeInTheDocument();
     expect(screen.queryByText(/Pasa tus productos uno por uno/)).not.toBeInTheDocument();
     // Lista vacía: en horizontal se ve junto a la cámara (en vertical el CSS la oculta).
     expect(screen.getByText(/Tu lista está vacía/)).toBeInTheDocument();
@@ -168,7 +173,7 @@ describe("Escaneo con la cámara del navegador", () => {
     const lines = [{ sku: "CASINO-43", name: "Galletas Casino 43 g", quantity: 1, unit_price_cents: 150 }];
     render(<Escaneo snapshot={{ ...base, lines, item_count: 1, total_cents: 150 }} offline={false} />);
     expect(screen.getByText("Galletas Casino 43 g")).toBeInTheDocument();
-    expect(screen.getByText("Pon un producto dentro del recuadro amarillo.")).toBeInTheDocument();
+    expect(screen.getByText("Pon un producto dentro del visor: la cámara lo reconoce sola.")).toBeInTheDocument();
     expect(screen.queryByText(/Pasa el siguiente producto/)).not.toBeInTheDocument();
   });
 });
@@ -182,7 +187,7 @@ describe("PagoQrPropio", () => {
     expect(screen.getByText("S/ 2.80")).toBeInTheDocument();
     expect(screen.getByText("Escanea con Yape o Plin")).toBeInTheDocument();
     expect(screen.getByText("110 s")).toBeInTheDocument();
-    expect(screen.getByText("Esperando la confirmación del pago")).toBeInTheDocument();
+    expect(screen.getByText("Esperando tu pago. La pantalla avanza sola.")).toBeInTheDocument();
   });
 
   it("pide escribir el monto exacto, sin cortarlo en dos líneas", () => {
@@ -226,6 +231,37 @@ describe("Ticket con boleta", () => {
 
   it("sin nombre del pagador no muestra esa fila", () => {
     render(<Ticket snapshot={{ ...paid, receipt: { ...paid.receipt, payer: null } }} />);
-    expect(screen.queryByText("Pagó")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cliente")).not.toBeInTheDocument();
+  });
+
+  it("es una boleta completa: tienda, productos, cantidades, total y cómo se pagó", () => {
+    const snap = {
+      ...paid,
+      store: "Bodega Don Lucho",
+      lines: [{ sku: "A", name: "Glacitas 30 g", quantity: 2, unit_price_cents: 150 }],
+      total_cents: 300,
+      receipt: { ...paid.receipt, method: "Yape (notificación)", total_cents: 300 },
+    };
+    render(<Ticket snapshot={snap} />);
+    expect(screen.getByText("Bodega Don Lucho")).toBeInTheDocument();
+    expect(screen.getByText("Glacitas 30 g")).toBeInTheDocument();
+    expect(screen.getByText("S/ 1.50 c/u")).toBeInTheDocument();
+    expect(screen.getAllByText("S/ 3.00").length).toBe(2); // importe de la línea y total
+    expect(screen.getByText("Yape (notificación)")).toBeInTheDocument();
+    expect(screen.getByText(/Boleta simulada, sin validez ante SUNAT/)).toBeInTheDocument();
+  });
+
+  it("IMPRIMIR BOLETA abre la impresión y NUEVA COMPRA vuelve al inicio", async () => {
+    const print = vi.fn();
+    vi.stubGlobal("print", print);
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(paid)));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<Ticket snapshot={paid} />);
+    fireEvent.click(screen.getByRole("button", { name: "IMPRIMIR BOLETA" }));
+    expect(print).toHaveBeenCalledOnce();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "NUEVA COMPRA" })));
+    expect(fetchMock).toHaveBeenCalledWith("/api/new-sale", expect.objectContaining({ method: "POST" }));
+    expect(screen.getByText("La pantalla vuelve al inicio en 28 s")).toBeInTheDocument();
+    vi.unstubAllGlobals();
   });
 });

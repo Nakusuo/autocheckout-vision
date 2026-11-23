@@ -8,7 +8,7 @@ web
 
 ## Users
 
-Clientes de una tienda de conveniencia (OXXO, Av. Túpac Amaru, Comas, Lima) con una compra rápida de 1 a 3 productos, a menudo en hora punta (7–9 a. m., 12–2 p. m., 7–10 p. m.), que quieren pagar sin hacer la cola de la caja. Usan el quiosco de pie y sin instrucciones previas. El cajero interviene cuando el cliente pulsa SOLICITAR AYUDA y cuando el panel de caja muestra una alerta de seguridad automática (algo no reconocido pasó frente a la cámara).
+Clientes de una bodega de barrio o tienda pequeña (el primer caso estudiado fue una tienda de conveniencia en Av. Túpac Amaru, Comas, Lima) con una compra rápida de 1 a 3 productos, a menudo en hora punta (7–9 a. m., 12–2 p. m., 7–10 p. m.), que quieren pagar sin hacer la cola de la caja. Usan el quiosco de pie y sin instrucciones previas. El cajero interviene cuando el cliente pulsa SOLICITAR AYUDA y cuando el panel de caja muestra una alerta de seguridad automática (algo no reconocido pasó frente a la cámara).
 
 ## Product Purpose
 
@@ -20,7 +20,7 @@ El cliente no escanea nada: deja los productos en la bandeja y la visión más e
 
 ## Operating Context
 
-- Flujo fijo: W1 Inicio → W2 Escaneo → W3 Confirmar → QR de pago → W4 Ticket → vuelta a W1 a los 10 s. Además, la pantalla Fuera de servicio.
+- Flujo fijo: W1 Inicio → W2 Escaneo → W3 Confirmar → QR de pago → W4 Boleta (completa, con IMPRIMIR BOLETA y NUEVA COMPRA) → vuelta a W1 a los 30 s o al tocar NUEVA COMPRA. Además, la pantalla Fuera de servicio.
 - El pago espera hasta 120 s. Si el peso no coincide, se muestra «Revise su bandeja» y PAGAR queda bloqueado.
 - SOLICITAR AYUDA siempre visible; avisa al panel de caja.
 - MVP de un equipo universitario: hardware simulado (balanza, pantalla táctil, pasarela). La demo se muestra en una laptop horizontal con el quiosco 9:16 centrado.
@@ -34,8 +34,9 @@ El cliente no escanea nada: deja los productos en la bandeja y la visión más e
 
 ## Brand Commitments
 
-- Nombre visible: **AutoCaja**. No se usa el nombre ni el logo de OXXO sin autorización (spec, Ley 29733 / marca).
-- Paleta confirmada por el usuario: los colores de la tienda, **rojo, amarillo y blanco**.
+- Nombre visible del sistema: **Caserito** (2026-11-22; «caserito» es como la bodega llama a su cliente de siempre). Cada bodega pone su nombre en la boleta con `KIOSK_TIENDA`. El repositorio y los documentos técnicos siguen llamándose AutoCaja / autocheckout-vision. No se usa el nombre ni el logo de OXXO ni de otra tienda sin autorización.
+- Paleta (2026-11-23, revisada con ui-ux-pro-max y las reglas anti AI-slop del usuario): papel y tinta cálidos con **un solo acento rojo #C8372A**; verde #2F6B45 solo para «salió bien» y amarillo #E3A72F solo para precaución (ver DESIGN.md). Parte de la paleta de referencia que eligió el usuario el 2026-11-22.
+- Tono: cercano y de barrio, de «tú», sin perder los textos obligatorios del SRS.
 
 ## Evidence on Hand
 

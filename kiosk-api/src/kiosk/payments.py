@@ -292,13 +292,20 @@ def yape_message(status_detail: str) -> str:
 #
 # El comercio muestra su QR de Yape (estático, el de su app). Cuando un cliente paga, al celular
 # del comercio llega una notificación («Juan Pérez te yapeó S/ 4.30»). La futura app Android la
-# leerá (NotificationListenerService) y mandará el texto; hoy se simula desde /sim.
-# FORMATOS SUPUESTOS: no se han verificado con notificaciones reales de Yape ni de Plin. Por eso
-# el intérprete solo exige un monto «S/ …» y toma el nombre si lo encuentra.
+# leerá (NotificationListenerService, o una app de automatización como MacroDroid) y mandará el
+# texto a POST /api/pay/notification.
+# FORMATO VERIFICADO (Yape, 2026-11-20, una notificación real): título «Confirmación de Pago» y
+# texto «Alessandra Rod* te envió un pago por S/ 1.5. El cód. de seguridad es: 305». El monto
+# puede venir sin el cero final. Plin y otras variantes de Yape siguen SIN verificar, por eso el
+# intérprete solo exige un monto «S/ …» y toma el nombre y el código si los encuentra.
 
 _AMOUNT = re.compile(r"S/\.?\s*(\d{1,5}(?:[.,]\d{1,2})?)", re.IGNORECASE)
 _PAYER_BEFORE = re.compile(
-    r"^\W*(?:yape\W+)?(?P<name>[^\n]+?)\s+te\s+(?:yape[oó]|envi[oó]|pag[oó]|pline[oó])", re.IGNORECASE
+    r"^\W*(?:yape\W+)?(?P<name>[^\n]+?)\s+te\s+(?:yape[oó]|envi[oó]|pag[oó]|pline[oó])",
+    re.IGNORECASE | re.MULTILINE,  # el título («Confirmación de Pago») puede ir en otra línea
+)
+_SECURITY_CODE = re.compile(
+    r"c[oó]d(?:igo|\.)?\s+de\s+seguridad(?:\s+es)?\s*:?\s*(?P<code>\d{3,6})", re.IGNORECASE
 )
 _PAYER_AFTER = re.compile(r"\bde\s+(?P<name>[^\n.!]+?)\s*[.!]?\s*$", re.IGNORECASE)
 
@@ -309,10 +316,13 @@ class WalletNotice:
 
     amount_cents: int
     payer: str | None
+    security_code: str | None = None
 
 
 def parse_wallet_notification(text: str) -> WalletNotice | None:
-    """«Juan Pérez te yapeó S/ 4.30» → WalletNotice(430, "Juan Pérez"). None sin monto."""
+    """«Juan Pérez te yapeó S/ 4.30» → WalletNotice(430, "Juan Pérez"). None sin monto.
+
+    Con el formato real de Yape también se lee el código de seguridad de 3 dígitos."""
     text = text.strip()[:500]
     found = _AMOUNT.search(text)
     if found is None:
@@ -321,6 +331,8 @@ def parse_wallet_notification(text: str) -> WalletNotice | None:
     cents = round(float(amount) * 100)
     if cents <= 0:
         return None
-    match = _PAYER_BEFORE.search(text) or _PAYER_AFTER.search(text[found.end() :])
+    code = _SECURITY_CODE.search(text)
+    rest = _SECURITY_CODE.sub("", text[found.end() :])  # «… cód. de seguridad» no es un nombre
+    match = _PAYER_BEFORE.search(text) or _PAYER_AFTER.search(rest)
     payer = match.group("name").strip(" :¡!") if match else None
-    return WalletNotice(cents, payer or None)
+    return WalletNotice(cents, payer or None, code.group("code") if code else None)

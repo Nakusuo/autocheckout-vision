@@ -6,7 +6,13 @@ import pytest
 from fastapi.testclient import TestClient
 from payment_helpers import FakeGateway
 
-from kiosk.app import create_app
+from kiosk.app import (
+    compact_qr,
+    create_app,
+    notifier_problem,
+    notifier_token,
+    parse_notifier_body,
+)
 from kiosk.catalog import Catalog, Product
 from kiosk.checkout import TransitionError
 from kiosk.payments import WalletNotice, parse_wallet_notification
@@ -33,8 +39,15 @@ class Clock:
 
 def make_service(**kwargs) -> KioskService:
     return KioskService(
-        CATALOG, NoCamera(), None, FakeGateway(), None, Clock(), wallet_qr="/api/pay/wallet-qr",
-        browser_camera=True, **kwargs,
+        CATALOG,
+        NoCamera(),
+        None,
+        FakeGateway(),
+        None,
+        Clock(),
+        wallet_qr="/api/pay/wallet-qr",
+        browser_camera=True,
+        **kwargs,
     )
 
 
@@ -58,6 +71,23 @@ def to_payment(svc: KioskService, skus=("CASINO-43", "RITZ-20")) -> None:
         ("¡Luis R. te yapeó S/4,30!", WalletNotice(430, "Luis R.")),
         ("Recibiste S/ 12 de María López", WalletNotice(1200, "María López")),
         ("Te yapearon S/. 3.5", WalletNotice(350, None)),
+        # Notificación real de Yape (2026-11-20): título en otra línea y monto sin el cero final
+        (
+            (
+                "Confirmación de Pago\nAlessandra Rod* te envió un pago por S/ 1.5. "
+                "El cód. de seguridad es: 305"
+            ),
+            WalletNotice(150, "Alessandra Rod*", "305"),
+        ),
+        # Otra notificación real de Yape (2026-11-22), reenviada por MacroDroid
+        (
+            "Yape! ANA TORRES QUISPE te envió un pago por S/ 1.50",
+            WalletNotice(150, "ANA TORRES QUISPE"),
+        ),
+        (
+            "Recibiste S/ 2 de Ana. Código de seguridad: 123",
+            WalletNotice(200, "Ana", "123"),
+        ),
     ],
 )
 def test_parses_amount_and_payer(text, notice):
@@ -121,7 +151,10 @@ def test_matching_notification_completes_the_sale_with_a_receipt():
 
 def test_wrong_amount_or_no_payment_waiting_is_ignored():
     svc = make_service()
-    assert svc.wallet_notification("Ana te yapeó S/ 2.80")["reason"] == "No hay un cobro esperando pago"
+    assert (
+        svc.wallet_notification("Ana te yapeó S/ 2.80")["reason"]
+        == "No hay un cobro esperando pago"
+    )
     to_payment(svc)
     wrong = svc.wallet_notification("Ana te yapeó S/ 2.00")
     assert wrong == {
@@ -132,15 +165,77 @@ def test_wrong_amount_or_no_payment_waiting_is_ignored():
     assert svc.snapshot()["screen"] == "QR"
 
 
+def test_money_that_does_not_match_alerts_the_cashier():
+    svc = make_service()
+    svc.wallet_notification("Luis te envió un pago por S/ 9. El cód. de seguridad es: 777")
+    to_payment(svc)
+    svc.wallet_notification("Promoción del día")  # sin monto: no es dinero, no alerta
+    svc.wallet_notification("Ana te yapeó S/ 2.00")
+    reasons = [a["reason"] for a in svc.security_alerts if a["outcome"] == "pagada"]
+    assert reasons == [
+        (
+            "Yape de Luis por S/ 9.00, cód. 777 sin compra que calce "
+            "(no hay un cobro esperando pago): revisar"
+        ),
+        (
+            "Yape de Ana por S/ 2.00 sin compra que calce "
+            "(monto distinto: llegó S/ 2.00, se espera S/ 2.80): revisar"
+        ),
+    ]
+
+
+def test_real_yape_notification_pays_and_the_sale_keeps_its_detail():
+    svc = make_service()
+    to_payment(svc, skus=("CASINO-43",))
+    total = svc.snapshot()["total_cents"]
+    text = (
+        "Confirmación de Pago\nAlessandra Rod* te envió un pago por "
+        f"S/ {total / 100:g}. El cód. de seguridad es: 305"
+    )
+    assert svc.wallet_notification(text)["matched"] is True
+    sale = svc.pos.sales_today()["receipts"][0]
+    assert sale["payer"] == "Alessandra Rod*"
+    assert sale["method"] == "Yape (notificación)"
+    assert sale["lines"] == [{"name": svc.catalog.get("CASINO-43").name, "quantity": 1}]
+
+
+def test_cashier_can_approve_a_wallet_qr_payment_by_hand():
+    svc = make_service()
+    to_payment(svc)
+    svc.accept_payment()
+    assert svc.snapshot()["screen"] == "W4"
+    assert svc.pos.receipts[-1]["charge_id"] == "caja-billetera-venta-1"
+    assert svc.pos.sales_today()["receipts"][0]["method"] == "Aprobado en caja"
+    with pytest.raises(TransitionError, match="pago pendiente"):
+        svc.accept_payment()
+
+
 def test_receipt_disappears_when_the_kiosk_returns_to_start():
     svc = make_service()
     to_payment(svc)
     svc.wallet_notification("Ana te yapeó S/ 2.80")
-    svc._clock.t += 11
+    svc._clock.t += 31
     svc.tick()
     snap = svc.snapshot()
     assert snap["screen"] == "W1"
     assert snap["receipt"] is None
+
+
+def test_receipt_shows_method_total_and_store_and_new_sale_goes_back():
+    svc = make_service(store_name="Bodega Don Lucho")
+    to_payment(svc)
+    svc.wallet_notification("Ana te yapeó S/ 2.80")
+    snap = svc.snapshot()
+    assert snap["store"] == "Bodega Don Lucho"
+    assert snap["receipt"]["method"] == "Yape (notificación)"
+    assert snap["receipt"]["total_cents"] == 280
+    svc._clock.t += 29
+    svc.tick()
+    assert svc.snapshot()["screen"] == "W4"  # 30 s para leerla o imprimirla
+    svc.new_sale()
+    assert svc.snapshot()["screen"] == "W1"
+    with pytest.raises(TransitionError):
+        svc.new_sale()  # solo desde la boleta
 
 
 def test_notification_needs_wallet_mode():
@@ -266,11 +361,22 @@ def client(qr_file, **kwargs):
 def test_frame_endpoint_suggests_a_product_during_scanning(qr_file):
     svc, http = client(qr_file)
     headers = {"Content-Type": "image/jpeg"}
-    assert http.post("/api/vision/frame", content=jpeg(solid((30, 30, 200))), headers=headers).status_code == 409
+    assert (
+        http.post(
+            "/api/vision/frame", content=jpeg(solid((30, 30, 200))), headers=headers
+        ).status_code
+        == 409
+    )
     svc.start()
-    body = http.post("/api/vision/frame", content=jpeg(solid((30, 30, 200))), headers=headers).json()
+    body = http.post(
+        "/api/vision/frame", content=jpeg(solid((30, 30, 200))), headers=headers
+    ).json()
     assert body["match"] is True
-    assert (body["sku"], body["name"], body["price_cents"]) == ("CASINO-43", "Galletas Casino 43 g", 150)
+    assert (body["sku"], body["name"], body["price_cents"]) == (
+        "CASINO-43",
+        "Galletas Casino 43 g",
+        150,
+    )
     assert svc.snapshot()["item_count"] == 0  # sugerir no agrega
 
 
@@ -278,7 +384,9 @@ def test_frame_endpoint_low_similarity_is_no_match(qr_file):
     svc, http = client(qr_file, recognizer=recognizer(threshold=9.0))
     svc.start()
     body = http.post(
-        "/api/vision/frame", content=jpeg(solid((30, 30, 200))), headers={"Content-Type": "image/jpeg"}
+        "/api/vision/frame",
+        content=jpeg(solid((30, 30, 200))),
+        headers={"Content-Type": "image/jpeg"},
     ).json()
     assert (body["match"], body["sku"], body["name"]) == (False, None, None)
     assert body["score"] > 0
@@ -288,9 +396,19 @@ def test_frame_endpoint_low_similarity_is_no_match(qr_file):
 def test_frame_endpoint_validates_the_upload(qr_file):
     svc, http = client(qr_file)
     svc.start()
-    assert http.post("/api/vision/frame", content=b"x", headers={"Content-Type": "text/plain"}).status_code == 415
+    assert (
+        http.post(
+            "/api/vision/frame", content=b"x", headers={"Content-Type": "text/plain"}
+        ).status_code
+        == 415
+    )
     big = b"x" * 2_000_001
-    assert http.post("/api/vision/frame", content=big, headers={"Content-Type": "image/jpeg"}).status_code == 413
+    assert (
+        http.post(
+            "/api/vision/frame", content=big, headers={"Content-Type": "image/jpeg"}
+        ).status_code
+        == 413
+    )
     bad = http.post("/api/vision/frame", content=b"x", headers={"Content-Type": "image/png; q=1"})
     assert bad.status_code == 422
 
@@ -307,8 +425,8 @@ def test_wallet_qr_image_is_served(qr_file):
     _, http = client(qr_file)
     r = http.get("/api/pay/wallet-qr")
     assert r.status_code == 200
-    assert r.headers["content-type"] == "image/png"
-    assert r.headers["cache-control"] == "no-store"
+    assert r.headers["content-type"] == "image/png"  # sin QR legible: el archivo tal cual
+    assert r.headers["cache-control"] == "public, max-age=600"
 
 
 def test_simulated_notification_pays(qr_file):
@@ -329,6 +447,74 @@ def test_notifier_endpoint_requires_the_key(qr_file):
     assert http.post("/api/pay/notification", json=body, headers=bad).status_code == 401
     good = {"Authorization": "Bearer clave-del-notificador-123"}
     assert http.post("/api/pay/notification", json=body, headers=good).json()["matched"] is True
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "Bearer clave-del-notificador-123",
+        "bearer   clave-del-notificador-123 ",
+        " clave-del-notificador-123\t",
+    ],
+)
+def test_notifier_token_tolerates_how_apps_paste_it(header):
+    assert notifier_token(header) == "clave-del-notificador-123"
+
+
+@pytest.mark.parametrize(
+    ("token", "reason"),
+    [
+        (None, "no llegó"),
+        ("KIOSK_NOTIFIER_KEY=abc", "KIOSK_NOTIFIER_KEY="),
+        ("abc", "tiene 3 caracteres y se esperaban 4"),
+        ("abce", "no coincide"),
+    ],
+)
+def test_notifier_problem_explains_without_the_key(token, reason):
+    problem = notifier_problem(token, "abcd")
+    assert reason in problem
+    assert "abcd" not in problem
+
+
+def test_notifier_key_can_travel_in_the_body(qr_file):
+    svc, http = client(qr_file)
+    to_payment(svc)
+    wrong = {"text": "Juan te yapeó S/ 2.80", "key": "otra"}
+    assert http.post("/api/pay/notification", json=wrong).status_code == 401
+    body = {"text": "Juan te yapeó S/ 2.80", "key": " clave-del-notificador-123 "}
+    assert http.post("/api/pay/notification", json=body).json()["matched"] is True
+
+
+REAL = "Alessandra Rod* te envió un pago por S/ 2.8. El cód. de seguridad es: 305"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ('{"text": "Juan", "key": "k"}', {"text": "Juan", "key": "k"}),
+        ('{"text": "Pago\nde Juan", "key": "k"}', {"text": "Pago\nde Juan", "key": "k"}),
+        ('{"text": "Dijo "hola" S/ 2", "key": "k"}', {"text": 'Dijo "hola" S/ 2', "key": "k"}),
+        ('{"key": "k", "text": "a "b""}', {"key": "k", "text": 'a "b"'}),
+        ("text=Juan+S%2F+2&key=k", {"text": "Juan S/ 2", "key": "k"}),
+        ("Juan te yapeó S/ 2", {"text": "Juan te yapeó S/ 2"}),
+    ],
+)
+def test_parse_notifier_body_tolerates_broken_json(raw, expected):
+    assert parse_notifier_body(raw) == expected
+
+
+def test_notifier_accepts_newlines_in_the_text_and_rejects_empty(qr_file):
+    svc, http = client(qr_file)
+    to_payment(svc)
+    raw = '{"text": "' + REAL.replace(". El", ".\nEl") + '", "key": "clave-del-notificador-123"}'
+    empty = '{"text": "", "key": "clave-del-notificador-123"}'
+    assert http.post("/api/pay/notification", content=empty).status_code == 422
+    assert http.post("/api/pay/notification", content=raw).json()["matched"] is True
+
+
+def test_notifier_token_empty_header_is_none():
+    assert notifier_token(None) is None
+    assert notifier_token("   ") is None
 
 
 def test_routes_are_absent_unless_configured(qr_file):
@@ -355,3 +541,38 @@ def test_frame_endpoint_logs_only_changes(qr_file, caplog):
         http.post("/api/vision/frame", content=jpeg(solid(color)), headers=headers)
     lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Recuadro")]
     assert [line.split(" (")[0] for line in lines] == ["Recuadro: CASINO-43", "Recuadro: RITZ-20"]
+
+
+def test_new_sale_endpoint_returns_to_start(qr_file):
+    svc, http = client(qr_file)
+    assert http.post("/api/new-sale").status_code == 409  # sin boleta en pantalla
+    to_payment(svc)
+    svc.wallet_notification("Juan te yapeó S/ 2.80")
+    assert http.post("/api/new-sale").json()["screen"] == "W1"
+
+
+def test_wallet_qr_is_served_as_a_lighter_webp_that_still_reads_the_same(tmp_path):
+    qr = cv2.QRCodeEncoder.create().encode("https://qr.yape.pe/ejemplo-comercio")
+    big = cv2.resize(qr, None, fx=12, fy=12, interpolation=cv2.INTER_NEAREST)
+    path = tmp_path / "yape-qr.png"
+    cv2.imwrite(str(path), cv2.cvtColor(big, cv2.COLOR_GRAY2BGR))
+    data, etag = compact_qr(path)
+    decoded = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    assert cv2.QRCodeDetector().detectAndDecode(decoded)[0] == "https://qr.yape.pe/ejemplo-comercio"
+    assert etag.startswith('"')
+    _, http = client(path)
+    r = http.get("/api/pay/wallet-qr")
+    assert r.headers["content-type"] == "image/webp"
+    assert r.headers["etag"] == etag
+    assert r.content == data
+
+
+def test_compact_qr_without_a_readable_image_keeps_the_original(tmp_path):
+    assert compact_qr(tmp_path / "no-existe.png") is None
+
+
+def test_catalog_endpoint_lists_what_the_kiosk_recognizes(qr_file):
+    svc, http = client(qr_file)
+    body = http.get("/api/catalog").json()
+    assert {"sku", "name", "price_cents"} == set(body[0])
+    assert [p["sku"] for p in body] == [p.sku for p in svc.catalog.all()]

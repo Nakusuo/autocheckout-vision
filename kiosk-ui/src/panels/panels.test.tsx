@@ -184,16 +184,74 @@ describe("AyudaPanel sonido", () => {
 });
 
 describe("AyudaPanel", () => {
-  it("no muestra compras, ventas ni pagos: solo ayuda y alertas", async () => {
+  it("sin cobro en curso no ofrece aprobar pago ni muestra la compra", async () => {
     stubFetch(() => []);
     render(<AyudaPanel />);
     const ws = FakeSocket.all[0];
     ws.open();
-    ws.send({ ...snap, state: "PAYING", screen: "QR" });
+    ws.send(snap);
     expect(await screen.findByText("Sin solicitudes")).toBeInTheDocument();
     expect(screen.queryByText(/Agua/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Ventas de hoy/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /pago/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Aprobar pago/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Sin ventas todavía/)).toBeInTheDocument();
+  });
+
+  it("con el cliente en la pantalla de pago, la caja puede aprobarlo", async () => {
+    const calls = stubFetch(() => []);
+    render(<AyudaPanel />);
+    const ws = FakeSocket.all[0];
+    ws.open();
+    ws.send({ ...snap, state: "PAYING", screen: "QR", total_cents: 150 });
+    expect(screen.getByText("Cliente pagando S/ 1.50")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Aprobar pago" }));
+    expect(calls).not.toContain("POST /api/caja/accept-payment"); // primero pide confirmar
+    fireEvent.click(screen.getByRole("button", { name: "No, volver" }));
+    fireEvent.click(screen.getByRole("button", { name: "Aprobar pago" }));
+    expect(screen.getByText(/Se emitirá la boleta y no se puede deshacer/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sí, aprobar S/ 1.50" }));
+    await waitFor(() => expect(calls).toContain("POST /api/caja/accept-payment"));
+  });
+
+  it("la confirmación pendiente se descarta si el cliente sale del pago", () => {
+    stubFetch(() => []);
+    render(<AyudaPanel />);
+    const ws = FakeSocket.all[0];
+    ws.open();
+    ws.send({ ...snap, state: "PAYING", screen: "QR", total_cents: 150 });
+    fireEvent.click(screen.getByRole("button", { name: "Aprobar pago" }));
+    ws.send({ ...snap, state: "IDLE", screen: "W1" });
+    ws.send({ ...snap, state: "PAYING", screen: "QR", total_cents: 150 });
+    expect(screen.getByRole("button", { name: "Aprobar pago" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Sí, aprobar/ })).not.toBeInTheDocument();
+  });
+
+  it("muestra las ventas de hoy con el detalle, quién pagó y cómo", async () => {
+    stubFetch((_m, path) =>
+      path === "/api/sales"
+        ? {
+            count: 2,
+            total_cents: 430,
+            receipts: [
+              {
+                number: "B001-00000002",
+                issued_at: "2026-11-21T04:26:00+00:00",
+                items: 1,
+                total_cents: 150,
+                lines: [{ name: "Glacitas 30 g", quantity: 1 }],
+                payer: "Alessandra Rod*",
+                method: "Yape (notificación)",
+              },
+              { number: "B001-00000001", issued_at: "2026-11-21T04:00:00+00:00", items: 2, total_cents: 280 },
+            ],
+          }
+        : [],
+    );
+    render(<AyudaPanel />);
+    expect(await screen.findByText(/1 × Glacitas 30 g/)).toBeInTheDocument();
+    expect(screen.getByText(/2 ventas/)).toBeInTheDocument();
+    expect(screen.getByText(/Alessandra Rod\*/)).toBeInTheDocument();
+    expect(screen.getByText(/Yape \(notificación\)/)).toBeInTheDocument();
+    expect(screen.getByText("2 productos")).toBeInTheDocument(); // boleta sin detalle
   });
 
   it("lista la ayuda pendiente y la marca como atendida", async () => {

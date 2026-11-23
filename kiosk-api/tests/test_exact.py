@@ -71,6 +71,7 @@ def test_snapshot_on_w1_is_exact():
         "wallet_qr": None,
         "browser_camera": False,
         "receipt": None,
+        "store": None,
     }
 
 
@@ -102,6 +103,7 @@ def test_snapshot_while_scanning_is_exact():
         "wallet_qr": None,
         "browser_camera": False,
         "receipt": None,
+        "store": None,
     }
 
 

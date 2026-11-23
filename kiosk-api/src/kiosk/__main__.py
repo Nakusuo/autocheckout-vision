@@ -72,7 +72,9 @@ def build_detector(
 
             source = CameraSource(int(env.get("KIOSK_CAMERA", "0")))
             return VerifiedYoloDetector(
-                Path(model), Path(gallery), source,
+                Path(model),
+                Path(gallery),
+                source,
                 imgsz=int(env.get("KIOSK_IMGSZ", "416")),
                 threshold=float(env.get("KIOSK_HYBRID_THRESHOLD", "0.90")),
             ), None
@@ -207,7 +209,9 @@ def cloud_settings(env: Mapping[str, str]) -> tuple[set[str], str | None, Path |
         sys.exit("KIOSK_CAJA_KEY debe tener al menos 16 caracteres")
     public = origins or env.get("K_SERVICE") or env.get("KIOSK_PUBLICO") == "on"
     if public and key is None:
-        sys.exit("El quiosco está en internet (KIOSK_ORIGINS, KIOSK_PUBLICO o Cloud Run): define KIOSK_CAJA_KEY")
+        sys.exit(
+            "El quiosco está en internet (KIOSK_ORIGINS, KIOSK_PUBLICO o Cloud Run): define KIOSK_CAJA_KEY"
+        )
     ui = env.get("KIOSK_UI_DIR")
     ui_dir = Path(ui) if ui else None
     if ui_dir is not None and not (ui_dir / "index.html").is_file():
@@ -329,6 +333,7 @@ def main() -> None:
         yape=yape,
         wallet_qr=WALLET_QR_URL if wallet is not None else None,
         browser_camera=recognizer is not None,
+        store_name=os.environ.get("KIOSK_TIENDA", "").strip()[:60] or None,
     )
     wallet_file, simulate_wallet, notifier_key = wallet if wallet else (None, False, None)
     app = create_app(

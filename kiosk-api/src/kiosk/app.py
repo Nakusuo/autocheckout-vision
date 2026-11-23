@@ -1,15 +1,19 @@
 import asyncio
+import hashlib
 import hmac
+import json
 import logging
+import re
 import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Protocol
+from urllib.parse import parse_qs
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, StringConstraints
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.staticfiles import StaticFiles
 
 from kiosk.checkout import State, TransitionError
@@ -56,6 +60,77 @@ class YapeIn(BaseModel):
 
     phone: Annotated[str, StringConstraints(pattern=r"^\d{9}$")]
     otp: Annotated[str, StringConstraints(pattern=r"^\d{6}$")]
+
+
+def compact_qr(path: Path) -> tuple[bytes, str] | None:
+    """Versión WebP (calidad 90) del QR del comercio, ~5 veces más liviana que la captura PNG.
+
+    Solo se usa si OpenCV está instalado y el QR comprimido se lee igual que el original; si no,
+    se sirve el archivo tal cual. Devuelve (bytes, ETag)."""
+    try:
+        import cv2  # extra «vision»: sin él se sirve el original
+    except ImportError:
+        return None
+    image = cv2.imread(str(path))
+    if image is None:
+        return None
+    ok, buf = cv2.imencode(".webp", image, [cv2.IMWRITE_WEBP_QUALITY, 90])
+    if not ok:
+        return None
+    detector = cv2.QRCodeDetector()
+    original = detector.detectAndDecode(image)[0]
+    back = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+    compressed = detector.detectAndDecode(back)[0] if back is not None else ""
+    if not original or compressed != original:
+        log.warning("El QR comprimido no se lee igual que el original: se sirve el archivo tal cual")
+        return None
+    data = buf.tobytes()
+    return data, f'"{hashlib.sha256(data).hexdigest()[:16]}"'
+
+
+def notifier_token(authorization: str | None) -> str | None:
+    """Clave de la cabecera Authorization, tolerante con lo que escriben las apps de automatización
+    (MacroDroid): «Bearer x», «bearer  x», espacios o saltos de línea al pegar, o la clave sola."""
+    value = (authorization or "").strip()
+    if not value:
+        return None
+    scheme, _, rest = value.partition(" ")
+    return rest.strip() if scheme.lower() == "bearer" else value
+
+
+def notifier_problem(token: str | None, key: str) -> str:
+    """Motivo del rechazo para el log. Nunca incluye la clave ni lo recibido."""
+    if token is None:
+        return "no llegó la cabecera Authorization"
+    if token.startswith("KIOSK_NOTIFIER_KEY"):
+        return "se pegó también «KIOSK_NOTIFIER_KEY=»: va solo lo que sigue al «=»"
+    if len(token) != len(key):
+        return f"la clave tiene {len(token)} caracteres y se esperaban {len(key)}"
+    return "la clave tiene el largo correcto pero no coincide"
+
+
+_JSON_FIELD = re.compile(r'"(?P<name>text|key)"\s*:\s*"(?P<value>.*?)"\s*(?=,\s*"(?:text|key)"|\}\s*$)', re.DOTALL)
+
+
+def parse_notifier_body(raw: str) -> dict[str, str]:
+    """Lee {"text", "key"} del cuerpo que mandan las apps de automatización, con tolerancia.
+
+    MacroDroid pega el texto de la notificación tal cual dentro del JSON: si trae saltos de línea
+    o comillas, el JSON queda inválido. Se prueba en orden: JSON normal, JSON que permite saltos
+    de línea (strict=False), los campos con una expresión regular y, por último, un formulario
+    (text=…&key=…). Si nada funciona, el cuerpo entero se toma como el texto."""
+    raw = raw.strip()
+    try:
+        data = json.loads(raw, strict=False)
+        if isinstance(data, dict):
+            return {k: str(v) for k, v in data.items() if k in ("text", "key") and v is not None}
+    except ValueError:
+        pass
+    found = {m["name"]: m["value"] for m in _JSON_FIELD.finditer(raw)}
+    if found:
+        return found
+    form = {k: v[0] for k, v in parse_qs(raw).items() if k in ("text", "key")}
+    return form or {"text": raw}
 
 
 class NotificationIn(BaseModel):
@@ -139,7 +214,11 @@ def create_app(
         «El propio sitio por https» (Origin == https://<Host>) es la misma página que sirve esta
         API, p. ej. en Cloud Run, cuya dirección no se conoce antes del primer despliegue. Por
         http no se acepta: un dominio ajeno que apunte a 127.0.0.1 (DNS rebinding) coincidiría."""
-        return origin is None or origin in origins or (host is not None and origin == f"https://{host}")
+        return (
+            origin is None
+            or origin in origins
+            or (host is not None and origin == f"https://{host}")
+        )
 
     def require_caja(x_caja_key: str | None = Header(default=None)) -> None:
         """Dependencia de las rutas de la caja: compara la clave en tiempo constante."""
@@ -195,6 +274,18 @@ def create_app(
     @app.post("/api/start")
     async def start() -> dict:
         return act(service.start)
+
+    @app.get("/api/catalog")
+    async def catalog() -> list[dict]:
+        """Productos que el quiosco sabe reconocer, con su precio (la pizarra del inicio)."""
+        return [
+            {"sku": p.sku, "name": p.name, "price_cents": p.price_cents}
+            for p in service.catalog.all()
+        ]
+
+    @app.post("/api/new-sale")
+    async def new_sale() -> dict:
+        return act(service.new_sale)
 
     @app.post("/api/confirm")
     async def confirm() -> dict:
@@ -314,7 +405,11 @@ def create_app(
             label = sku if match else "nada"
             if label != last_seen["label"]:  # solo los cambios: sirve para ajustar el umbral
                 log.info(
-                    "Recuadro: %s (mejor %s %.2f, margen %.2f)", label, sku, found.score, found.margin
+                    "Recuadro: %s (mejor %s %.2f, margen %.2f)",
+                    label,
+                    sku,
+                    found.score,
+                    found.margin,
                 )
                 last_seen["label"] = label
             return {
@@ -327,10 +422,17 @@ def create_app(
             }
 
     if wallet_qr_file is not None:
+        compact = compact_qr(wallet_qr_file)
+        # El navegador la guarda 10 min: la pantalla de pago no espera la descarga en cada compra
+        # (la interfaz además la precarga). Si el comercio cambia su QR, se ve tras ese tiempo.
+        qr_cache = {"Cache-Control": "public, max-age=600"}
 
-        @app.get("/api/pay/wallet-qr")
-        async def wallet_qr() -> FileResponse:
-            return FileResponse(wallet_qr_file, headers={"Cache-Control": "no-store"})
+        @app.get("/api/pay/wallet-qr", response_model=None)
+        async def wallet_qr() -> Response | FileResponse:
+            if compact is not None:
+                data, etag = compact
+                return Response(data, media_type="image/webp", headers={**qr_cache, "ETag": etag})
+            return FileResponse(wallet_qr_file, headers=qr_cache)
 
     def notify(text: str, simulated: bool = False) -> dict:
         try:
@@ -348,12 +450,26 @@ def create_app(
 
         @app.post("/api/pay/notification")
         async def pay_notification(
-            body: NotificationIn, authorization: str | None = Header(default=None)
+            request: Request, authorization: str | None = Header(default=None)
         ) -> dict:
-            scheme, _, token = (authorization or "").partition(" ")
-            if scheme != "Bearer" or not hmac.compare_digest(token.encode(), notifier_key.encode()):
+            raw = (await request.body())[:4000].decode("utf-8", errors="replace")
+            fields = parse_notifier_body(raw)
+            text = (fields.get("text") or "").strip()[:500]
+            token = notifier_token(authorization) or notifier_token(fields.get("key"))
+            if token is None or not hmac.compare_digest(token.encode(), notifier_key.encode()):
+                # Se dice por qué, sin escribir la clave: ayuda a configurar el celular.
+                log.warning("Notificación rechazada: %s", notifier_problem(token, notifier_key))
                 raise HTTPException(status_code=401, detail="Clave del notificador inválida")
-            return notify(body.text)
+            if not text:
+                log.warning(
+                    "Notificación sin texto (%s, %d bytes): %r",
+                    request.headers.get("content-type", "sin tipo"),
+                    len(raw),
+                    raw.replace(notifier_key, "<clave>")[:300],
+                )
+                raise HTTPException(status_code=422, detail="Falta el texto de la notificación")
+            log.info("Notificación recibida: %r", text[:200])
+            return notify(text)
 
     if tray is not None and scale is not None:
 

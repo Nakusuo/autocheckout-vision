@@ -15,19 +15,20 @@ from kiosk.payments import (
     PaymentError,
     PaymentGateway,
     UnverifiedPayment,
+    WalletNotice,
     YapeProvider,
     YapeResult,
     parse_wallet_notification,
     yape_message,
 )
-from kiosk.pos import SimulatedPos
+from kiosk.pos import SimulatedPos, payment_method
 from kiosk.scale import ScaleReader
 from kiosk.stability import StabilityFilter
 from kiosk.tray import Detector
 
 log = logging.getLogger(__name__)
 
-RESET_AFTER_S = 10.0
+RESET_AFTER_S = 30.0  # la boleta queda a la vista (y se puede imprimir); «Nueva compra» la cierra antes
 PAYMENT_TIMEOUT_S = 120.0
 POLL_EVERY_S = 1.0
 MAX_YAPE_ATTEMPTS = 3  # rechazos seguidos antes de pedir ayuda en caja
@@ -71,13 +72,16 @@ class KioskService:
         yape: YapeProvider | None = None,
         wallet_qr: str | None = None,
         browser_camera: bool = False,
+        store_name: str | None = None,
     ):
         """Medios de pago (uno a la vez; `gateway` y `verifier` solo se usan con el QR simulado):
         - `yape`: Yape vía Mercado Pago (celular + código de aprobación).
         - `wallet_qr`: URL de la imagen del QR propio de Yape/Plin del comercio; el pago se da por
           hecho con la notificación que llega al celular (`wallet_notification`).
         `browser_camera`: la cámara está en el navegador (o la app) y sugiere productos que el
-        cliente agrega con `add_product`."""
+        cliente agrega con `add_product`.
+        `store_name`: nombre de la bodega que encabeza la boleta (si no hay, la pantalla usa el
+        nombre del sistema)."""
         self.catalog = catalog
         self._detector = detector
         self._open_camera = getattr(detector, "open", None)
@@ -117,6 +121,7 @@ class KioskService:
         self._browser_camera = browser_camera
         self._receipt: dict | None = None  # boleta de la venta recién pagada (pantalla W4)
         self._payer: str | None = None
+        self._store_name = store_name
 
     def _do(self, action: Callable[[], None]) -> None:
         before = self.checkout.state
@@ -145,6 +150,10 @@ class KioskService:
         self._scanned = Counter()
         self._view = Counter()
         self._cart_changed()
+
+    def new_sale(self) -> None:
+        """El cliente toca «Nueva compra» en la boleta: vuelve al inicio sin esperar los 30 s."""
+        self._do(self.checkout.reset)
 
     def confirm(self) -> None:
         self._do(self.checkout.confirm)
@@ -207,7 +216,16 @@ class KioskService:
         self._last_poll = float("-inf")
 
     def accept_payment(self) -> None:
-        """La caja aprueba el cobro simulado vigente; se valida el token firmado."""
+        """La caja aprueba el cobro vigente.
+
+        Con la pasarela simulada se valida su token firmado. Con el QR propio de Yape/Plin el
+        encargado lo hace tras ver el pago en su celular (respaldo si la notificación no llega):
+        la boleta queda con `charge_id` «caja-billetera-…»."""
+        cart = self.checkout.cart
+        if self._wallet_qr is not None and self.checkout.state is State.PAYING and cart is not None:
+            self._complete_sale(self._reference, f"caja-billetera-{self._reference}", cart)
+            log.info("Pago por QR aprobado en caja para %s", self._reference)
+            return
         if self.checkout.state is not State.PAYING or self._charge is None:
             raise TransitionError("No hay un pago pendiente para aprobar")
         try:
@@ -301,24 +319,38 @@ class KioskService:
             return {"matched": False, "reason": "No se encontró un monto en la notificación"}
         cart = self.checkout.cart
         if self.checkout.state is not State.PAYING or cart is None:
-            return {"matched": False, "reason": "No hay un cobro esperando pago"}
+            return self._unmatched_payment(notice, "No hay un cobro esperando pago")
         if notice.amount_cents != cart.total_cents:
-            return {
-                "matched": False,
-                "reason": f"Monto distinto: llegó S/ {notice.amount_cents / 100:.2f}, "
+            return self._unmatched_payment(
+                notice,
+                f"Monto distinto: llegó S/ {notice.amount_cents / 100:.2f}, "
                 f"se espera S/ {cart.total_cents / 100:.2f}",
-            }
+            )
         charge_id = f"{'sim-' if simulated else ''}billetera-{self._reference}"
-        self._complete_sale(self._reference, charge_id, cart)
         self._payer = notice.payer
+        self._complete_sale(self._reference, charge_id, cart)
         receipt = self._receipt or {}
         log.info("Pago por QR recibido para %s (%s)", self._reference, receipt.get("number"))
         return {"matched": True, "receipt": receipt.get("number")}
 
+    def _unmatched_payment(self, notice: WalletNotice, reason: str) -> dict:
+        """Llegó dinero que no calza con la compra en pantalla: la caja debe verlo y revisarlo
+        (devolverlo o cobrarlo a mano). La alerta no se descarta sola."""
+        who = notice.payer or "alguien"
+        code = f", cód. {notice.security_code}" if notice.security_code else ""
+        self._cashier_alert(
+            f"Yape de {who} por S/ {notice.amount_cents / 100:.2f}{code} sin compra que calce "
+            f"({reason[:1].lower()}{reason[1:]}): revisar"
+        )
+        log.warning("Pago por QR sin compra que calce: %s", reason)
+        return {"matched": False, "reason": reason}
+
     def _complete_sale(self, reference: str, charge_id: str, cart: Cart) -> None:
         """Cierra la venta pagada: W4, boleta, alerta de la compra y registro de la sesión."""
         self._do(self.checkout.payment_confirmed)
-        self._receipt = self.pos.issue_receipt(reference, charge_id, cart.lines, cart.total_cents)
+        self._receipt = self.pos.issue_receipt(
+            reference, charge_id, cart.lines, cart.total_cents, payer=self._payer
+        )
         self._close_alert("pagada")
         self.sessions.finish(self._clock(), "paid", cart.item_count, cart.total_cents)
 
@@ -474,9 +506,11 @@ class KioskService:
 
     def _cart(self) -> Cart:
         # En la prueba con cámara solo se cobran los productos registrados que se reconocieron.
-        unknown = [] if self._close_camera is not None else [
-            sku for sku in self._view.elements() if self.catalog.get(sku) is None
-        ]
+        unknown = (
+            []
+            if self._close_camera is not None
+            else [sku for sku in self._view.elements() if self.catalog.get(sku) is None]
+        )
         return build_cart(sorted([*self._scanned.elements(), *unknown]), self.catalog)
 
     def _cart_changed(self) -> None:
@@ -593,10 +627,13 @@ class KioskService:
                     "number": self._receipt["number"],
                     "issued_at": self._receipt["issued_at"],
                     "payer": self._payer,
+                    "method": payment_method(self._receipt["charge_id"]),
+                    "total_cents": self._receipt["total_cents"],
                 }
                 if self._receipt is not None
                 else None
             ),
             "payment_error": self._yape_error,
             "payment_processing": self._yape_busy,
+            "store": self._store_name,
         }
