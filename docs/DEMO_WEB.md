@@ -58,6 +58,8 @@ El QR del comercio va en `privado/yape-qr.png` (fuera de git; `chmod a+r` para q
 - Si llega un Yape que **no calza** (no hay compra esperando o el monto es distinto), la caja ve una alerta en `/ayuda` con el nombre, el monto y el código, para devolverlo o cobrarlo a mano. No se descarta sola.
 - **Caja (`/ayuda`)**: muestra las **ventas de hoy** con el detalle (productos, total, hora, quién pagó y cómo: «Yape (notificación)», «Aprobado en caja» o «Simulado»). Mientras el cliente está en la pantalla de pago aparece **«Aprobar pago»**: es el respaldo si el encargado ve el Yape en su celular y la notificación no llegó (la boleta queda con `charge_id` «caja-billetera-…»).
 
+- **QR con el monto incluido: probado y descartado** (2026-11-23). El QR de Yape del comercio sigue el estándar EMV del BCRP, que admite el monto (etiqueta 54). Se generó un QR con la misma cuenta, monto S/ 0.10 y tipo dinámico (01=12), con su código de control correcto: Yape lo abrió pero **ignoró el monto** y pidió escribirlo. Con una cuenta personal no se puede fijar el monto; eso lo dan los QR de comercio (Izipay, Niubiz, Culqi, Yape para negocios), que piden RUC y contrato. Decisión del equipo: seguir con el QR fijo, la indicación «Escribe exactamente S/ …» y la alerta en caja si el monto no calza.
+
 ### 4.1 Reenviar la notificación con MacroDroid (sin programar)
 
 Mientras no exista la app Android, la app gratuita **MacroDroid** (Play Store) hace lo mismo en el celular que recibe los Yape:
