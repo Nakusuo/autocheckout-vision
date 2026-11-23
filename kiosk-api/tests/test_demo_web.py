@@ -73,6 +73,11 @@ def to_payment(svc: KioskService, skus=("CASINO-43", "RITZ-20")) -> None:
             ),
             WalletNotice(150, "Alessandra Rod*", "305"),
         ),
+        # Otra notificación real de Yape (2026-11-22), reenviada por MacroDroid
+        (
+            "Yape! ANA TORRES QUISPE te envió un pago por S/ 1.50",
+            WalletNotice(150, "ANA TORRES QUISPE"),
+        ),
         (
             "Recibiste S/ 2 de Ana. Código de seguridad: 123",
             WalletNotice(200, "Ana", "123"),

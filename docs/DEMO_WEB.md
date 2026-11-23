@@ -54,7 +54,7 @@ El QR del comercio va en `privado/yape-qr.png` (fuera de git; `chmod a+r` para q
 - El pago se da por hecho cuando llega una **notificación** con el **monto exacto** del total mientras la pantalla espera. Endpoints:
   - `POST /sim/wallet-notification {"text": "..."}`: **simulación** para pruebas automáticas, sin pantalla. Solo existe con `KIOSK_SIMULAR_PAGO=on` (apagado por defecto, también en la demo).
   - `POST /api/pay/notification` con `Authorization: Bearer <KIOSK_NOTIFIER_KEY>`: para la futura app Android. Sin la clave responde 401.
-- El intérprete (`parse_wallet_notification` en `kiosk-api/src/kiosk/payments.py`) toma el monto «S/ …» y, si los encuentra, el nombre y el código de seguridad. **Formato de Yape verificado con una notificación real** (2026-11-20): título «Confirmación de Pago» y texto «Alessandra Rod\* te envió un pago por S/ 1.5. El cód. de seguridad es: 305» (el monto puede venir sin el cero final). Plin y otras variantes de Yape siguen sin verificar.
+- El intérprete (`parse_wallet_notification` en `kiosk-api/src/kiosk/payments.py`) toma el monto «S/ …» y, si los encuentra, el nombre y el código de seguridad. **Formato de Yape verificado con una notificación real** (2026-11-20): título «Confirmación de Pago» y texto «Alessandra Rod\* te envió un pago por S/ 1.5. El cód. de seguridad es: 305» (el monto puede venir sin el cero final). Otra variante real: «Yape! NOMBRE APELLIDOS te envió un pago por S/ 1.50», sin código. Plin y otras variantes de Yape siguen sin verificar.
 - Si llega un Yape que **no calza** (no hay compra esperando o el monto es distinto), la caja ve una alerta en `/ayuda` con el nombre, el monto y el código, para devolverlo o cobrarlo a mano. No se descarta sola.
 - **Caja (`/ayuda`)**: muestra las **ventas de hoy** con el detalle (productos, total, hora, quién pagó y cómo: «Yape (notificación)», «Aprobado en caja» o «Simulado»). Mientras el cliente está en la pantalla de pago aparece **«Aprobar pago»**: es el respaldo si el encargado ve el Yape en su celular y la notificación no llegó (la boleta queda con `charge_id` «caja-billetera-…»).
 
@@ -71,7 +71,12 @@ Mientras no exista la app Android, la app gratuita **MacroDroid** (Play Store) h
 4. Dar a MacroDroid el permiso de **acceso a notificaciones** y quitarle el **ahorro de batería**.
 5. Probar: una compra, pagar el monto exacto y ver que la pantalla pasa a «Cobro exitoso» y la venta aparece en `/ayuda`.
 
-**Qué se probó** (2026-11-20): el texto real se envió a `/api/pay/notification` del servidor público y se interpretó bien (S/ 1.50, «Alessandra Rod\*», código 305). El reenvío desde MacroDroid lo configura el equipo en el celular y no se ha medido aquí.
+**Qué se probó**: el 2026-11-20 se envió el texto real a `/api/pay/notification` y se interpretó bien (S/ 1.50, «Alessandra Rod\*», código 305). El **2026-11-22 se probó de punta a punta**: compra de S/ 1.50 en el quiosco por el túnel, pago real con Yape, MacroDroid reenvió la notificación y el quiosco emitió la boleta solo, sin aprobar en caja.
+
+Lo que se aprendió al configurarlo:
+- MacroDroid **no mandaba la cabecera `Authorization`**: la clave va en el cuerpo, `{"text": "[notification]", "key": "<KIOSK_NOTIFIER_KEY>"}` (la cabecera sigue aceptándose).
+- El texto de la notificación puede romper el JSON (saltos de línea, comillas): la API lo lee de forma tolerante (`parse_notifier_body`) y, si no encuentra el texto, lo registra con la clave tapada.
+- El **túnel rápido de Cloudflare se cae cada pocas horas** («Tunnel not found») y al reiniciarlo cambia la dirección: hay que actualizar la URL en MacroDroid. Para algo estable hace falta un túnel con nombre fijo o enviar el aviso por la red local.
 - **Riesgos conocidos:**
   - Un pago ajeno por el mismo monto, durante la espera, se tomaría como este. Mitigación posible: cobrar montos únicos (p. ej. S/ 4.51).
   - Leer notificaciones depende del texto que Yape decida mostrar. Si lo cambia, hay que actualizar el intérprete.
