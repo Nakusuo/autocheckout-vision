@@ -315,9 +315,9 @@ export function AyudaPanel() {
               <li key={r.id} className="request">
                 <CautionDiamond className="request-icon" />
                 <div className="request-info">
-                  <span className="request-title">Quiosco 1<span className="sep">–</span>{r.screen}<span className="sep">–</span>{SCREEN_NAME[r.screen] ?? r.screen}</span>
+                  <span className="request-title">Quiosco 1, {r.screen}: {SCREEN_NAME[r.screen] ?? r.screen}</span>
                   <span className="muted">
-                    Solicitud #{r.id}<span className="sep">–</span>hace {Math.max(0, Math.floor((now - (seen[r.id] ?? now)) / 1000))} s
+                    Solicitud #{r.id}, hace {Math.max(0, Math.floor((now - (seen[r.id] ?? now)) / 1000))} s
                   </span>
                 </div>
                 <button type="button" className="pbtn go" onClick={() => resolve(r.id)}>Atendido</button>
@@ -337,9 +337,9 @@ export function AyudaPanel() {
                 <li key={a.id} className="request request-alert">
                   <StopOctagon className="request-icon" />
                   <div className="request-info">
-                    <span className="request-title">Quiosco 1<span className="sep">–</span>{a.screen}<span className="sep">–</span>{a.reason}</span>
+                    <span className="request-title">Quiosco 1, {a.screen}: {a.reason}</span>
                     <span className="muted">
-                      Alerta #{a.id}<span className="sep">–</span>{a.times === 1 ? "1 vez" : `${a.times} veces`}<span className="sep">–</span>compra {a.outcome}
+                      Alerta #{a.id}, {a.times === 1 ? "1 vez" : `${a.times} veces`}, compra {a.outcome}
                     </span>
                   </div>
                   <button type="button" className="pbtn go" onClick={() => review(a.id)}>Revisado</button>
@@ -352,8 +352,7 @@ export function AyudaPanel() {
             <h2 className="card-title">Ventas de hoy</h2>
             {sales && sales.count > 0 && (
               <span className="muted">
-                {sales.count} {sales.count === 1 ? "venta" : "ventas"}<span className="sep">–</span>
-                {formatPEN(sales.total_cents)}
+                {sales.count} {sales.count === 1 ? "venta" : "ventas"}, {formatPEN(sales.total_cents)}
               </span>
             )}
           </div>
@@ -364,8 +363,9 @@ export function AyudaPanel() {
               {sales.receipts.map((v) => (
                 <li key={v.number} className="request sale">
                   <div className="request-info">
-                    <span className="request-title">
-                      {v.number}<span className="sep">–</span>{formatPEN(v.total_cents)}
+                    <span className="request-title sale-head">
+                      <span>{v.number}</span>
+                      <span>{formatPEN(v.total_cents)}</span>
                     </span>
                     <span>
                       {(v.lines ?? []).map((l) => `${l.quantity} × ${l.name}`).join(", ") ||
@@ -373,8 +373,8 @@ export function AyudaPanel() {
                     </span>
                     <span className="muted">
                       {formatDateTime(v.issued_at)}
-                      {v.method && (<><span className="sep">–</span>{v.method}</>)}
-                      {v.payer && (<><span className="sep">–</span>{v.payer}</>)}
+                      {v.method && `, ${v.method}`}
+                      {v.payer && `, ${v.payer}`}
                     </span>
                   </div>
                 </li>

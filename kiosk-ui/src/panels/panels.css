@@ -15,8 +15,7 @@ body:has(.panel) { background: var(--paper); }
   gap: 1rem;
   padding: 0.9rem 1.5rem 0.8rem;
   background: var(--paper);
-  border-bottom: 6px solid var(--saffron);
-  box-shadow: inset 0 -2px 0 var(--ink);
+  border-bottom: 2px solid var(--ink);
 }
 .panel-header .wordmark { font-size: 1.6rem; }
 .panel-role {
@@ -31,16 +30,16 @@ body:has(.panel) { background: var(--paper); }
 }
 .link-state { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 0.9rem; }
 .link-dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--disabled-ink); }
-.link-state.on .link-dot { background: var(--leaf); }
-.link-state.off { color: var(--chili); }
-.link-state.off .link-dot { background: var(--chili); }
+.link-state.on .link-dot { background: var(--ok); }
+.link-state.off { color: var(--accent); }
+.link-state.off .link-dot { background: var(--accent); }
 
 .panel-error {
   margin: 1rem 1.5rem 0;
   padding: 0.75rem 1rem;
   border: 2px solid var(--ink);
   border-radius: 10px;
-  background: var(--saffron-soft);
+  background: var(--warn-soft);
   font-weight: 700;
 }
 
@@ -55,7 +54,7 @@ body:has(.panel) { background: var(--paper); }
 }
 .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
 .card-title { margin: 0; font-size: 1.15rem; font-weight: 900; letter-spacing: -0.01em; }
-.sep { margin: 0 0.4em; }
+.sale-head { display: flex; justify-content: space-between; gap: 1rem; font-variant-numeric: tabular-nums; }
 .panel .muted { color: var(--ink-soft); margin: 0; font-size: 0.92rem; }
 
 /* Botones de panel: misma gramática de placa que el quiosco, a escala de escritorio. */
@@ -75,15 +74,15 @@ body:has(.panel) { background: var(--paper); }
   transition: background-color 150ms var(--ease-out), transform 100ms var(--ease-out);
 }
 .pbtn:active:not(:disabled) { transform: scale(0.98); }
-.pbtn.go { background: var(--chili); color: var(--paper); box-shadow: inset 0 0 0 3px var(--chili), inset 0 0 0 5px var(--paper); }
-.pbtn.go:hover { background: var(--chili-press); box-shadow: inset 0 0 0 3px var(--chili-press), inset 0 0 0 5px var(--paper); }
+.pbtn.go { background: var(--accent); color: var(--paper); box-shadow: inset 0 0 0 3px var(--accent), inset 0 0 0 5px var(--paper); }
+.pbtn.go:hover { background: var(--accent-press); box-shadow: inset 0 0 0 3px var(--accent-press), inset 0 0 0 5px var(--paper); }
 .pbtn.plain { background: var(--paper-light); color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink); }
-.pbtn.plain:hover:not(:disabled) { background: var(--saffron-soft); }
+.pbtn.plain:hover:not(:disabled) { background: var(--paper-deep); }
 .pbtn:disabled { background: var(--disabled-bg); color: var(--disabled-ink); box-shadow: none; cursor: not-allowed; }
 .panel button:focus-visible, .panel a:focus-visible, .panel input:focus-visible {
   outline: 3px solid var(--ink);
   outline-offset: 2px;
-  box-shadow: 0 0 0 2px var(--saffron);
+  box-shadow: 0 0 0 2px var(--paper-light);
 }
 
 /* Ayuda: una columna, legible en laptop y en celular. */
@@ -99,7 +98,7 @@ body:has(.panel) { background: var(--paper); }
   min-width: 2rem;
   padding: 0.25rem 0.6rem 0.1rem;
   border-radius: 999px;
-  background: var(--chili);
+  background: var(--accent);
   color: var(--paper);
   font-weight: 900;
   text-align: center;
@@ -116,7 +115,7 @@ body:has(.panel) { background: var(--paper); }
   padding: 0.8rem 0.9rem;
   border: 2px solid var(--ink);
   border-radius: 12px;
-  background: var(--saffron-soft);
+  background: var(--warn-soft);
   animation: request-in 240ms var(--ease-out);
 }
 @keyframes request-in { from { opacity: 0; transform: translateY(-6px); } }
@@ -125,12 +124,12 @@ body:has(.panel) { background: var(--paper); }
 .request-title { font-weight: 900; font-size: 1.1rem; }
 
 .request.sale { grid-template-columns: minmax(0, 1fr); background: var(--paper-light); }
-.card-paying { border-color: var(--chili); box-shadow: inset 0 0 0 2px var(--chili); }
+.card-paying { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
 .card-paying p { margin: 0.4rem 0 0.8rem; }
 .confirm-text { font-weight: 800; }
 .confirm-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
 
-.card-down { border-color: var(--chili); box-shadow: inset 0 0 0 2px var(--chili); }
+.card-down { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
 .down { display: flex; align-items: center; gap: 0.9rem; font-weight: 700; }
 .down p { margin: 0; }
 .down-icon { width: 3.5rem; flex: none; }

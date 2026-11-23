@@ -1,21 +1,22 @@
 ---
 name: Caserito
-description: Autocobro para la bodega del barrio, cálido y claro, en chili, azafrán, hoja y crema.
+description: Autocobro para la bodega del barrio, en papel y tinta cálidos con un solo acento rojo.
 colors:
-  chili: "#d23d2d"
-  chili-press: "#a62e21"
-  saffron: "#f5c065"
-  saffron-soft: "#fbe6b8"
-  leaf: "#31603d"
-  leaf-soft: "#dde9d8"
-  paper: "#f8eecb"
-  paper-light: "#fffcf2"
-  ink: "#3a2622"
-  ink-soft: "#6e433d"
-  rule: "#e2d0a2"
-  disabled-bg: "#ebe1c4"
-  disabled-ink: "#6b5850"
-  counter: "#2e1e1b"
+  accent: "#c8372a"
+  accent-press: "#9f2a20"
+  accent-soft: "#f6ddd6"
+  ok: "#2f6b45"
+  warn: "#e3a72f"
+  warn-soft: "#fbedc9"
+  paper: "#f7f1e3"
+  paper-deep: "#ede4d0"
+  paper-light: "#fffdf8"
+  ink: "#2b1d1a"
+  ink-soft: "#6b5b55"
+  rule: "#e2d7c2"
+  disabled-bg: "#ebe4d6"
+  disabled-ink: "#6b5f58"
+  counter: "#241a17"
 typography:
   display:
     fontFamily: "Overpass, Segoe UI, system-ui, sans-serif"
@@ -61,13 +62,13 @@ spacing:
   tight: "2.4cqw"
 components:
   button-go:
-    backgroundColor: "{colors.chili}"
+    backgroundColor: "{colors.accent}"
     textColor: "{colors.paper-light}"
     typography: "{typography.action}"
     rounded: "{rounded.plate}"
     height: "15cqw"
   button-go-hover:
-    backgroundColor: "{colors.chili-press}"
+    backgroundColor: "{colors.accent-press}"
   button-plain:
     backgroundColor: "{colors.paper-light}"
     textColor: "{colors.ink}"
@@ -83,11 +84,11 @@ components:
     backgroundColor: "{colors.disabled-bg}"
     textColor: "{colors.disabled-ink}"
   total-band:
-    backgroundColor: "{colors.saffron}"
+    backgroundColor: "{colors.ink}"
     textColor: "{colors.ink}"
     padding: "4cqw"
   alert:
-    backgroundColor: "{colors.saffron-soft}"
+    backgroundColor: "{colors.warn-soft}"
     textColor: "{colors.ink}"
     rounded: "{rounded.plate}"
   qty-badge:
@@ -117,16 +118,14 @@ La pantalla es densa solo donde hace falta (la lista de productos) y el resto es
 
 ## Colors
 
-Paleta de bodega elegida por el usuario (2026-11-22): rojo chili, crema vainilla, azafrán, verde hoja y marrón. Cada color tiene un trabajo fijo.
+Revisión del 2026-11-23 (regla anti AI-slop: una familia, un solo acento). La primera versión usaba tres colores fuertes a la vez (rojo, azafrán y verde) sobre una crema muy amarilla y se veía recargada. Ahora:
 
-- **Chili (`chili`)**: la acción principal (INICIAR, CONFIRMAR, PAGAR, IMPRIMIR BOLETA), el paso actual de la ruta, el nombre del sistema y de la tienda en la boleta, y lo que detiene (PARE). Al pulsar, `chili-press`.
-- **Azafrán (`saffron`)**: lo que hay que mirar: la banda del TOTAL, la franja bajo la cabecera, los rombos de precaución. `saffron-soft` es el fondo de las alertas y el «hover» de los botones claros.
-- **Hoja (`leaf`)**: salió bien: pasos hechos, producto agregado, peso correcto, «Cobro exitoso» y el visto bueno.
-- **Crema (`paper`)** es la superficie del quiosco y de `/ayuda`; **papel (`paper-light`)** son las tarjetas, la boleta, los botones claros y el fondo del QR.
-- **Tinta (`ink`, `ink-soft`)**: marrón oscuro para el texto y los bordes; `ink-soft` (7:1 sobre crema) para lo secundario.
-- **Mostrador (`counter`)**: el fondo alrededor de la placa en pantallas verticales anchas.
+- **Acento único (`accent`, rojo chili)**: la acción principal (INICIAR, CONFIRMAR, PAGAR, IMPRIMIR BOLETA), el paso actual de la ruta, el nombre del sistema y de la tienda, lo recién agregado (`accent-soft` de fondo) y lo que detiene (PARE). Al pulsar, `accent-press`.
+- **Papel (`paper`, `paper-deep`, `paper-light`)**: fondo, «hover» y tarjetas/boleta/QR. **Tinta (`ink`, `ink-soft`)**: texto, bordes, pasos hechos, la banda del TOTAL (tinta con texto claro, como el pie de una boleta) y la línea bajo la cabecera.
+- **Solo con función**: `ok` (verde) = salió bien (pago recibido, agregado, peso correcto, visto bueno); `warn`/`warn-soft` (amarillo) = precaución (rombo, alertas, «Reconectando…»). No se usan como adorno.
+- **Mostrador (`counter`)**: fondo alrededor de la placa en pantallas verticales anchas y la pantalla de la cámara en la demostración.
 
-Contraste medido: texto crema sobre chili 5,5:1, tinta suave sobre crema 7,1:1, tinta suave sobre azafrán 5:1, crema sobre hoja 6,3:1. Los estados nunca dependen solo del color: el peso correcto lleva el disco con el visto bueno; el que no coincide, el rombo y la diferencia en gramos.
+Contraste: papel claro sobre acento 5,2:1; tinta suave sobre papel 5,7:1; papel claro sobre verde 6,4:1; tinta sobre amarillo 7,5:1. Los estados nunca dependen solo del color: siempre van con ícono y texto.
 
 ## Typography
 
@@ -144,40 +143,40 @@ Columna única en 9:16: cabecera (nombre y ruta), placa del estado (flexible) y 
 
 ## Elevation & Depth
 
-Plano: la profundidad la dan los bordes de tinta, no las sombras. Sombras solo con función: la del quiosco sobre el mostrador, la de la boleta (papel sobre la placa) y el canto inferior del botón principal, que se hunde al tocarlo. La franja azafrán separa la cabecera del contenido.
+Plano: la profundidad la dan los bordes de tinta, no las sombras. Sombras solo con función: la del quiosco sobre el mostrador, la de la boleta (papel sobre la placa) y el canto inferior del botón principal, que se hunde al tocarlo. Una línea de tinta separa la cabecera del contenido.
 
 ## Shapes
 
 - Placas y botones con radio `3cqw` (más amable que el de señal vial); la placa del QR, una vez y media ese radio.
 - Borde de placa de `0.7cqw` en tinta; el QR lleva `1cqw`.
-- El botón principal tiene un canto de `chili-press` debajo y baja `0.8cqw` al pulsarlo.
+- El botón principal tiene un canto de `accent-press` debajo y baja `0.8cqw` al pulsarlo.
 - Formas de señal dibujadas como geometría SVG en `src/kiosk/signs.tsx`: rombo, octógono, disco de visto bueno, flecha, signo de ayuda y la bandeja con productos. Todas son `aria-hidden`; el texto lleva el significado.
 
 ## Components
 
-- **Ruta**: cuatro discos (Coloca, Confirma, Paga, Listo). El paso actual va en chili, los hechos en hoja y los pendientes con aro. El número sale de `data-n` por CSS para no repetir cifras en el texto de la pantalla.
-- **Botón go**: placa chili de `15cqw` de alto con canto inferior y flecha (o ícono). El foco es un anillo azafrán con filo de tinta.
+- **Ruta**: cuatro discos (Coloca, Confirma, Paga, Listo). El paso actual va en el acento, los hechos en tinta y los pendientes con aro. El número sale de `data-n` por CSS para no repetir cifras en el texto de la pantalla.
+- **Botón go**: placa del acento de `15cqw` de alto con canto inferior y flecha (o ícono). El foco es un anillo de tinta con filo claro.
 - **Botón plain**: placa de papel con borde de tinta (CORREGIR, NUEVA COMPRA).
 - **Botón de ayuda**: placa blanca más baja, siempre al pie. Encima, «Ayuda en camino» en una banda de tinta.
 - **Tablero**: lista con la cantidad en una insignia negra, el nombre y el precio a la derecha, y la banda amarilla del TOTAL.
 - **Alerta**: placa amarilla clara con borde de tinta y rombo de precaución.
-- **Señal de velocidad**: disco de papel con aro chili y la cifra en tinta para los 120 s del pago.
-- **Boleta** (W4): papel de ticketera con el nombre de la tienda (`KIOSK_TIENDA`, o «Caserito»), número, fecha, productos con cantidad, precio unitario e importe, la banda azafrán del total, cómo se pagó y quién pagó, y al pie «Boleta simulada, sin validez ante SUNAT». Queda 30 s; al lado, IMPRIMIR BOLETA (impresión del navegador; la hoja de impresión deja solo la boleta, en negro, a 80 mm) y NUEVA COMPRA.
+- **Señal de velocidad**: disco de papel con aro del acento y la cifra en tinta para los 120 s del pago.
+- **Boleta** (W4): papel de ticketera con el nombre de la tienda (`KIOSK_TIENDA`, o «Caserito»), número, fecha, productos con cantidad, precio unitario e importe, la banda de tinta del total, cómo se pagó y quién pagó, y al pie «Boleta simulada, sin validez ante SUNAT». Queda 30 s; al lado, IMPRIMIR BOLETA (impresión del navegador; la hoja de impresión deja solo la boleta, en negro, a 80 mm) y NUEVA COMPRA.
 - **Fuera de servicio**: octógono rojo de PARE sobre el título.
 
 - **Escaneo en vivo, uno por uno** (W2): la píldora «En vivo» (punto rojo que late) junto al título. El cliente pasa cada producto frente a la cámara y se suma a la lista: la fila nueva se pone amarilla clara, la insignia de cantidad roja y la etiqueta «+ Agregado» flota en el margen superior (no cambia la altura). Cada línea tiene un botón cuadrado «−» para quitar una unidad. Mientras el producto llega a la bandeja se ve «Pesando la bandeja…» (aro que gira) y CONFIRMAR espera; «Revise su bandeja» solo aparece si la diferencia dura más de 2 s.
-- **Inicio, «cómo funciona»** (W1): una demostración en bucle de 5 s (`DemoVisor` en `signs.tsx`): un paquete entra a la pantalla de la cámara, una línea lo recorre, las esquinas se ponen verdes y aparece su etiqueta con nombre y precio. Debajo, tres pasos numerados en discos verdes. Con movimiento reducido se ve el final, quieto.
-- **Visor de la cámara** (W2 con cámara del navegador): cuatro esquinas en lugar de un marco y la imagen oscurecida fuera del visor. Buscando: una línea azafrán lo recorre. Reconociendo: las esquinas se vuelven claras y se cierran hacia el producto a medida que se confirma (`--p`, 3 cuadros) y bajo el visor flota una etiqueta con el nombre y el precio. Agregado: el visor se tiñe de verde con el visto bueno. No se muestra un porcentaje de seguridad porque el reconocedor no da uno real. Todo el visor es decorativo (`aria-hidden`); el texto accesible va en `role=status`.
+- **Inicio, «cómo funciona»** (W1): una demostración en bucle de 5 s (`DemoVisor` en `signs.tsx`): un paquete entra a la pantalla de la cámara, una línea lo recorre, las esquinas se ponen verdes y aparece su etiqueta con nombre y precio. Debajo, tres pasos numerados en discos de tinta. Con movimiento reducido se ve el final, quieto.
+- **Visor de la cámara** (W2 con cámara del navegador): cuatro esquinas en lugar de un marco y la imagen oscurecida fuera del visor. Buscando: una línea clara lo recorre, sin brillo. Reconociendo: las esquinas se vuelven claras y se cierran hacia el producto a medida que se confirma (`--p`, 3 cuadros) y bajo el visor flota una etiqueta con el nombre y el precio. Agregado: el visor se tiñe de verde con el visto bueno. No se muestra un porcentaje de seguridad porque el reconocedor no da uno real. Todo el visor es decorativo (`aria-hidden`); el texto accesible va en `role=status`.
 - **Cancelar compra** (W2, W3 y QR): la acción más callada, texto subrayado sin placa, debajo de la acción principal. Vuelve al inicio y descarta la lista.
 - **Aviso de cámara** (W1 y W2): una línea pequeña con el ícono de cámara y la Ley 29733.
 
 **Vista de ayuda (`/ayuda`)**: misma paleta, tipografía y placas, pero a escala de escritorio (`rem`) y en una columna: tarjetas de papel con borde de tinta sobre fondo crema, las ventas de hoy con su detalle y «Aprobar pago» mientras el cliente paga, botones `pbtn` (rojo = acción principal) y el estado del quiosco como disco rojo con el código de pantalla. Estilos en `kiosk-ui/src/panels/panels.css`.
 
-Movimiento: la placa entra en 260 ms (clip de arriba abajo y un desplazamiento de 2cqw, curva de salida exponencial); las líneas nuevas entran desde la izquierda; la línea roja recorre la bandeja mientras se escanea. Con `prefers-reduced-motion` todo queda quieto.
+Movimiento: la placa entra en 260 ms (clip de arriba abajo y un desplazamiento de 2cqw, curva de salida exponencial); las líneas nuevas entran desde la izquierda; la línea recorre la bandeja mientras se escanea. Con `prefers-reduced-motion` todo queda quieto.
 
 ## Do's and Don'ts
 
-- **Do** reservar el chili para acciones y bloqueos, el azafrán para el total y la precaución, y el verde hoja para lo que salió bien.
+- **Do** usar un solo acento (rojo) para acciones, paso actual y lo nuevo; el verde solo para lo que salió bien y el amarillo solo para precaución.
 - **Do** acompañar cada estado con forma y texto, no solo con color.
 - **Do** mantener los textos del SRS exactos; las pruebas los usan.
 - **Don't** usar el nombre ni el logo de OXXO sin autorización.

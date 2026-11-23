@@ -7,7 +7,7 @@ type Props = { className?: string };
 export function CautionDiamond({ className }: Props) {
   return (
     <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-      <rect x="15" y="15" width="70" height="70" rx="6" transform="rotate(45 50 50)" fill="var(--saffron)" stroke="var(--ink)" strokeWidth="5" />
+      <rect x="15" y="15" width="70" height="70" rx="6" transform="rotate(45 50 50)" fill="var(--warn)" stroke="var(--ink)" strokeWidth="5" />
       <rect x="46" y="27" width="8" height="30" rx="3" fill="var(--ink)" />
       <circle cx="50" cy="68" r="5" fill="var(--ink)" />
     </svg>
@@ -17,7 +17,7 @@ export function CautionDiamond({ className }: Props) {
 export function StopOctagon({ className }: Props) {
   return (
     <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-      <polygon points="30,2 70,2 98,30 98,70 70,98 30,98 2,70 2,30" fill="var(--chili)" />
+      <polygon points="30,2 70,2 98,30 98,70 70,98 30,98 2,70 2,30" fill="var(--accent)" />
       <polygon points="32,7 68,7 93,32 93,68 68,93 32,93 7,68 7,32" fill="none" stroke="var(--paper)" strokeWidth="3" />
       <text x="50" y="61" textAnchor="middle" fontFamily="Overpass, sans-serif" fontWeight="900" fontSize="30" fill="var(--paper)">PARE</text>
     </svg>
@@ -27,7 +27,7 @@ export function StopOctagon({ className }: Props) {
 export function CheckDisc({ className }: Props) {
   return (
     <svg className={className} viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-      <circle cx="50" cy="50" r="46" fill="var(--leaf)" />
+      <circle cx="50" cy="50" r="46" fill="var(--ok)" />
       <path d="M28 52 L44 67 L73 35" fill="none" stroke="var(--paper-light)" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -74,13 +74,13 @@ export function HelpGlyph({ className }: Props) {
 export function TraySign({ className, scanning = false }: Props & { scanning?: boolean }) {
   return (
     <svg className={className} viewBox="0 0 200 200" aria-hidden="true" focusable="false">
-      <rect x="30" y="30" width="140" height="140" rx="12" transform="rotate(45 100 100)" fill="var(--saffron)" stroke="var(--ink)" strokeWidth="8" />
+      <rect x="30" y="30" width="140" height="140" rx="12" transform="rotate(45 100 100)" fill="var(--paper-deep)" stroke="var(--ink)" strokeWidth="8" />
       <rect x="40" y="78" width="120" height="58" rx="8" fill="none" stroke="var(--ink)" strokeWidth="7" />
       <rect x="54" y="88" width="16" height="38" rx="5" fill="var(--ink)" />
       <rect x="58" y="81" width="8" height="9" rx="2" fill="var(--ink)" />
       <rect x="80" y="96" width="30" height="30" rx="3" fill="var(--ink)" />
       <path d="M120 126 L124 96 Q135 90 146 96 L150 126 Z" fill="var(--ink)" />
-      {scanning && <rect className="scan-line" x="40" y="78" width="120" height="5" fill="var(--chili)" />}
+      {scanning && <rect className="scan-line" x="40" y="78" width="120" height="5" fill="var(--accent)" />}
     </svg>
   );
 }
@@ -122,13 +122,13 @@ export function DemoVisor({ className }: Props) {
       {/* El paquete entra desde el borde de la «pantalla», no desde fuera de ella */}
       <g clipPath="url(#demo-view)">
       <g className="demo-product">
-        <rect x="92" y="40" width="56" height="84" rx="6" fill="var(--chili)" />
-        <path d="M92 52 h56 M92 112 h56" stroke="var(--chili-press)" strokeWidth="5" />
+        <rect x="92" y="40" width="56" height="84" rx="6" fill="var(--accent)" />
+        <path d="M92 52 h56 M92 112 h56" stroke="var(--accent-press)" strokeWidth="5" />
         <rect x="102" y="66" width="36" height="30" rx="4" fill="var(--paper-light)" />
-        <circle cx="120" cy="81" r="8" fill="var(--saffron)" />
+        <circle cx="120" cy="81" r="8" fill="var(--paper-deep)" />
       </g>
       </g>
-      <rect className="demo-sweep" x="66" y="28" width="108" height="4" rx="2" fill="var(--saffron)" />
+      <rect className="demo-sweep" x="66" y="28" width="108" height="3" rx="1.5" fill="var(--paper-light)" opacity="0.7" />
       <g className="demo-corners" fill="none" strokeWidth="6" strokeLinecap="round">
         <path d="M64 50 V36 a10 10 0 0 1 10 -10 H88" />
         <path d="M152 26 H166 a10 10 0 0 1 10 10 V50" />
@@ -136,11 +136,11 @@ export function DemoVisor({ className }: Props) {
         <path d="M176 114 V128 a10 10 0 0 1 -10 10 H152" />
       </g>
       <g className="demo-tag">
-        <rect x="14" y="174" width="212" height="30" rx="15" fill="var(--leaf)" />
+        <rect x="14" y="174" width="212" height="30" rx="15" fill="var(--ok)" />
         <circle cx="32" cy="189" r="8" fill="var(--paper-light)" />
-        <path d="M28 189 l3 3 l6 -6" fill="none" stroke="var(--leaf)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M28 189 l3 3 l6 -6" fill="none" stroke="var(--ok)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
         <text x="46" y="194" fontFamily="Overpass, sans-serif" fontWeight="900" fontSize="13" fill="var(--paper-light)">Galletas Casino</text>
-        <text x="214" y="194" textAnchor="end" fontFamily="Overpass, sans-serif" fontWeight="900" fontSize="13" fill="var(--saffron)">S/ 1.50</text>
+        <text x="214" y="194" textAnchor="end" fontFamily="Overpass, sans-serif" fontWeight="900" fontSize="13" fill="var(--paper-light)">S/ 1.50</text>
       </g>
     </svg>
   );

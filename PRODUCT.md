@@ -35,7 +35,7 @@ El cliente no escanea nada: deja los productos en la bandeja y la visión más e
 ## Brand Commitments
 
 - Nombre visible del sistema: **Caserito** (2026-11-22; «caserito» es como la bodega llama a su cliente de siempre). Cada bodega pone su nombre en la boleta con `KIOSK_TIENDA`. El repositorio y los documentos técnicos siguen llamándose AutoCaja / autocheckout-vision. No se usa el nombre ni el logo de OXXO ni de otra tienda sin autorización.
-- Paleta elegida por el usuario (2026-11-22): **chili #D23D2D, crema #F8EECB, azafrán #F5C065, hoja #31603D y marrón #6E433D** (ver DESIGN.md).
+- Paleta (2026-11-23, revisada con ui-ux-pro-max y las reglas anti AI-slop del usuario): papel y tinta cálidos con **un solo acento rojo #C8372A**; verde #2F6B45 solo para «salió bien» y amarillo #E3A72F solo para precaución (ver DESIGN.md). Parte de la paleta de referencia que eligió el usuario el 2026-11-22.
 - Tono: cercano y de barrio, de «tú», sin perder los textos obligatorios del SRS.
 
 ## Evidence on Hand

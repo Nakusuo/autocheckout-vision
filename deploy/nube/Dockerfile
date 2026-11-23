@@ -26,9 +26,13 @@ RUN useradd --uid 1000 --create-home user \
 # Misma estructura que el repo: el código busca catalog/ y ml/data/models/ desde la raíz.
 WORKDIR /app
 COPY catalog/products.csv catalog/products.csv
+# Primero las librerías (solo dependen de pyproject.toml) y después el código: así un cambio de
+# código no vuelve a descargar OpenCV ni ONNX Runtime. La instalación es editable (apunta a
+# kiosk-api/src), por eso basta con copiar el código encima.
 COPY kiosk-api/pyproject.toml kiosk-api/pyproject.toml
+RUN mkdir -p kiosk-api/src/kiosk && touch kiosk-api/src/kiosk/__init__.py \
+    && pip install --timeout 120 --retries 5 -e "./kiosk-api[vision]" "huggingface_hub>=0.24"
 COPY kiosk-api/src kiosk-api/src
-RUN pip install --timeout 120 --retries 5 -e "./kiosk-api[vision]" "huggingface_hub>=0.24"
 COPY --from=ui /ui/dist /app/ui
 COPY deploy/nube/arrancar.py /app/arrancar.py
 
